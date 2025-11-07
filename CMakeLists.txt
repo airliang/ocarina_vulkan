@@ -1,22 +1,11 @@
 cmake_minimum_required(VERSION 3.22)
 
-set(PYTHON_PATH  "DEFAULT_VALUE_IF_NOTHING_ELSE_SET")
-set(CUSTOM_PYTHON_PATH "" CACHE PATH "Optional: Specify a custom path to the Python executable if not found automatically.")
+find_package(Python)
 
-find_program(PYTHON_EXECUTABLE NAMES python python3 python2
-                             PATHS ENV PATH)
-
-if (PYTHON_EXECUTABLE)
-    message(STATUS "Found Python executable: ${PYTHON_EXECUTABLE}")
-    set(PYTHON_PATH "${PYTHON_EXECUTABLE}")
+if(Python_FOUND)
+    set(PYTHON_PATH ${Python_EXECUTABLE})
 else()
-    message(STATUS "Python executable not found in standard paths.")
-    if (CUSTOM_PYTHON_PATH) # Check if the user provided a custom path
-        message(STATUS "Using custom Python path from argument: ${CUSTOM_PYTHON_PATH}")
-        set(PYTHON_PATH "${CUSTOM_PYTHON_PATH}")
-    else()
-        message(FATAL_ERROR "No custom Python path provided.")
-    endif()
+    message(FATAL_ERROR "Python not found. Please install Python or set the Python_ROOT_DIR to proceed.")
 endif()
 
 project(ocarina)
