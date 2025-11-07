@@ -7,7 +7,7 @@ if (CUDAToolkit_FOUND)
     set(BUILTIN_SRC "${CMAKE_CURRENT_SOURCE_DIR}/builtin")
     # User manual target to copy CUDA header files
     add_custom_target(copy_cuda_headers ALL
-        COMMAND ${CMAKE_COMMAND} -E echo "Copying cuda header files to $<TARGET_FILE_DIR:ocarina-backend-cuda>"
+        COMMAND ${CMAKE_COMMAND} -E echo "Copying cuda header files to $<TARGET_FILE_DIR:ocarina-backend-cuda>/cuda"
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:ocarina-backend-cuda>/cuda
         COMMAND ${PYTHON_PATH} ${BUILTIN_SRC}/copy_cuda_files.py $<TARGET_FILE_DIR:ocarina-backend-cuda>/cuda
         COMMAND ${CMAKE_COMMAND} -E echo "Complete copy!"
