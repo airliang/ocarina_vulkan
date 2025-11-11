@@ -8,3 +8,7 @@
 **/*.vcxproj.filters
 **/*.pdb
 .cache/
+
+.idea/
+.vscode/
+.vs/
