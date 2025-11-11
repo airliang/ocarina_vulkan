@@ -205,6 +205,56 @@ CommandVisitor *CUDADevice::command_visitor() noexcept {
     return cmd_visitor_.get();
 }
 
+#if _WIN32 || _WIN64
+handle_ty CUDADevice::import_handle(handle_ty handle, uint64_t size) {
+    //CUDA_EXTERNAL_MEMORY_HANDLE_DESC externalMemoryHandleDesc = {};
+    //externalMemoryHandleDesc.type = CU_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32;
+    //externalMemoryHandleDesc.handle.win32.handle = reinterpret_cast<void *>(handle);
+    //externalMemoryHandleDesc.size = size;
+    //externalMemoryHandleDesc.flags = 0;
+
+    //CUexternalMemory externalMemory;
+    //CUresult res = cuImportExternalMemory(&externalMemory, &externalMemoryHandleDesc);
+    //if (res != CUDA_SUCCESS) {
+    //    const char *error_str;
+    //    cuGetErrorString(res, &error_str);
+    //    throw std::runtime_error(std::string("Failed to import external memory: ") + error_str);
+    //}
+
+    //CUDA_EXTERNAL_MEMORY_BUFFER_DESC bufferDesc = {};
+    //bufferDesc.offset = 0;
+    //bufferDesc.size = size;
+    //bufferDesc.flags = 0;
+
+    CUdeviceptr devicePtr;
+    //res = cuExternalMemoryGetMappedBuffer(&devicePtr, externalMemory, &bufferDesc);
+    //if (res != CUDA_SUCCESS) {
+    //    const char *error_str;
+    //    cuGetErrorString(res, &error_str);
+    //    throw std::runtime_error(std::string("Failed to get mapped buffer: ") + error_str);
+    //}
+
+    return static_cast<handle_ty>(devicePtr);
+}
+
+uint64_t CUDADevice::export_handle(handle_ty handle_) {
+    void *exported_win32_handle = nullptr;
+    //CUresult res = cuMemExportToShareableHandle(
+    //    &exported_win32_handle,
+    //    reinterpret_cast<CUmemGenericAllocationHandle>(handle_),
+    //    CU_MEM_HANDLE_TYPE_WIN32,
+    //    0);
+
+    //if (res != CUDA_SUCCESS) {
+    //    const char *error_str;
+    //    cuGetErrorString(res, &error_str);
+    //    throw std::runtime_error(std::string("Failed to export shareable handle: ") + error_str);
+    //}
+
+    return reinterpret_cast<uint64_t>(exported_win32_handle);
+}
+#endif
+
 }// namespace ocarina
 
 OC_EXPORT_API ocarina::CUDADevice *create(ocarina::RHIContext *file_manager) {

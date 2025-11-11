@@ -77,8 +77,8 @@ public:
     virtual ~RHIResource() { _destroy(); }
 
 #if _WIN32 || _WIN64
-    virtual void importHandle(HANDLE handle) {};
-    virtual HANDLE exportHandle() { return 0; };
+    virtual void import_handle(uint64_t handle) {};
+    virtual uint64_t export_handle() { return 0; };
 #endif
 };
 }// namespace ocarina
