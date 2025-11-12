@@ -149,6 +149,14 @@ public:
         size_ = 0;
     }
 
+    void import_handle(uint64_t handle) override {
+        device_->import_handle(handle, size_in_byte()); 
+    };
+
+    uint64_t export_handle() override {
+        return device_->export_handle(handle());
+    };
+
     [[nodiscard]] BufferView<T> view(size_t offset = 0, size_t size = 0) const noexcept {
         size = size == 0 ? size_ - offset : size;
         return BufferView<T>(handle_, offset, size, size_);

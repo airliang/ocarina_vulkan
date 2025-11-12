@@ -150,5 +150,10 @@ public:
     void bind_descriptor_sets(DescriptorSet **descriptor_set, uint32_t descriptor_sets_num, RHIPipeline *pipeline) noexcept override {}
     void begin_frame() noexcept override {}
     void end_frame() noexcept override {}
+
+#if _WIN32 || _WIN64
+    handle_ty import_handle(handle_ty handle, size_t size) override;
+    uint64_t export_handle(handle_ty handle_) override;
+#endif
 };
 }// namespace ocarina
