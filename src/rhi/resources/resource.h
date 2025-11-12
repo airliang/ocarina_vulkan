@@ -75,5 +75,10 @@ public:
     [[nodiscard]] bool valid() const noexcept { return bool(device_); }
     virtual void destroy() { _destroy(); }
     virtual ~RHIResource() { _destroy(); }
+
+#if _WIN32 || _WIN64
+    virtual void importHandle(HANDLE handle) {};
+    virtual HANDLE exportHandle() { return 0; };
+#endif
 };
 }// namespace ocarina
