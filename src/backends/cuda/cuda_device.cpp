@@ -43,7 +43,8 @@ void CUDADevice::init_hardware_info() {
 
 void CUDADevice::memory_allocate(handle_ty *handle, size_t size, bool exported) {
     if (!exported) {
-            OC_CU_CHECK(cuMemAlloc(handle, size));
+        OC_CU_CHECK(cuMemAlloc(handle, size));
+        allocation_sizes_[*handle] = size;
     } else {
             size_t granularity = 0;
             CUmemAllocationProp prop = {};
@@ -122,6 +123,15 @@ void CUDADevice::memory_free(handle_ty *handle) {
     } else {
         OC_CU_CHECK(cuMemFree(*handle));
     }
+}
+
+uint64_t CUDADevice::get_aligned_memory_size(handle_ty handle) {
+    std::lock_guard<std::mutex> lock(CUDADevice::allocation_mutex_);
+    auto size_it = CUDADevice::allocation_sizes_.find(handle);
+    if (size_it != CUDADevice::allocation_sizes_.end()) {
+        return size_it->second;
+    }
+    return 0;
 }
 
 

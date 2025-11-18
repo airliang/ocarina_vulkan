@@ -158,6 +158,8 @@ public:
     void memory_allocate(handle_ty *handle, size_t size, bool exported = true) override;
     void memory_free(handle_ty *handle) override;
 
+    uint64_t get_aligned_memory_size(handle_ty handle) override;
+
 #if _WIN32 || _WIN64
     handle_ty import_handle(handle_ty handle, size_t size) override;
     uint64_t export_handle(handle_ty handle_) override;
