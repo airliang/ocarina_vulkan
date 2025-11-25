@@ -51,7 +51,7 @@ void CUDADevice::memory_allocate(handle_ty *handle, size_t size, bool exported) 
             prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
             prop.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
             prop.location.id = cu_device_;
-//            prop.requestedHandleTypes = CU_MEM_HANDLE_TYPE_WIN32;
+            prop.requestedHandleTypes = CU_MEM_HANDLE_TYPE_WIN32;
 
             OC_CU_CHECK(cuMemGetAllocationGranularity(&granularity, &prop,
                                                       CU_MEM_ALLOC_GRANULARITY_MINIMUM));

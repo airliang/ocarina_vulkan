@@ -6,7 +6,8 @@
 
 #include "core/header.h"
 #include "core/stl.h"
-#include "rhi/device.h"
+#include "rhi/resources/resource.h"
+#include "core/thread_safety.h"
 #include <cuda.h>
 #include "util.h"
 #include "cuda_compiler.h"
@@ -62,9 +63,12 @@ private:
     std::unique_ptr<CommandVisitor> cmd_visitor_;
     uint32_t compute_capability_{};
 
-    std::unordered_map<handle_ty, CUmemGenericAllocationHandle> allocation_handles_;
-    std::unordered_map<handle_ty, size_t> allocation_sizes_; 
     std::mutex allocation_mutex_;
+    std::unordered_map<handle_ty, CUmemGenericAllocationHandle> allocation_handles_;
+    std::unordered_map<handle_ty, size_t> allocation_sizes_;
+
+    thread_safety<std::mutex> memory_guard_;
+    std::unordered_map<handle_ty, ExportableResource> exported_resources;
 
     class ContextGuard {
     private:
@@ -116,7 +120,7 @@ public:
     }
     void init_optix_context() noexcept;
     [[nodiscard]] OptixDeviceContext optix_device_context() const noexcept { return optix_device_context_; }
-    [[nodiscard]] handle_ty create_buffer(size_t size, const string &desc, bool exported = true) noexcept override;
+    [[nodiscard]] handle_ty create_buffer(size_t size, const string &desc, bool exported) noexcept override;
     void destroy_buffer(handle_ty handle) noexcept override;
     [[nodiscard]] handle_ty create_texture(uint3 res, PixelStorage pixel_storage,
                                            uint level_num,
@@ -136,14 +140,14 @@ public:
     void destroy_bindless_array(handle_ty handle) noexcept override;
     void register_shared_buffer(void *&shared_handle, ocarina::uint &gl_handle) noexcept override;
     void register_shared_tex(void *&shared_handle, ocarina::uint &gl_handle) noexcept override;
-    void mapping_shared_buffer(void *&shared_handle,handle_ty &handle) noexcept override;
+    void mapping_shared_buffer(void *&shared_handle, handle_ty &handle) noexcept override;
     void mapping_shared_tex(void *&shared_handle, handle_ty &handle) noexcept override;
     void unmapping_shared(void *&shared_handle) noexcept override;
     void unregister_shared(void *&shared_handle) noexcept override;
     void init_rtx() noexcept override { init_optix_context(); }
     [[nodiscard]] CommandVisitor *command_visitor() noexcept override;
     void submit_frame() noexcept override {}
-    VertexBuffer* create_vertex_buffer() noexcept override { return nullptr; }
+    VertexBuffer *create_vertex_buffer() noexcept override { return nullptr; }
     IndexBuffer *create_index_buffer(const void *initial_data, uint32_t indices_count, bool bit16) noexcept override { return nullptr; }
     RHIRenderPass *create_render_pass(const RenderPassCreation &render_pass_creation) noexcept override { return nullptr; }
     void destroy_render_pass(RHIRenderPass *render_pass) noexcept override {}
