@@ -77,18 +77,23 @@ int main(int argc, char *argv[]) {
     Callable cb = [&](Var<Triangle> t) {
         print("{},{},{}--", t.i,t.j,t.k);
     };
+    Env::instance().init(device);
 
     Kernel kernel = [&](BufferVar<float3> v, Var<Triangle> triangle) {
         Var<float3> pos = v_buffer.read(dispatch_idx().x);
         Var<float3> pos2 = v[dispatch_id()];
-        Var t = t_buffer.read(dispatch_id());
-        cb(t);
-        print("{},{},{}, {}", pos.x, pos2.y, pos.z, dispatch_dim().x);
+        $info("{} {} {} ", pos);
+        pos.xyz() *=  2.f;
+        $info("{} {} {} ", pos);
+//        auto xxx = pos.xy().decay();
+//        Var t = t_buffer.read(dispatch_id());
+//        cb(t);
+//        print("{},{},{}, {}", pos.x, pos2.y, pos.z, dispatch_dim().x);
     };
 
     auto shader = device.compile(kernel);
-    stream << shader(v_buffer, triangle[2]).dispatch(t_buffer.size());
-    stream << synchronize() << commit();
+    stream << shader(v_buffer, triangle[2]).dispatch(1);
+    stream << synchronize() << Env::instance().printer().retrieve() << commit();
 
     return 0;
 }
