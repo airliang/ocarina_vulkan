@@ -19,7 +19,7 @@ add_library(ocarina-backend INTERFACE)
 
 add_subdirectory(cuda)
 
-option(VISION_BUILD_VULKAN "VISION BUILD VULKAN" ON)
+option(VISION_BUILD_VULKAN "VISION BUILD VULKAN" OFF)
 
 if (VISION_BUILD_VULKAN)
     add_subdirectory(vulkan)

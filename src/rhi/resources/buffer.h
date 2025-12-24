@@ -111,7 +111,7 @@ public:
 };
 
 template<typename T = std::byte, int... Dims>
-class Buffer : public RHIResource {
+class Buffer : public ExportableResource {
     static_assert(is_valid_buffer_element_v<T>);
     static constexpr bool use_for_dsl = is_dsl_basic_v<T>;
 
@@ -119,6 +119,7 @@ public:
     using element_type = T;
     static constexpr ocarina::array<int, sizeof...(Dims)> dims = {Dims...};
     static constexpr bool has_multi_dim() noexcept { return !dims.empty(); }
+    using Super = ExportableResource;
 
 protected:
     size_t size_{};
@@ -130,8 +131,8 @@ public:
 
     [[nodiscard]] static constexpr size_t element_size() noexcept { return sizeof(T); }
 
-    Buffer(Device::Impl *device, size_t size, const string &desc = "")
-        : RHIResource(device, Tag::BUFFER, device->create_buffer(size * element_size(), desc)),
+    Buffer(Device::Impl *device, size_t size, const string &desc = "", bool exported = false)
+        : Super(device, Tag::BUFFER, device->create_buffer(size * element_size(), desc, exported), exported),
           size_(size), name_(desc) {
         descriptor_ptr();
     }
@@ -139,8 +140,13 @@ public:
     OC_MAKE_MEMBER_GETTER_SETTER(name, )
 
     Buffer(BufferView<T, Dims...> buffer_view)
-        : RHIResource(nullptr, Tag::BUFFER, buffer_view.handle()),
+        : Super(nullptr, Tag::BUFFER, buffer_view.handle()),
           size_(buffer_view.size()) {
+        descriptor_ptr();
+    }
+
+    Buffer(Device::Impl *device, size_t size, handle_ty handle)
+        : Super(device, Tag::BUFFER, handle), size_(size) {
         descriptor_ptr();
     }
 
@@ -148,6 +154,14 @@ public:
         _destroy();
         size_ = 0;
     }
+
+    void import_handle(uint64_t handle) override {
+        device_->import_handle(handle, size_in_byte()); 
+    };
+
+    uint64_t export_handle() override {
+        return device_->export_handle(handle());
+    };
 
     [[nodiscard]] BufferView<T> view(size_t offset = 0, size_t size = 0) const noexcept {
         size = size == 0 ? size_ - offset : size;
@@ -161,7 +175,7 @@ public:
 
     // Move constructor
     Buffer(Buffer &&other) noexcept
-        : RHIResource(std::move(other)) {
+        : Super(std::move(other)) {
         this->size_ = other.size_;
         this->name_ = std::move(other.name_);
         this->descriptor_ = other.descriptor_;
@@ -170,7 +184,7 @@ public:
     // Move assignment
     Buffer &operator=(Buffer &&other) noexcept {
         destroy();
-        RHIResource::operator=(std::move(other));
+        Super::operator=(std::move(other));
         this->size_ = other.size_;
         this->name_ = std::move(other.name_);
         this->descriptor_ = other.descriptor_;

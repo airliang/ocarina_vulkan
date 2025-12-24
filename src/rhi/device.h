@@ -60,13 +60,13 @@ class OC_RHI_API Device : public concepts::Noncopyable {
 public:
     class Impl : public concepts::Noncopyable {
     protected:
-        RHIContext *file_manager_{};
+        RHIContext *context_{};
         friend class Device;
 
     public:
-        explicit Impl(RHIContext *ctx) : file_manager_(ctx) {}
-        explicit Impl(RHIContext *ctx, const InstanceCreation &instance_creation) : file_manager_(ctx) {}
-        [[nodiscard]] virtual handle_ty create_buffer(size_t size, const string &desc) noexcept = 0;
+        explicit Impl(RHIContext *ctx) : context_(ctx) {}
+        explicit Impl(RHIContext *ctx, const InstanceCreation &instance_creation) : context_(ctx) {}
+        [[nodiscard]] virtual handle_ty create_buffer(size_t size, const string &desc, bool exported = false) noexcept = 0;
         virtual void destroy_buffer(handle_ty handle) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_texture(uint3 res, PixelStorage pixel_storage,
                                                        uint level_num, const string &desc) noexcept = 0;
@@ -89,7 +89,7 @@ public:
         virtual void mapping_shared_tex(void *&shared_handle, handle_ty &handle) noexcept = 0;
         virtual void unmapping_shared(void *&shared_handle) noexcept = 0;
         virtual void unregister_shared(void *&shared_handle) noexcept = 0;
-        [[nodiscard]] RHIContext *file_manager() noexcept { return file_manager_; }
+        [[nodiscard]] RHIContext *context() noexcept { return context_; }
         virtual void init_rtx() noexcept = 0;
         [[nodiscard]] virtual CommandVisitor *command_visitor() noexcept = 0;
         virtual void submit_frame() noexcept = 0;
@@ -104,6 +104,16 @@ public:
         virtual RHIPipeline *get_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass) noexcept = 0;
         virtual DescriptorSet *get_global_descriptor_set(const string &name) noexcept = 0;
         virtual void bind_descriptor_sets(DescriptorSet **descriptor_set, uint32_t descriptor_sets_num, RHIPipeline *pipeline) noexcept = 0;
+
+        virtual void memory_allocate(handle_ty *handle, size_t size, bool exported = true) {}
+        virtual void memory_free(handle_ty *handle) {}
+
+        virtual uint64_t get_aligned_memory_size(handle_ty handle) const { return 0; }
+
+#if _WIN32 || _WIN64
+        virtual handle_ty import_handle(handle_ty handle, size_t size) { return 0; }
+        virtual uint64_t export_handle(handle_ty handle_) { return 0; }
+#endif
     };
 
     using Creator = Device::Impl *(RHIContext *);
@@ -115,7 +125,7 @@ private:
 
 public:
     explicit Device(Handle impl) : impl_(std::move(impl)) {}
-    [[nodiscard]] RHIContext *file_manager() const noexcept { return impl_->file_manager_; }
+    [[nodiscard]] RHIContext *context() const noexcept { return impl_->context_; }
     template<typename T, typename... Args>
     [[nodiscard]] auto create(Args &&...args) const noexcept {
         return T(this->impl_.get(), std::forward<Args>(args)...);
@@ -123,6 +133,11 @@ public:
     template<typename T = std::byte, int... Dims>
     [[nodiscard]] Buffer<T, Dims...> create_buffer(size_t size, const string &name = "") const noexcept {
         return Buffer<T, Dims...>(impl_.get(), size, name);
+    }
+
+    template<typename T = std::byte, int... Dims>
+    [[nodiscard]] Buffer<T, Dims...> create_buffer(size_t size, handle_ty handle) const noexcept {
+        return Buffer<T, Dims...>(impl_.get(), size, handle);
     }
 
     [[nodiscard]] ByteBuffer create_byte_buffer(size_t size, const string &name = "") const noexcept;
@@ -142,6 +157,18 @@ public:
 
     void destroy_buffer(handle_ty handle) noexcept {
         impl_->destroy_buffer(handle);
+    }
+
+    [[nodiscard]] handle_ty import_handle(handle_ty handle, size_t size) noexcept {
+        return impl_->import_handle(handle, size);
+    }
+
+    [[nodiscard]] uint64_t export_handle(handle_ty handle) noexcept {
+        return impl_->export_handle(handle);
+    }
+
+    [[nodiscard]] uint64_t get_aligned_memory_size(handle_ty handle) const noexcept {
+        return impl_->get_aligned_memory_size(handle);
     }
 
     template<typename T = std::byte>

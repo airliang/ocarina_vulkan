@@ -20,8 +20,8 @@
 
 namespace ocarina {
 
-CUDADevice::CUDADevice(RHIContext *file_manager)
-    : Device::Impl(file_manager) {
+CUDADevice::CUDADevice(RHIContext *context)
+    : Device::Impl(context) {
     OC_CU_CHECK(cuInit(0));
     OC_CU_CHECK(cuDeviceGet(&cu_device_, 0));
     OC_CU_CHECK(cuDevicePrimaryCtxRetain(&cu_ctx_, cu_device_));
@@ -40,11 +40,94 @@ void CUDADevice::init_hardware_info() {
     compute_capability_ = 10u * compute_cap_major + compute_cap_minor;
 }
 
-handle_ty CUDADevice::create_buffer(size_t size, const string &desc) noexcept {
+void CUDADevice::memory_allocate(handle_ty *handle, size_t size, bool exported) {
+    if (!exported) {
+        OC_CU_CHECK(cuMemAlloc(handle, size));
+    } else {
+        size_t granularity = 0;
+        CUmemAllocationProp prop = {};
+        prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
+        prop.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+        prop.location.id = cu_device_;
+        prop.requestedHandleTypes = CU_MEM_HANDLE_TYPE_WIN32;
+
+        OC_CU_CHECK(cuMemGetAllocationGranularity(&granularity, &prop,
+                                                  CU_MEM_ALLOC_GRANULARITY_MINIMUM));
+
+        size_t aligned_size = ((size * sizeof(std::byte) + granularity - 1) / granularity) * granularity;
+        prop.requestedHandleTypes = CU_MEM_HANDLE_TYPE_WIN32;
+
+#if _WIN32 || _WIN64
+        SECURITY_ATTRIBUTES secAttr = {};
+        secAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
+        secAttr.lpSecurityDescriptor = NULL;
+        secAttr.bInheritHandle = FALSE;
+
+        CUmemAllocationHandleType handleType = CU_MEM_HANDLE_TYPE_WIN32;
+        prop.win32HandleMetaData = &secAttr;
+#else
+        prop.win32HandleMetaData = nullptr;
+        prop.requestedHandleTypes = CU_MEM_HANDLE_TYPE_NONE;
+#endif
+
+        CUdeviceptr ptr;
+        OC_CU_CHECK(cuMemAddressReserve(&ptr, aligned_size, 0, 0, 0));
+        CUmemGenericAllocationHandle alloc_handle;
+        OC_CU_CHECK(cuMemCreate(&alloc_handle, aligned_size, &prop, 0));
+        OC_CU_CHECK(cuMemMap(ptr, aligned_size, 0, alloc_handle, 0));
+
+        CUmemAccessDesc access_desc = {};
+        access_desc.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+        access_desc.location.id = cu_device_;
+        access_desc.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+        OC_CU_CHECK(cuMemSetAccess(ptr, aligned_size, &access_desc, 1));
+
+        memory_guard_.with_lock([&] {
+            exported_resources[static_cast<handle_ty>(ptr)] = {alloc_handle, aligned_size};
+        });
+        *handle = static_cast<handle_ty>(ptr);
+    }
+}
+
+void CUDADevice::memory_free(handle_ty *handle) {
+    CUmemGenericAllocationHandle alloc_handle = 0;
+    size_t size = 0;
+    bool found = false;
+
+    memory_guard_.with_lock([&] {
+        auto iter = exported_resources.find(*handle);
+        if (iter != exported_resources.cend()) {
+            exported_resources.erase(iter);
+            found = true;
+        }
+    });
+
+    if (found) {
+        OC_CU_CHECK(cuMemUnmap(*handle, size));
+
+        OC_CU_CHECK(cuMemAddressFree(*handle, size));
+
+        OC_CU_CHECK(cuMemRelease(alloc_handle));
+    } else {
+        OC_CU_CHECK(cuMemFree(*handle));
+    }
+}
+
+uint64_t CUDADevice::get_aligned_memory_size(handle_ty handle) const {
+    return memory_guard_.with_lock([&]() -> size_t {
+        auto iter = exported_resources.find(handle);
+        if (iter != exported_resources.cend()) {
+            return iter->second.size;
+        }
+        return 0ull;
+    });
+}
+
+handle_ty CUDADevice::create_buffer(size_t size, const string &desc, bool exported) noexcept {
     OC_ASSERT(size > 0);
     return use_context([&] {
         handle_ty handle{};
-        OC_CU_CHECK(cuMemAlloc(&handle, size));
+        memory_allocate(&handle, size, exported);
         MemoryStats::instance().on_buffer_allocate(handle, size, desc);
         return handle;
     });
@@ -173,8 +256,10 @@ void CUDADevice::unregister_shared(void *&shared_handle) noexcept {
 
 void CUDADevice::destroy_buffer(handle_ty handle) noexcept {
     if (handle != 0) {
-        MemoryStats::instance().on_buffer_free(handle);
-        OC_CU_CHECK(cuMemFree(handle));
+        use_context([&] {
+            MemoryStats::instance().on_buffer_free(handle);
+            memory_free(&handle);
+        });
     }
 }
 
@@ -205,14 +290,84 @@ CommandVisitor *CUDADevice::command_visitor() noexcept {
     return cmd_visitor_.get();
 }
 
-}// namespace ocarina
+#if _WIN32 || _WIN64
+handle_ty CUDADevice::import_handle(handle_ty handle, size_t size) {
+    return use_context([&] {
+        CUDA_EXTERNAL_MEMORY_HANDLE_DESC externalMemoryHandleDesc = {};
+        externalMemoryHandleDesc.type = CU_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32;
+        externalMemoryHandleDesc.handle.win32.handle = reinterpret_cast<void *>(handle);
+        externalMemoryHandleDesc.size = size;
+        externalMemoryHandleDesc.flags = 0;
 
-OC_EXPORT_API ocarina::CUDADevice *create(ocarina::RHIContext *file_manager) {
-    return ocarina::new_with_allocator<ocarina::CUDADevice>(file_manager);
+        CUexternalMemory externalMemory;
+        CUresult res = cuImportExternalMemory(&externalMemory, &externalMemoryHandleDesc);
+        if (res != CUDA_SUCCESS) {
+            const char *error_str = nullptr;
+            cuGetErrorString(res, &error_str);
+            OC_ERROR_FORMAT("Failed to import external memory: {} (error code: {})",
+                            error_str ? error_str : "Unknown error", res);
+        }
+
+        CUDA_EXTERNAL_MEMORY_BUFFER_DESC bufferDesc = {};
+        bufferDesc.offset = 0;
+        bufferDesc.size = size;
+        bufferDesc.flags = 0;
+
+        CUdeviceptr devicePtr = 0;
+        res = cuExternalMemoryGetMappedBuffer(&devicePtr, externalMemory, &bufferDesc);
+        if (res != CUDA_SUCCESS) {
+            const char *error_str = nullptr;
+            cuGetErrorString(res, &error_str);
+            cuDestroyExternalMemory(externalMemory);
+            OC_ERROR_FORMAT("Failed to get mapped buffer: {} (error code: {})",
+                            error_str ? error_str : "Unknown error", res);
+        }
+
+        return static_cast<handle_ty>(devicePtr);
+    });
 }
 
-OC_EXPORT_API ocarina::CUDADevice *create_device(ocarina::RHIContext *file_manager) {
-    return ocarina::new_with_allocator<ocarina::CUDADevice>(file_manager);
+uint64_t CUDADevice::export_handle(handle_ty handle_) {
+    return use_context([&] {
+        CUmemGenericAllocationHandle alloc_handle;
+
+        memory_guard_.with_lock([&] {
+            auto iter = exported_resources.find(handle_);
+            if (iter == exported_resources.cend()) {
+                throw std::runtime_error("Invalid handle: allocation handle not found");
+            }
+            alloc_handle = iter->second.handle;
+        });
+
+        void *exported_win32_handle = nullptr;
+        CUresult res = cuMemExportToShareableHandle(
+            &exported_win32_handle,
+            alloc_handle,
+            CU_MEM_HANDLE_TYPE_WIN32,
+            0);
+
+        if (res != CUDA_SUCCESS) {
+            const char *error_str = nullptr;
+            cuGetErrorString(res, &error_str);
+            OC_ERROR_FORMAT("Failed to export shareable handle: {} (error code: {})",
+                            error_str ? error_str : "Unknown error", res);
+            throw std::runtime_error(std::string("Failed to export shareable handle: ") +
+                                     (error_str ? error_str : "Unknown error"));
+        }
+
+        return reinterpret_cast<uint64_t>(exported_win32_handle);
+    });
+}
+#endif
+
+}// namespace ocarina
+
+OC_EXPORT_API ocarina::CUDADevice *create(ocarina::RHIContext *context) {
+    return ocarina::new_with_allocator<ocarina::CUDADevice>(context);
+}
+
+OC_EXPORT_API ocarina::CUDADevice *create_device(ocarina::RHIContext *context) {
+    return ocarina::new_with_allocator<ocarina::CUDADevice>(context);
 }
 
 OC_EXPORT_API void destroy(ocarina::CUDADevice *device) {
