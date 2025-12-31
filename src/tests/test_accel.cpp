@@ -83,7 +83,10 @@ int main(int argc, char *argv[]) {
         Var<float3> pos = v_buffer.read(dispatch_idx().x);
         Var<float3> pos2 = v[dispatch_id()];
         $info("{} {} {} ", pos);
-        pos.xyz() *=  2.f;
+
+//        pos.xyz() =  ::operator*(2.f, pos.xyz() );
+        pos.xyz() =  2.f* pos.xyz() ;
+        auto dd = pos.xyz();
         $info("{} {} {} ", pos);
 //        auto xxx = pos.xy().decay();
 //        Var t = t_buffer.read(dispatch_id());
