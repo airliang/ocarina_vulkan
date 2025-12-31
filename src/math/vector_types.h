@@ -138,7 +138,7 @@ public:
     }                                                                         \
                                                                               \
     template<typename U>                                                      \
-    requires is_scalar_v<remove_device_t<U>>                                  \
+    requires is_scalar_v<U> && is_host_swizzle_v<T>                           \
     friend vec_type operator op(U lhs, Swizzle<T, N, Indices...> rhs) {       \
         return lhs op rhs.decay();                                            \
     }                                                                         \
