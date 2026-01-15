@@ -24,7 +24,9 @@ private:
     mutable bool binding_{false};
 
 public:
-    explicit GLTexture() noexcept {
+    explicit GLTexture() noexcept {}
+
+    void init() noexcept {
         CHECK_GL(glGenTextures(1, &handle_));
         CHECK_GL(glBindTexture(GL_TEXTURE_2D, handle_));
         CHECK_GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));

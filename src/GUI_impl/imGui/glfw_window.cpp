@@ -190,6 +190,7 @@ void GLWindow::set_background(const uchar4 *pixels, uint2 size) noexcept {
 void GLWindow::set_background(const float4 *pixels, uint2 size) noexcept {
     if (texture_ == nullptr) {
         texture_ = ocarina::make_unique<GLTexture>();
+        texture_->init();
     }
     texture_->load(pixels, size);
 }
