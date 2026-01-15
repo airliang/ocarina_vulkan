@@ -99,7 +99,7 @@ public:
         virtual void end_frame() noexcept = 0;
         virtual RHIRenderPass *create_render_pass(const RenderPassCreation &render_pass_creation) noexcept = 0;
         virtual void destroy_render_pass(RHIRenderPass *render_pass) noexcept = 0;
-        virtual std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) noexcept = 0;
+        virtual std::array<DescriptorSetLayout *, max_descriptor_sets_per_shader> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) noexcept = 0;
         virtual void bind_pipeline(const handle_ty pipeline) noexcept = 0;
         virtual RHIPipeline *get_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass) noexcept = 0;
         virtual DescriptorSet *get_global_descriptor_set(const string &name) noexcept = 0;
@@ -238,7 +238,7 @@ public:
         impl_->destroy_render_pass(render_pass);
     }
 
-    [[nodiscard]] std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) {
+    [[nodiscard]] std::array<DescriptorSetLayout *, max_descriptor_sets_per_shader> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) {
         return impl_->create_descriptor_set_layout(shaders, shaders_count);
     }
 

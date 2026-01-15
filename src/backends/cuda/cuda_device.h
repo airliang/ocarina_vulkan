@@ -140,7 +140,7 @@ public:
     [[nodiscard]] IndexBuffer *create_index_buffer(const void *initial_data, uint32_t indices_count, bool bit16) noexcept override { return nullptr; }
     [[nodiscard]] RHIRenderPass *create_render_pass(const RenderPassCreation &render_pass_creation) noexcept override { return nullptr; }
     void destroy_render_pass(RHIRenderPass *render_pass) noexcept override {}
-    std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) noexcept override { return {}; }
+    std::array<DescriptorSetLayout *, max_descriptor_sets_per_shader> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) noexcept override { return {}; }
     void bind_pipeline(const handle_ty pipeline) noexcept override {}
     [[nodiscard]] RHIPipeline *get_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass) noexcept override { return nullptr; }
     [[nodiscard]] DescriptorSet *get_global_descriptor_set(const string &name) noexcept override { return nullptr; }
