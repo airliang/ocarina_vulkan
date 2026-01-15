@@ -48,20 +48,22 @@ void GLWindow::init(const char *name, uint2 initial_size, bool resizable) noexce
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
     glfwWindowHint(GLFW_RESIZABLE, resizable);
 
-    monitor_ =glfwGetPrimaryMonitor();
-    const GLFWvidmode* mode = glfwGetVideoMode(monitor_);
+    monitor_ = glfwGetPrimaryMonitor();
+    const GLFWvidmode *mode = glfwGetVideoMode(monitor_);
     handle_ = glfwCreateWindow(
         static_cast<int>(mode->width),
         static_cast<int>(mode->height),
         name, nullptr, nullptr);
+    shared_texture_ = make_unique<GLTexture>();
+
     if (handle_ == nullptr) {
         const char *error = nullptr;
         glfwGetError(&error);
         OC_ERROR_FORMAT("Failed to create GLFW window: {}.", error);
     }
-    #ifdef _WIN32
+#ifdef _WIN32
     window_handle_ = (uint64_t)glfwGetWin32Window(handle_);
-    #endif
+#endif
     glfwMakeContextCurrent(handle_);
     glfwSwapInterval(0);// disable vsync
 
@@ -95,7 +97,12 @@ void GLWindow::init(const char *name, uint2 initial_size, bool resizable) noexce
     });
     glfwSetWindowSizeCallback(handle_, [](GLFWwindow *window, int width, int height) noexcept {
         auto self = static_cast<GLWindow *>(glfwGetWindowUserPointer(window));
-        if (auto &&cb = self->window_size_callback_) { cb(make_uint2(width, height)); }
+        uint2 res = make_uint2(width, height);
+        self->shared_texture_->clear();
+        self->shared_texture_->init_shared(res);
+        if (auto &&cb = self->window_size_callback_) {
+            cb(res);
+        }
     });
     glfwSetKeyCallback(handle_, [](GLFWwindow *window, int key, int scancode, int action, int mods) noexcept {
         // ImGui is handling the keyboard
@@ -116,6 +123,7 @@ void GLWindow::init(const char *name, uint2 initial_size, bool resizable) noexce
         }
     });
     glfwSetCharCallback(handle_, ImGui_ImplGlfw_CharCallback);
+
 }
 
 GLWindow::GLWindow(const char *name, uint2 initial_size, bool resizable) noexcept
@@ -142,8 +150,6 @@ GLWindow::~GLWindow() noexcept {
 uint2 GLWindow::size() const noexcept {
     auto width = 0;
     auto height = 0;
-//    const GLFWvidmode* mode = glfwGetVideoMode(monitor_);
-//    return make_uint2(mode->width, mode->height);
     glfwGetWindowSize(handle_, &width, &height);
     return make_uint2(
         static_cast<uint>(width),
@@ -183,7 +189,10 @@ void GLWindow::swap_monitor() {
 }
 
 void GLWindow::set_background(const uchar4 *pixels, uint2 size) noexcept {
-    if (texture_ == nullptr) { texture_ = ocarina::make_unique<GLTexture>(); }
+    if (texture_ == nullptr) {
+        texture_ = ocarina::make_unique<GLTexture>();
+        texture_->init();
+    }
     texture_->load(pixels, size);
 }
 
@@ -191,6 +200,7 @@ void GLWindow::set_background(const float4 *pixels, uint2 size) noexcept {
     if (texture_ == nullptr) {
         texture_ = ocarina::make_unique<GLTexture>();
         texture_->init();
+        shared_texture_->init_shared(make_uint2(1,1));
     }
     texture_->load(pixels, size);
 }
@@ -268,22 +278,10 @@ void GLWindow::set_size(uint2 size) noexcept {
     }
 }
 
-void GLWindow::show_window() noexcept
-{
-
+void GLWindow::show_window() noexcept {
 }
 
-void GLWindow::hide_window() noexcept
-{
-
+void GLWindow::hide_window() noexcept {
 }
 
 }// namespace ocarina
-
-//OC_EXPORT_API ocarina::GLWindow *create(const char *name, ocarina::uint2 initial_size, bool resizable) {
-//    return ocarina::new_with_allocator<ocarina::GLWindow>(name, initial_size, resizable);
-//}
-//
-//OC_EXPORT_API void destroy(ocarina::GLWindow *ptr) {
-//    ocarina::delete_with_allocator(ptr);
-//}

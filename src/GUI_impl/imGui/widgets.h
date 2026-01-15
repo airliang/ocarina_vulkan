@@ -26,13 +26,18 @@ private:
 public:
     explicit GLTexture() noexcept {}
 
-    void init() noexcept {
+    void generate() noexcept {
         CHECK_GL(glGenTextures(1, &handle_));
-        CHECK_GL(glBindTexture(GL_TEXTURE_2D, handle_));
+    }
+
+    void init() noexcept {
+        generate();
+        bind();
         CHECK_GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
         CHECK_GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
         CHECK_GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
         CHECK_GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
+        unbind();
     }
 
     GLTexture(GLTexture &&) noexcept = delete;
@@ -40,7 +45,15 @@ public:
     GLTexture &operator=(GLTexture &&) noexcept = delete;
     GLTexture &operator=(const GLTexture &) noexcept = delete;
 
-    ~GLTexture() noexcept { CHECK_GL(glDeleteTextures(1, &handle_)); }
+    ~GLTexture() noexcept { clear(); }
+
+    void clear() noexcept {
+        if (handle_ != 0) {
+            CHECK_GL(glDeleteTextures(1, &handle_));
+            handle_ = 0;
+        }
+        size_ = make_uint2(0);
+    }
 
     [[nodiscard]] auto handle() const noexcept { return handle_; }
     [[nodiscard]] auto size() const noexcept { return size_; }
@@ -54,6 +67,13 @@ public:
     void unbind() const noexcept {
         CHECK_GL(glBindTexture(GL_TEXTURE_2D, 0));
         binding_ = false;
+    }
+
+    void init_shared(uint2 size) noexcept {
+//        size_ = size;
+//        generate();
+//        bind();
+//        unbind();
     }
 
     void load(const uchar4 *pixels, uint2 size) noexcept {
