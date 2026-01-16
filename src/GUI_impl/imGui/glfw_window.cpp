@@ -195,13 +195,12 @@ void GLWindow::swap_monitor() {
 void GLWindow::set_background(const uchar4 *pixels, uint2 size) noexcept {
     if (texture_ == nullptr) {
         texture_ = ocarina::make_unique<GLTexture>();
-        texture_->init();
     }
     texture_->load(pixels, size);
 }
 
 void GLWindow::set_background(const float4 *pixels, uint2 size) noexcept {
-    texture_->load(pixels, size);
+    texture_->upload(pixels);
 }
 
 void GLWindow::gen_buffer(ocarina::uint &handle, ocarina::uint size_in_byte) const noexcept {

@@ -99,26 +99,21 @@ public:
         unbind();
     }
 
-    void init() noexcept {
-        generate();
+    void load(const float4 *pixels, uint2 size) noexcept {
         bind();
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, size_.x, size_.y, 0, GL_RGBA, GL_FLOAT, nullptr);
-        CHECK_GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
-        CHECK_GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
-        CHECK_GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
-        CHECK_GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
+        if (any(size_ != size) || !is_float4_) {
+            size_ = size;
+            is_float4_ = true;
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, size.x, size.y, 0, GL_RGBA, GL_FLOAT, pixels);
+        } else {
+            CHECK_GL(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, size_.x, size_.y, GL_RGBA, GL_FLOAT, pixels));
+        }
         unbind();
     }
 
-    void load(const float4 *pixels, uint2 size) noexcept {
+    void upload(const float4 *pixels) noexcept {
         bind();
-//        if (any(size_ != size) || !is_float4_) {
-//            size_ = size;
-//            is_float4_ = true;
-//            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, size.x, size.y, 0, GL_RGBA, GL_FLOAT, pixels);
-//        } else {
-            CHECK_GL(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, size_.x, size_.y, GL_RGBA, GL_FLOAT, pixels));
-//        }
+        CHECK_GL(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, size_.x, size_.y, GL_RGBA, GL_FLOAT, pixels));
         unbind();
     }
 };
