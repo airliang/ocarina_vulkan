@@ -129,6 +129,8 @@ public:
     void destroy_mesh(handle_ty handle) noexcept override;
     [[nodiscard]] handle_ty create_bindless_array() noexcept override;
     void destroy_bindless_array(handle_ty handle) noexcept override;
+    [[nodiscard]] handle_ty create_texture_from_external(uint tex_handle) noexcept override;
+    [[nodiscard]] handle_ty create_buffer_from_external(uint buffer_handle) noexcept override;
     void register_external_tex_to_buffer(handle_ty *handle, ocarina::uint tex_handle) noexcept override;
     void mapping_external_tex_to_buffer(handle_ty *handle, uint tex_handle) noexcept override;
     void register_shared_buffer(void *&shared_handle, ocarina::uint &gl_handle) noexcept override;
