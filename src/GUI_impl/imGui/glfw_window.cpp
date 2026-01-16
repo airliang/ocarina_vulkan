@@ -168,7 +168,7 @@ void GLWindow::full_screen() {
         lastF11Toggle = now;
         //static bool isFullscreen = false;
         if (isFullscreen) {
-            glfwSetWindowMonitor(handle_, NULL, windowedX, windowedY, windowedWidth, windowedHeight, 0);
+            glfwSetWindowMonitor(handle_, nullptr, windowedX, windowedY, windowedWidth, windowedHeight, 0);
         } else {
             const GLFWvidmode *mode = glfwGetVideoMode(monitor_);
             glfwGetWindowPos(handle_, &windowedX, &windowedY);

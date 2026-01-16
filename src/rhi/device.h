@@ -83,8 +83,8 @@ public:
         virtual void destroy_mesh(handle_ty handle) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_bindless_array() noexcept = 0;
         virtual void destroy_bindless_array(handle_ty handle) noexcept = 0;
-        virtual void register_external_tex_to_buffer(handle_ty handle, uint tex_handle) noexcept { OC_NOT_IMPLEMENT_ERROR(register_external_tex_to_buffer); }
-        virtual void mapping_external_tex_to_buffer(handle_ty handle, uint tex_handle) noexcept { OC_NOT_IMPLEMENT_ERROR(mapping_external_tex_to_buffer); }
+        virtual void register_external_tex_to_buffer(handle_ty* handle, uint tex_handle) noexcept { OC_NOT_IMPLEMENT_ERROR(register_external_tex_to_buffer); }
+        virtual void mapping_external_tex_to_buffer(handle_ty* handle, uint tex_handle) noexcept { OC_NOT_IMPLEMENT_ERROR(mapping_external_tex_to_buffer); }
         virtual void register_shared_buffer(void *&shared_handle, uint &gl_handle) noexcept { OC_NOT_IMPLEMENT_ERROR(register_shared_buffer); }
         virtual void register_shared_tex(void *&shared_handle, uint &gl_handle) noexcept { OC_NOT_IMPLEMENT_ERROR(register_shared_tex); }
         virtual void mapping_shared_buffer(void *&shared_handle, handle_ty &handle) noexcept { OC_NOT_IMPLEMENT_ERROR(mapping_shared_buffer); }
@@ -155,6 +155,12 @@ public:
     template<typename T = std::byte, int... Dims>
     [[nodiscard]] Buffer<T, Dims...> create_buffer(size_t size, handle_ty stream) noexcept {
         return Buffer<T, Dims...>(impl_.get(), size, stream);
+    }
+
+    template<typename T>
+    void connect_external_tex_to_buffer(Buffer<T> &buffer, uint tex_handle) noexcept {
+        impl_->register_external_tex_to_buffer(reinterpret_cast<handle_ty *>(buffer.handle_ptr()), tex_handle);
+        impl_->mapping_external_tex_to_buffer(reinterpret_cast<handle_ty *>(buffer.handle_ptr()), tex_handle);
     }
 
     void destroy_buffer(handle_ty handle) noexcept {
