@@ -212,25 +212,70 @@ void CUDADevice::destroy_bindless_array(handle_ty handle) noexcept {
 }
 
 void CUDADevice::register_external_tex_to_buffer(handle_ty *handle, ocarina::uint tex_handle) noexcept {
-    shared_handle_map_.insert(make_pair(*handle, CUgraphicsResource{}));
-    use_context([&] {
-        CUgraphicsResource &shared_handle = shared_handle_map_[*handle];
-        OC_CU_CHECK(cuGraphicsGLRegisterImage(addressof(shared_handle), tex_handle, GL_TEXTURE_2D,
-                                              CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD));
-        int i = 0;
-    });
+    cudaGraphicsResource* cudaResource;
+    cudaError_t err;
+
+    // 注册 OpenGL 纹理
+    err = cudaGraphicsGLRegisterImage(&cudaResource, tex_handle, GL_TEXTURE_2D, cudaGraphicsRegisterFlagsWriteDiscard);
+    if (err != cudaSuccess) {
+        printf("Error registering image: %s\n", cudaGetErrorString(err));
+        return;
+    }
+
+    // 确保当前 OpenGL 上下文有效
+
+    // 映射资源
+    err = cudaGraphicsMapResources(1, &cudaResource, 0);
+    if (err != cudaSuccess) {
+        printf("Error mapping resources: %s\n", cudaGetErrorString(err));
+        return;
+    }
+
+    // 获取指针
+    void* devPtr;
+    size_t size;
+    err = cudaGraphicsResourceGetMappedPointer(&devPtr, &size, cudaResource);
+    if (err != cudaSuccess) {
+        printf("Error getting mapped pointer: %s\n", cudaGetErrorString(err));
+        // 可能需要在这里进行解除映射或其他清理
+        exit(0);
+        return;
+    }
+//    shared_handle_map_.insert(make_pair(*handle, CUgraphicsResource{}));
+//
+//    use_context([&] {
+//        cudaGraphicsResource* resource;
+//        OC_CUDA_CHECK(cudaGraphicsGLRegisterImage(&resource, tex_handle, GL_TEXTURE_2D, cudaGraphicsRegisterFlagsWriteDiscard));
+//        void* devPtr;
+//        size_t size;
+//
+//        // 映射纹理到CUDA内存
+//      OC_CUDA_CHECK(cudaGraphicsMapResources(1, &resource, 0));
+////      OC_CUDA_CHECK(cudaGraphicsUnmapResources(1, &resource, 0));
+//        OC_CUDA_CHECK(cudaGraphicsResourceGetMappedPointer(&devPtr, &size, resource));
+////
+////        CUgraphicsResource &shared_handle = shared_handle_map_[*handle];
+////        OC_CU_CHECK(cuGraphicsGLRegisterImage(addressof(shared_handle), tex_handle, GL_TEXTURE_2D,
+////                                              CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD));
+////        OC_CU_CHECK(cuGraphicsMapResources(1, addressof(shared_handle), 0));
+////        size_t buffer_size = 0u;
+////        CUdeviceptr c_udeviceptr;
+////        OC_CU_CHECK(cuGraphicsResourceGetMappedPointer(&c_udeviceptr,
+////                                                       &buffer_size,shared_handle));
+//        int i = 0;
+//    });
 }
 
 void CUDADevice::mapping_external_tex_to_buffer(handle_ty *handle, ocarina::uint tex_handle) noexcept {
 
-    use_context([&] {
-        CUgraphicsResource &shared_handle = shared_handle_map_[*handle];
-        OC_CU_CHECK(cuGraphicsMapResources(1, addressof(shared_handle), 0));
-        size_t buffer_size = 0u;
-        OC_CU_CHECK(cuGraphicsResourceGetMappedPointer(reinterpret_cast<CUdeviceptr *>(handle),
-                                                       &buffer_size,shared_handle));
-        int i = 0;
-    });
+//    use_context([&] {
+//        CUgraphicsResource &shared_handle = shared_handle_map_[*handle];
+//        OC_CU_CHECK(cuGraphicsMapResources(1, addressof(shared_handle), 0));
+//        size_t buffer_size = 0u;
+//        OC_CU_CHECK(cuGraphicsResourceGetMappedPointer(reinterpret_cast<CUdeviceptr *>(handle),
+//                                                       &buffer_size,shared_handle));
+//        int i = 0;
+//    });
 }
 
 void CUDADevice::register_shared_buffer(void *&shared_handle, ocarina::uint &gl_handle) noexcept {
