@@ -58,11 +58,11 @@ void CUDATexture3D::init() {
         default: OC_ASSERT(0); break;
     }
 
-    OC_CU_CHECK(cuArray3DCreate(cu_array_ptr(), &array_desc));
+    OC_CU_CHECK(cuArray3DCreate(&array_, &array_desc));
 
     CUDA_RESOURCE_DESC res_desc{};
     res_desc.resType = CU_RESOURCE_TYPE_ARRAY;
-    res_desc.res.array.hArray = cu_array();
+    res_desc.res.array.hArray = array_;
     res_desc.flags = 0;
     CUDA_TEXTURE_DESC tex_desc{};
     tex_desc.addressMode[0] = CU_TR_ADDRESS_MODE_MIRROR;
@@ -77,7 +77,7 @@ void CUDATexture3D::init() {
 }
 
 CUDATexture3D::~CUDATexture3D() {
-    OC_CU_CHECK(cuArrayDestroy(cu_array()));
+    OC_CU_CHECK(cuArrayDestroy(array_));
     OC_CU_CHECK(cuTexObjectDestroy(descriptor_.texture));
     OC_CU_CHECK(cuSurfObjectDestroy(descriptor_.surface));
 }

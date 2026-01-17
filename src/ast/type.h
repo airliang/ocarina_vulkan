@@ -312,7 +312,6 @@ struct BindlessArrayDesc {
 struct TextureDesc {
     handle_ty texture{};
     handle_ty surface{};
-    handle_ty array;
     PixelStorage pixel_storage{};
 };
 

@@ -15,6 +15,7 @@ class CUDATexture3D : public Texture3D::Impl {
 private:
     mutable TextureDesc descriptor_;
     CUDADevice *device_{};
+    CUarray array_;
     uint3 res_{};
     uint level_num_{1u};
 
@@ -24,14 +25,11 @@ public:
     void init();
     [[nodiscard]] uint3 resolution() const noexcept override { return res_; }
     [[nodiscard]] handle_ty array_handle() const noexcept override {
-        return descriptor_.array;
+        return reinterpret_cast<handle_ty>(array_);;
     }
     [[nodiscard]] const handle_ty *array_handle_ptr() const noexcept override {
-        return &descriptor_.array;
+        return reinterpret_cast<const handle_ty *>(&array_);
     }
-    [[nodiscard]] CUarray *cu_array_ptr() { return reinterpret_cast<CUarray*>(&descriptor_.array);}
-    [[nodiscard]] const CUarray *cu_array_ptr() const noexcept { return reinterpret_cast<CUarray*>(&descriptor_.array);}
-    [[nodiscard]] CUarray cu_array() const { return reinterpret_cast<CUarray>(descriptor_.array);}
     [[nodiscard]] const TextureDesc & descriptor() const noexcept override;
     [[nodiscard]] handle_ty tex_handle() const noexcept override {
         return descriptor_.texture;
