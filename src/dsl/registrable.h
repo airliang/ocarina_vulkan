@@ -380,10 +380,10 @@ public:
     }
 };
 
-class RegistrableTexture : public ManagedTexture, public Registrable {
+class RegistrableTexture3D : public ManagedTexture3D, public Registrable {
 public:
-    RegistrableTexture() = default;
-    explicit RegistrableTexture(BindlessArray &bindless_array) : Registrable(&bindless_array) {}
+    RegistrableTexture3D() = default;
+    explicit RegistrableTexture3D(BindlessArray &bindless_array) : Registrable(&bindless_array) {}
     void register_self() noexcept {
         if (has_registered()) {
             bindless_array_->set_texture3d(index_.hv(), *this);

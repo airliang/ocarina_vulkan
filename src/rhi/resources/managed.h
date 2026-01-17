@@ -111,13 +111,13 @@ public:
     }
 };
 
-class ManagedTexture : public Texture3D, public Image {
+class ManagedTexture3D : public Texture3D, public Image {
 public:
     using host_ty = ocarina::Image;
     using device_ty = ocarina::Texture3D;
 
 public:
-    ManagedTexture() = default;
+    ManagedTexture3D() = default;
 
     [[nodiscard]] device_ty &device_tex() noexcept { return *this; }
     [[nodiscard]] const device_ty &device_tex() const noexcept { return *this; }
