@@ -15,12 +15,12 @@ BindlessArray::BindlessArray(Device::Impl *device)
                   device->create_bindless_array()) {}
 
 size_t BindlessArray::emplace(const Texture &texture) noexcept {
-    return impl()->emplace_texture(texture.tex_handle());
+    return impl()->emplace_texture3d(texture.tex_handle());
 }
 
-void BindlessArray::set_texture(ocarina::handle_ty index,
+void BindlessArray::set_texture3d(ocarina::handle_ty index,
                                 const ocarina::Texture &texture) noexcept {
-    impl()->set_texture(index, texture.tex_handle());
+    impl()->set_texture3d(index, texture.tex_handle());
 }
 
 ByteBufferView BindlessArray::byte_buffer_view(ocarina::uint index) const noexcept {

@@ -21,7 +21,7 @@ size_t CUDABindlessArray::emplace_buffer(handle_ty handle, uint offset_in_byte, 
     return ret;
 }
 
-size_t CUDABindlessArray::emplace_texture(handle_ty handle) noexcept {
+size_t CUDABindlessArray::emplace_texture3d(handle_ty handle) noexcept {
     auto ret = textures_.host_buffer().size();
     textures_.push_back(handle);
     OC_ERROR_IF(ret >= c_max_slot_num, ocarina::format("slot_size is {}, tex_num is {}", c_max_slot_num, ret));
@@ -66,7 +66,7 @@ void CUDABindlessArray::remove_buffer(handle_ty index) noexcept {
     detail::remove_by_index(buffers_.host_buffer(), index);
 }
 
-void CUDABindlessArray::remove_texture(handle_ty index) noexcept {
+void CUDABindlessArray::remove_texture3d(handle_ty index) noexcept {
     detail::remove_by_index(textures_.host_buffer(), index);
 }
 
@@ -81,7 +81,7 @@ ByteBufferDesc CUDABindlessArray::buffer_view(ocarina::uint index) const noexcep
     return buffers_.host_buffer().at(index);
 }
 
-void CUDABindlessArray::set_texture(ocarina::handle_ty index, ocarina::handle_ty handle) noexcept {
+void CUDABindlessArray::set_texture3d(ocarina::handle_ty index, ocarina::handle_ty handle) noexcept {
     OC_ASSERT(index < textures_.host_buffer().size());
     textures_.host_buffer().at(index) = handle;
 }

@@ -58,7 +58,7 @@ public:
     //// Add more methods to set different types of descriptors
     //virtual void set_uniform_buffer(uint32_t binding, const void *data, size_t size) = 0;
     //virtual void set_storage_buffer(uint32_t binding, const void *data, size_t size) = 0;
-    //virtual void set_texture(uint32_t binding, const void *texture) = 0;
+    //virtual void set_texture3d(uint32_t binding, const void *texture) = 0;
     //virtual void set_sampler(uint32_t binding, const void *sampler) = 0;
     //virtual void bind_buffer(uint64_t name_id, handle_ty buffer) = 0;
     //virtual void bind_texture(uint64_t name_id, handle_ty texture) = 0;

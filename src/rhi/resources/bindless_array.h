@@ -21,12 +21,12 @@ public:
         [[nodiscard]] virtual size_t emplace_buffer(handle_ty handle, uint offset_in_byte,
                                                     size_t size_in_byte) noexcept = 0;
         virtual void remove_buffer(handle_ty index) noexcept = 0;
-        [[nodiscard]] virtual size_t emplace_texture(handle_ty handle) noexcept = 0;
-        virtual void remove_texture(handle_ty index) noexcept = 0;
+        [[nodiscard]] virtual size_t emplace_texture3d(handle_ty handle) noexcept = 0;
+        virtual void remove_texture3d(handle_ty index) noexcept = 0;
         virtual void set_buffer(handle_ty index, handle_ty handle, uint offset_in_byte,
                                 size_t size_in_byte) noexcept = 0;
         [[nodiscard]] virtual ByteBufferDesc buffer_view(uint index) const noexcept = 0;
-        virtual void set_texture(handle_ty index, handle_ty handle) noexcept = 0;
+        virtual void set_texture3d(handle_ty index, handle_ty handle) noexcept = 0;
         [[nodiscard]] virtual BufferUploadCommand *upload_buffer_handles(bool async) const noexcept = 0;
         [[nodiscard]] virtual BufferUploadCommand *upload_texture_handles(bool async) const noexcept = 0;
         virtual void prepare_slotSOA(Device &device) noexcept = 0;
@@ -81,7 +81,7 @@ public:
                            buffer.size_in_byte());
     }
     size_t emplace(const Texture &texture) noexcept;
-    void set_texture(handle_ty index, const Texture &texture) noexcept;
+    void set_texture3d(handle_ty index, const Texture &texture) noexcept;
     [[nodiscard]] uint buffer_num() const noexcept;
     [[nodiscard]] uint texture_num() const noexcept;
     [[nodiscard]] CommandList upload_handles(bool async = true) noexcept;
@@ -96,8 +96,8 @@ public:
 
     template<typename Index>
     requires is_integral_expr_v<Index>
-    [[nodiscard]] BindlessArrayTexture tex_var(Index &&index) const noexcept {
-        return expr().tex_var(OC_FORWARD(index),
+    [[nodiscard]] BindlessArrayTexture tex3d_var(Index &&index) const noexcept {
+        return expr().tex3d_var(OC_FORWARD(index),
                               typeid(*this).name(),
                               texture_num());
     }
