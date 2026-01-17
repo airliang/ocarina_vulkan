@@ -435,6 +435,7 @@ class ByteBuffer;
 class ByteBufferView;
 
 class Texture3D;
+class Texture2D;
 class Accel;
 class BindlessArray;
 

@@ -252,6 +252,13 @@ struct Ref<Texture3D>
 };
 
 template<>
+struct Ref<Texture2D>
+    : detail::EnableTexture2DSample<Ref<Texture2D>>,
+      detail::EnableTexture2DReadAndWrite<Ref<Texture2D>> {
+    OC_REF_COMMON(Ref<Texture2D>)
+};
+
+template<>
 struct Ref<Accel> {
 public:
     [[nodiscard]] inline Var<TriangleHit> trace_closest(const Var<Ray> &ray) const noexcept;// implement in ref.inl
