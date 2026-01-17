@@ -237,28 +237,67 @@ static constexpr bool oc_is_same_v = oc_is_same<A, B>::value;
 
 using uchar = unsigned char;
 
-template<oc_uint N>
-__device__ oc_array<float, N> _oc_tex3d_sample_float(cudaTextureObject_t texture, oc_float u, oc_float v, oc_float w = 0.f) noexcept {
-    if constexpr (N == 1) {
-        auto ret = tex3D<float>(texture, u, v, w);
-        return {ret};
-    } else if constexpr (N == 2) {
-        auto ret = tex3D<float2>(texture, u, v, w);
-        return {ret.x, ret.y};
-    } else if constexpr (N == 3) {
-        auto ret = tex3D<float4>(texture, u, v, w);
-        return {ret.x, ret.y, ret.z};
-    } else if constexpr (N == 4) {
-        auto ret = tex3D<float4>(texture, u, v, w);
-        return {ret.x, ret.y, ret.z, ret.w};
-    }
-    return {};
-}
 
-template<oc_uint N>
-__device__ oc_array<float, N> oc_tex3d_sample_float(OCTextureDesc obj, oc_float u, oc_float v, oc_float w = 0.f) noexcept {
-    return _oc_tex3d_sample_float<N>(obj.texture, u, v, w);
-}
+template<typename T>
+struct oc_type {
+    static constexpr auto dimension = 1;
+    using element_type = T;
+};
+
+template<typename T, int N>
+struct oc_vec {
+    using type = T;
+};
+
+#define OC_MAKE_VEC_TYPE(T, N) \
+    template<>                 \
+    struct oc_vec<T, N> {      \
+        using type = T##N;     \
+    };
+
+#define OC_MAKE_VEC_TYPE_N(T) \
+    OC_MAKE_VEC_TYPE(T, 2)    \
+    OC_MAKE_VEC_TYPE(T, 3)    \
+    OC_MAKE_VEC_TYPE(T, 4)
+
+OC_MAKE_VEC_TYPE_N(oc_float)
+OC_MAKE_VEC_TYPE_N(oc_int)
+OC_MAKE_VEC_TYPE_N(oc_uchar)
+OC_MAKE_VEC_TYPE_N(oc_uint)
+
+template<typename T, int N>
+using oc_vec_t = typename oc_vec<T, N>::type;
+
+#undef OC_MAKE_VEC_TYPE
+#undef OC_MAKE_VEC_TYPE_N
+
+#define OC_MAKE_TYPE_DIM(type, dim)            \
+    template<>                                 \
+    struct oc_type<type##dim> {                \
+        static constexpr auto dimension = dim; \
+        using element_type = type;             \
+    };
+
+#define OC_MAKE_TYPE(type)    \
+    OC_MAKE_TYPE_DIM(type, 2) \
+    OC_MAKE_TYPE_DIM(type, 3) \
+    OC_MAKE_TYPE_DIM(type, 4)
+
+OC_MAKE_TYPE(oc_uint)
+OC_MAKE_TYPE(oc_int)
+OC_MAKE_TYPE(oc_float)
+OC_MAKE_TYPE(oc_uchar)
+OC_MAKE_TYPE(oc_bool)
+
+template<typename T>
+static constexpr auto oc_type_dim = oc_type<T>::dimension;
+
+template<typename T>
+using oc_type_element_t = typename oc_type<T>::element_type;
+
+#undef OC_MAKE_TYPE
+#undef OC_MAKE_TYPE_DIM
+
 
 template<typename T>
 __device__ T &oc_bindless_array_buffer_read(OCBindlessArrayDesc bindless_array, oc_uint buffer_index, oc_ulong index) noexcept {
@@ -321,71 +360,35 @@ __device__ void oc_byte_buffer_write(OCBuffer<oc_uchar> buffer, oc_ulong offset,
 }
 
 template<oc_uint N>
+__device__ oc_array<float, N> _oc_tex3d_sample_float(cudaTextureObject_t texture, oc_float u, oc_float v, oc_float w = 0.f) noexcept {
+    if constexpr (N == 1) {
+        auto ret = tex3D<float>(texture, u, v, w);
+        return {ret};
+    } else if constexpr (N == 2) {
+        auto ret = tex3D<float2>(texture, u, v, w);
+        return {ret.x, ret.y};
+    } else if constexpr (N == 3) {
+        auto ret = tex3D<float4>(texture, u, v, w);
+        return {ret.x, ret.y, ret.z};
+    } else if constexpr (N == 4) {
+        auto ret = tex3D<float4>(texture, u, v, w);
+        return {ret.x, ret.y, ret.z, ret.w};
+    }
+    return {};
+}
+
+template<oc_uint N>
+__device__ oc_array<float, N> oc_tex3d_sample_float(OCTextureDesc obj, oc_float u, oc_float v, oc_float w = 0.f) noexcept {
+    return _oc_tex3d_sample_float<N>(obj.texture, u, v, w);
+}
+
+template<oc_uint N>
 __device__ oc_array<float, N> oc_bindless_array_tex3d_sample(OCBindlessArrayDesc bindless_array, oc_uint tex_index,
                                                            oc_float u, oc_float v, oc_float w = 0.f) noexcept {
     cudaTextureObject_t texture = bindless_array.tex3d_slot[tex_index];
     return _oc_tex3d_sample_float<N>(texture, u, v, w);
 }
 
-template<typename T>
-struct oc_type {
-    static constexpr auto dimension = 1;
-    using element_type = T;
-};
-
-template<typename T, int N>
-struct oc_vec {
-    using type = T;
-};
-
-#define OC_MAKE_VEC_TYPE(T, N) \
-    template<>                 \
-    struct oc_vec<T, N> {      \
-        using type = T##N;     \
-    };
-
-#define OC_MAKE_VEC_TYPE_N(T) \
-    OC_MAKE_VEC_TYPE(T, 2)    \
-    OC_MAKE_VEC_TYPE(T, 3)    \
-    OC_MAKE_VEC_TYPE(T, 4)
-
-OC_MAKE_VEC_TYPE_N(oc_float)
-OC_MAKE_VEC_TYPE_N(oc_int)
-OC_MAKE_VEC_TYPE_N(oc_uchar)
-OC_MAKE_VEC_TYPE_N(oc_uint)
-
-template<typename T, int N>
-using oc_vec_t = typename oc_vec<T, N>::type;
-
-#undef OC_MAKE_VEC_TYPE
-#undef OC_MAKE_VEC_TYPE_N
-
-#define OC_MAKE_TYPE_DIM(type, dim)            \
-    template<>                                 \
-    struct oc_type<type##dim> {                \
-        static constexpr auto dimension = dim; \
-        using element_type = type;             \
-    };
-
-#define OC_MAKE_TYPE(type)    \
-    OC_MAKE_TYPE_DIM(type, 2) \
-    OC_MAKE_TYPE_DIM(type, 3) \
-    OC_MAKE_TYPE_DIM(type, 4)
-
-OC_MAKE_TYPE(oc_uint)
-OC_MAKE_TYPE(oc_int)
-OC_MAKE_TYPE(oc_float)
-OC_MAKE_TYPE(oc_uchar)
-OC_MAKE_TYPE(oc_bool)
-
-template<typename T>
-static constexpr auto oc_type_dim = oc_type<T>::dimension;
-
-template<typename T>
-using oc_type_element_t = typename oc_type<T>::element_type;
-
-#undef OC_MAKE_TYPE
-#undef OC_MAKE_TYPE_DIM
 
 template<typename Dst, typename Src>
 __device__ auto oc_convert_scalar(const Src &src) noexcept {
