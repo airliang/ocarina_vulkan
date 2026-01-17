@@ -166,6 +166,11 @@ void CUDACodegen::visit(const CallExpr *expr) noexcept {
             current_scratch() << "oc_bindless_array_tex3d_sample<" << N << ">";
             break;
         }
+        case CallOp::BINDLESS_ARRAY_TEX2D_SAMPLE: {
+            uint N = std::get<uint>(expr->template_arg(0));
+            current_scratch() << "oc_bindless_array_tex2d_sample<" << N << ">";
+            break;
+        }
         case CallOp::UNREACHABLE: current_scratch() << "__builtin_unreachable"; break;
         case CallOp::MAKE_RAY: OC_GEN_FUNC_NAME(make_ray); break;
         case CallOp::TRACE_OCCLUSION: OC_GEN_FUNC_NAME(trace_occlusion); break;
@@ -178,6 +183,11 @@ void CUDACodegen::visit(const CallExpr *expr) noexcept {
         case CallOp::TEX3D_SAMPLE: {
             uint N = std::get<uint>(expr->template_arg(0));
             current_scratch() << "oc_tex3d_sample_float<" << N << ">";
+            break;
+        }
+        case CallOp::TEX2D_SAMPLE: {
+            uint N = std::get<uint>(expr->template_arg(0));
+            current_scratch() << "oc_tex2d_sample_float<" << N << ">";
             break;
         }
         case CallOp::TEX3D_READ: {
