@@ -286,7 +286,7 @@ struct EnableTextureReadAndWrite {
     template<typename Output, typename X, typename Y>
     requires(is_all_integral_expr_v<X, Y>)
     OC_NODISCARD auto read(const X &x, const Y &y) const noexcept {
-        const CallExpr *expr = Function::current()->call_builtin(Type::of<Output>(), CallOp::TEX_READ,
+        const CallExpr *expr = Function::current()->call_builtin(Type::of<Output>(), CallOp::TEX3D_READ,
                                                                  {self()->expression(), OC_EXPR(x), OC_EXPR(y)},
                                                                  {Type::of<Output>()});
         self()->expression()->mark(Usage::READ);
@@ -296,7 +296,7 @@ struct EnableTextureReadAndWrite {
     template<typename Output, typename X, typename Y, typename Z>
     requires(is_all_integral_expr_v<X, Y, Z>)
     OC_NODISCARD auto read(const X &x, const Y &y, const Z &z) const noexcept {
-        const CallExpr *expr = Function::current()->call_builtin(Type::of<Output>(), CallOp::TEX_READ,
+        const CallExpr *expr = Function::current()->call_builtin(Type::of<Output>(), CallOp::TEX3D_READ,
                                                                  {self()->expression(), OC_EXPR(x), OC_EXPR(y), OC_EXPR(z)},
                                                                  {Type::of<Output>()});
         self()->expression()->mark(Usage::READ);
@@ -327,7 +327,7 @@ struct EnableTextureReadAndWrite {
               is_float_element_expr_v<Val>))
     void write(const Val &elm, const X &x, const Y &y) noexcept {
         const T *texture = static_cast<const T *>(this);
-        const CallExpr *expr = Function::current()->call_builtin(nullptr, CallOp::TEX_WRITE,
+        const CallExpr *expr = Function::current()->call_builtin(nullptr, CallOp::TEX3D_WRITE,
                                                                  {self()->expression(),
                                                                   OC_EXPR(elm), OC_EXPR(x), OC_EXPR(y)});
         self()->expression()->mark(Usage::WRITE);
@@ -339,7 +339,7 @@ struct EnableTextureReadAndWrite {
              (is_uchar_element_expr_v<Val> ||
               is_float_element_expr_v<Val>))
     void write(const Val &elm, const X &x, const Y &y, const Z &z) noexcept {
-        const CallExpr *expr = Function::current()->call_builtin(nullptr, CallOp::TEX_WRITE,
+        const CallExpr *expr = Function::current()->call_builtin(nullptr, CallOp::TEX3D_WRITE,
                                                                  {self()->expression(),
                                                                   OC_EXPR(elm), OC_EXPR(x), OC_EXPR(y), OC_EXPR(z)});
         self()->expression()->mark(Usage::WRITE);

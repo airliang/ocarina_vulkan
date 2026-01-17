@@ -305,7 +305,8 @@ class TypeRegistry;
 
 struct BindlessArrayDesc {
     handle_ty buffer_slot;
-    handle_ty tex_slot;
+    handle_ty tex3d_slot;
+    handle_ty tex2d_slot;
 };
 
 struct TextureDesc {
