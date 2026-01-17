@@ -56,7 +56,7 @@ public:
                                              detail::compute_mip_level_num(res, level_num), desc)),
           channel_num_(ocarina::channel_num(pixel_storage)) {}
 
-    explicit Texture(Device::Impl *device, Image* image_resource, const TextureViewCreation& texture_view)
+    explicit Texture(Device::Impl *device, Image *image_resource, const TextureViewCreation &texture_view)
         : RHIResource(device, Tag::TEXTURE,
                       device->create_texture(image_resource, texture_view)),
           channel_num_(ocarina::channel_num(texture_view.format)) {}
@@ -95,9 +95,11 @@ public:
     }
 
     template<typename UV>
-    requires(is_float_vector2_v<expr_value_t<UV>>)
+    requires(is_float_vector2_v<expr_value_t<swizzle_decay_t<UV>>>)
     OC_NODISCARD auto sample(uint channel_num, const UV &uv) const noexcept {
-        return sample(channel_num, uv.x, uv.y);
+        return [this]<typename T>(uint channel_num, const T &uv) {
+            return this->sample(channel_num, uv.x, uv.y);
+        }(channel_num, decay_swizzle(uv));
     }
 
     template<typename U, typename V, typename W>
@@ -107,9 +109,11 @@ public:
     }
 
     template<typename UVW>
-    requires(is_float_vector3_v<expr_value_t<UVW>>)
+    requires(is_float_vector3_v<expr_value_t<swizzle_decay_t<UVW>>>)
     OC_NODISCARD auto sample(uint channel_num, const UVW &uvw) const noexcept {
-        return sample(channel_num, uvw.x, uvw.y, uvw.z);
+        return [this]<typename T>(uint channel_num, const T &uvw) {
+            return this->sample(channel_num, uvw.x, uvw.y, uvw.z);
+        }(channel_num, decay_swizzle(uvw));
     }
 
     template<typename Target, typename X, typename Y>
@@ -133,7 +137,7 @@ public:
         make_expr<Texture>(expression()).write(elm, x, y);
     }
 
-    template< typename Val>
+    template<typename Val>
     void write(const Val &elm, const Uint2 &xy) noexcept {
         write(elm, xy.x, xy.y);
     }
