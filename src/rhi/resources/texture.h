@@ -25,7 +25,7 @@ namespace detail {
 }
 }// namespace detail
 
-class Texture3D : public RHIResource {
+class Texture : public RHIResource {
 protected:
     uint channel_num_{};
 
@@ -33,10 +33,8 @@ public:
     class Impl {
     public:
         virtual ~Impl() = default;
-        [[nodiscard]] virtual uint3 resolution() const noexcept = 0;
         [[nodiscard]] virtual PixelStorage pixel_storage() const noexcept = 0;
         [[nodiscard]] virtual handle_ty array_handle() const noexcept = 0;
-        [[nodiscard]] virtual const handle_ty *array_handle_ptr() const noexcept = 0;
         [[nodiscard]] virtual handle_ty tex_handle() const noexcept = 0;
         [[nodiscard]] virtual const TextureDesc &descriptor() const noexcept = 0;
 
@@ -45,6 +43,20 @@ public:
         [[nodiscard]] virtual size_t data_size() const noexcept = 0;
         [[nodiscard]] virtual size_t data_alignment() const noexcept = 0;
         [[nodiscard]] virtual size_t max_member_size() const noexcept = 0;
+    };
+
+//    explicit Texture
+};
+
+class Texture3D : public RHIResource {
+protected:
+    uint channel_num_{};
+
+public:
+    class Impl : public Texture::Impl {
+    public:
+        ~Impl() override = default;
+        [[nodiscard]] virtual uint3 resolution() const noexcept = 0;
     };
 
 public:
@@ -84,7 +96,7 @@ public:
     /// for dsl
     [[nodiscard]] const Expression *expression() const noexcept override {
         const CapturedResource &captured_resource = Function::current()->get_captured_resource(Type::of<decltype(*this)>(),
-                                                                                               Variable::Tag::TEXTURE,
+                                                                                               Variable::Tag::TEXTURE3D,
                                                                                                memory_block());
         return captured_resource.expression();
     }
@@ -183,35 +195,6 @@ public:
 
     void download_immediately(void *data) const noexcept {
         download_sync(data)->accept(*device_->command_visitor());
-    }
-};
-
-template<typename T>
-class Texture2D : public Texture3D {
-public:
-    using Super = Texture3D;
-    static constexpr auto Dim = vector_dimension_v<T>;
-
-public:
-    Texture2D() = default;
-    explicit Texture2D(Device::Impl *device, uint2 res,
-                       PixelStorage pixel_storage, uint level_num = 1u,
-                       const string &desc = "")
-        : Texture3D(device, make_uint3(res, 1u), pixel_storage, level_num, desc) {}
-
-    template<typename... Args>
-    [[nodiscard]] auto sample(Args &&...args) const noexcept {
-        return make_expr<Texture2D<T>>(expression()).sample(channel_num_, OC_FORWARD(args)...).template as_vec<Dim>();
-    }
-
-    template<typename... Args>
-    [[nodiscard]] auto read(Args &&...args) const noexcept {
-        return make_expr<Texture2D<T>>(expression()).template read<T>(OC_FORWARD(args)...);
-    }
-
-    template<typename... Args>
-    void write(T &&elm, Args &&...args) noexcept {
-        make_expr<Texture2D<T>>(expression()).write(OC_FORWARD(args)...);
     }
 };
 

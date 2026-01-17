@@ -27,9 +27,6 @@ public:
     [[nodiscard]] handle_ty array_handle() const noexcept override {
         return reinterpret_cast<handle_ty>(array_);;
     }
-    [[nodiscard]] const handle_ty *array_handle_ptr() const noexcept override {
-        return reinterpret_cast<const handle_ty *>(&array_);
-    }
     [[nodiscard]] const TextureDesc & descriptor() const noexcept override;
     [[nodiscard]] handle_ty tex_handle() const noexcept override {
         return descriptor_.texture;

@@ -17,8 +17,8 @@ CUDATexture3D::CUDATexture3D(CUDADevice *device, uint3 res, PixelStorage pixel_s
     init();
 }
 
-size_t CUDATexture3D::data_size() const noexcept { return CUDADevice::size(Type::Tag::TEXTURE); }
-size_t CUDATexture3D::data_alignment() const noexcept { return CUDADevice::alignment(Type::Tag::TEXTURE); }
+size_t CUDATexture3D::data_size() const noexcept { return CUDADevice::size(Type::Tag::TEXTURE3D); }
+size_t CUDATexture3D::data_alignment() const noexcept { return CUDADevice::alignment(Type::Tag::TEXTURE3D); }
 size_t CUDATexture3D::max_member_size() const noexcept { return sizeof(handle_ty); }
 
 const TextureDesc &CUDATexture3D::descriptor() const noexcept {

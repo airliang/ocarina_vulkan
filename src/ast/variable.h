@@ -40,7 +40,8 @@ public:
         // resources
         BUFFER,
         BYTE_BUFFER,
-        TEXTURE,
+        TEXTURE3D,
+        TEXTURE2D,
         BINDLESS_ARRAY,
         ACCEL,
 
