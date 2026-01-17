@@ -30,8 +30,8 @@ public:
         return &descriptor_.array;
     }
     [[nodiscard]] CUarray *cu_array_ptr() { return reinterpret_cast<CUarray*>(&descriptor_.array);}
+    [[nodiscard]] const CUarray *cu_array_ptr() const noexcept { return reinterpret_cast<CUarray*>(&descriptor_.array);}
     [[nodiscard]] CUarray cu_array() const { return reinterpret_cast<CUarray>(descriptor_.array);}
-    [[nodiscard]] CUarray cu_array() { return reinterpret_cast<CUarray>(descriptor_.array);}
     [[nodiscard]] const TextureDesc & descriptor() const noexcept override;
     [[nodiscard]] handle_ty tex_handle() const noexcept override {
         return descriptor_.texture;

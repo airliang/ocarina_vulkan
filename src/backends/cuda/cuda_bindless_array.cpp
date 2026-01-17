@@ -84,6 +84,13 @@ size_t CUDABindlessArray::emplace_texture3d(handle_ty handle) noexcept {
     return ret;
 }
 
+size_t CUDABindlessArray::emplace_texture3d(ocarina::TextureDesc desc) noexcept {
+    auto ret = tex3ds_.host_buffer().size();
+//    tex3ds_.push_back(handle);
+    OC_ERROR_IF(ret >= c_max_slot_num, ocarina::format("slot_size is {}, tex_num is {}", c_max_slot_num, ret));
+    return ret;
+}
+
 void CUDABindlessArray::remove_texture3d(handle_ty index) noexcept {
     detail::remove_by_index(tex3ds_.host_buffer(), index);
 }
@@ -91,6 +98,10 @@ void CUDABindlessArray::remove_texture3d(handle_ty index) noexcept {
 void CUDABindlessArray::set_texture3d(ocarina::handle_ty index, ocarina::handle_ty handle) noexcept {
     OC_ASSERT(index < tex3ds_.host_buffer().size());
     tex3ds_.host_buffer().at(index) = handle;
+}
+
+void CUDABindlessArray::set_texture3d(ocarina::handle_ty index, ocarina::TextureDesc desc) noexcept {
+    OC_ASSERT(index < tex3ds_.host_buffer().size());
 }
 
 size_t CUDABindlessArray::texture3d_num() const noexcept {
@@ -112,6 +123,13 @@ size_t CUDABindlessArray::emplace_texture2d(handle_ty handle) noexcept {
     return ret;
 }
 
+size_t CUDABindlessArray::emplace_texture2d(ocarina::TextureDesc desc) noexcept {
+    auto ret = tex2ds_.host_buffer().size();
+//    tex2ds_.push_back(handle);
+//    OC_ERROR_IF(ret >= c_max_slot_num, ocarina::format("slot_size is {}, tex_num is {}", c_max_slot_num, ret));
+    return ret;
+}
+
 void CUDABindlessArray::remove_texture2d(handle_ty index) noexcept {
     detail::remove_by_index(tex2ds_.host_buffer(), index);
 }
@@ -120,6 +138,11 @@ void CUDABindlessArray::set_texture2d(ocarina::handle_ty index, ocarina::handle_
     OC_ASSERT(index < tex2ds_.host_buffer().size());
     tex2ds_.host_buffer().at(index) = handle;
 }
+
+void CUDABindlessArray::set_texture2d(ocarina::handle_ty index, ocarina::TextureDesc desc) noexcept {
+    OC_ASSERT(index < tex2ds_.host_buffer().size());
+}
+
 size_t CUDABindlessArray::tex2d_slot_size() const noexcept {
     return sizeof(CUtexObject) * c_max_slot_num;
 }

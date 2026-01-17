@@ -42,15 +42,19 @@ public:
     [[nodiscard]] BufferUploadCommand *upload_buffer_handles(bool async) const noexcept override;
 
     [[nodiscard]] size_t emplace_texture3d(handle_ty handle) noexcept override;
+    [[nodiscard]] size_t emplace_texture3d(ocarina::TextureDesc desc) noexcept override;
     void remove_texture3d(handle_ty index) noexcept override;
     void set_texture3d(ocarina::handle_ty index, ocarina::handle_ty handle) noexcept override;
+    void set_texture3d(ocarina::handle_ty index, ocarina::TextureDesc desc) noexcept override;
     [[nodiscard]] size_t texture3d_num() const noexcept override;
     [[nodiscard]] size_t tex3d_slot_size() const noexcept override;
     [[nodiscard]] BufferUploadCommand *upload_texture3d_handles(bool async) const noexcept override;
 
     [[nodiscard]] size_t emplace_texture2d(handle_ty handle) noexcept override;
+    [[nodiscard]] size_t emplace_texture2d(ocarina::TextureDesc desc) noexcept override;
     void remove_texture2d(handle_ty index) noexcept override;
     void set_texture2d(ocarina::handle_ty index, ocarina::handle_ty handle) noexcept override;
+    void set_texture2d(ocarina::handle_ty index, ocarina::TextureDesc desc) noexcept override;
     [[nodiscard]] size_t texture2d_num() const noexcept override;
     [[nodiscard]] size_t tex2d_slot_size() const noexcept override;
     [[nodiscard]] BufferUploadCommand *upload_texture2d_handles(bool async) const noexcept override;

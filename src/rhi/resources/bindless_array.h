@@ -29,15 +29,19 @@ public:
         [[nodiscard]] virtual BufferUploadCommand *upload_buffer_handles(bool async) const noexcept = 0;
 
         virtual size_t emplace_texture3d(handle_ty handle) noexcept = 0;
+        virtual size_t emplace_texture3d(TextureDesc desc) noexcept = 0;
         virtual void remove_texture3d(handle_ty index) noexcept = 0;
         virtual void set_texture3d(handle_ty index, handle_ty handle) noexcept = 0;
+        virtual void set_texture3d(handle_ty index, TextureDesc desc) noexcept = 0;
         [[nodiscard]] virtual size_t texture3d_num() const noexcept = 0;
         [[nodiscard]] virtual size_t tex3d_slot_size() const noexcept = 0;
         [[nodiscard]] virtual BufferUploadCommand *upload_texture3d_handles(bool async) const noexcept = 0;
 
         virtual size_t emplace_texture2d(handle_ty handle) noexcept = 0;
+        virtual size_t emplace_texture2d(TextureDesc desc) noexcept = 0;
         virtual void remove_texture2d(handle_ty index) noexcept = 0;
         virtual void set_texture2d(handle_ty index, handle_ty handle) noexcept = 0;
+        virtual void set_texture2d(handle_ty index, TextureDesc desc) noexcept = 0;
         [[nodiscard]] virtual size_t texture2d_num() const noexcept = 0;
         [[nodiscard]] virtual size_t tex2d_slot_size() const noexcept = 0;
         [[nodiscard]] virtual BufferUploadCommand *upload_texture2d_handles(bool async) const noexcept = 0;
