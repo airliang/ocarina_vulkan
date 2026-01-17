@@ -173,7 +173,6 @@ template<typename To, typename From>
     return std::unique_ptr<To>(casted);
 }
 
-
 struct unique_allocator {
     unique_allocator() = default;
     template<typename T>
@@ -205,7 +204,7 @@ std::unique_ptr<T> make_unique_with_allocator(Args &&...args) {
     //};
     Alloc alloc;
     //return {ptr, std::bind(deleter, std::placeholders::_1, allocate<T>, 1)};
-    T *rawPtr = alloc.allocate<T>(1);
+    T *rawPtr = alloc.template allocate<T>(1);
     new (rawPtr) T(std::forward<Args>(args)...);
     return std::unique_ptr<T>(rawPtr);//std::unique_ptr<T, unique_deleter<T, Alloc>>(rawPtr, unique_deleter<T, Alloc>{alloc});
 }
@@ -365,37 +364,20 @@ namespace fs = std::filesystem;
 
 void clear_directory(const std::filesystem::path &dir_path);
 
-std::string get_file_name(const std::string& file_path);
+std::string get_file_name(const std::string &file_path);
 
-inline std::string get_file_directory(const std::string& file_path)
-{
+inline std::string get_file_directory(const std::string &file_path) {
     std::string file_name = get_file_name(file_path);
     return file_path.substr(0, file_path.length() - file_name.length());
 }
 
-inline std::string wstring_to_string(const wchar_t* source)
-{
-    size_t len = std::wcstombs(nullptr, source, 0) + 1;
-    // Creating a buffer to hold the multibyte string
-    char *buffer = new char[len];
+[[nodiscard]] std::string wstring_to_string(const wchar_t *source);
 
-    // Converting wstring to string
-    std::wcstombs(buffer, source, len);
-
-    // Creating std::string from char buffer
-    std::string str(buffer);
-
-    delete[] buffer;
-    return str;
-}
-
-inline std::wstring string_to_wstring(const std::string& source)
-{
+inline std::wstring string_to_wstring(const std::string &source) {
     return std::wstring(source.begin(), source.end());
 }
 
-inline bool is_file_exist(const char* full_file_path)
-{
+inline bool is_file_exist(const char *full_file_path) {
     struct stat buffer;
     return (stat(full_file_path, &buffer) == 0);
 }

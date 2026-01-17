@@ -123,7 +123,7 @@ public:
     }
 
     template<typename Target, typename XY>
-    requires((is_int_general_vector2_v<remove_device_t<XY>> || is_uint_general_vector2_v<remove_device_t<XY>>) &&
+    requires((is_general_int_vector2_v<remove_device_t<XY>> || is_general_uint_vector2_v<remove_device_t<XY>>) &&
              (is_uchar_element_expr_v<Target> || is_float_element_expr_v<Target>))
     OC_NODISCARD auto read(const XY &xy) const noexcept {
         return [this]<typename T>(const T &xy) {
