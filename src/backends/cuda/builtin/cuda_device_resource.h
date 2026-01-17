@@ -510,6 +510,55 @@ __device__ T oc_tex3d_read(OCTextureDesc obj, oc_uint x, oc_uint y, oc_uint z = 
 }
 
 template<typename T>
+__device__ T oc_tex2d_read(OCTextureDesc obj, oc_uint x, oc_uint y) noexcept {
+    if constexpr (oc_is_same_v<T, uchar> || oc_is_same_v<T, float>) {
+        switch (obj.pixel_storage) {
+            case OCPixelStorage::BYTE1: {
+                auto v = surf2Dread<uchar>(obj.surface, x * sizeof(oc_uchar), y, cudaBoundaryModeZero);
+                return oc_convert_scalar<T>(v);
+            }
+            case OCPixelStorage::FLOAT1: {
+                auto v = surf2Dread<float>(obj.surface, x * sizeof(float), y, cudaBoundaryModeZero);
+                return oc_convert_scalar<T>(v);
+            }
+        }
+    } else if constexpr (oc_is_same_v<T, oc_uchar2> || oc_is_same_v<T, oc_float2>) {
+        switch (obj.pixel_storage) {
+            case OCPixelStorage::BYTE2: {
+                auto v = surf2Dread<uchar2>(obj.surface, x * sizeof(uchar2), y, cudaBoundaryModeZero);
+                return oc_convert_vector<T>(oc_make_uchar2(v.x, v.y));
+            }
+            case OCPixelStorage::FLOAT2: {
+                auto v = surf2Dread<float2>(obj.surface, x * sizeof(float2), y, cudaBoundaryModeZero);
+                return oc_convert_vector<T>(oc_make_float2(v.x, v.y));
+            }
+        }
+    } else if constexpr (oc_is_same_v<T, oc_uchar4> || oc_is_same_v<T, oc_float4>) {
+        switch (obj.pixel_storage) {
+            case OCPixelStorage::BYTE4: {
+                auto v = surf2Dread<uchar4>(obj.surface, x * sizeof(uchar4), y, cudaBoundaryModeZero);
+                return oc_convert_vector<T>(oc_make_uchar4(v.x, v.y, v.z, v.w));
+            }
+            case OCPixelStorage::FLOAT4: {
+                auto v = surf2Dread<float4>(obj.surface, x * sizeof(float4), y, cudaBoundaryModeZero);
+                return oc_convert_vector<T>(oc_make_float4(v.x, v.y, v.z, v.w));
+            }
+        }
+    } else if constexpr (oc_is_same_v<T, oc_uint>) {
+        auto v = surf2Dread<unsigned int>(obj.surface, x * sizeof(unsigned int), y, cudaBoundaryModeZero);
+        return v;
+    } else if constexpr (oc_is_same_v<T, oc_uint2>) {
+        auto v = surf2Dread<uint2>(obj.surface, x * sizeof(uint2), y, cudaBoundaryModeZero);
+        return oc_make_uint2(v.x, v.y);
+    } else if constexpr (oc_is_same_v<T, oc_uint4>) {
+        auto v = surf2Dread<uint4>(obj.surface, x * sizeof(uint4), y, cudaBoundaryModeZero);
+        return oc_make_uint4(v.x, v.y, v.z, v.w);
+    }
+    assert(0);
+    __builtin_unreachable();
+}
+
+template<typename T>
 __device__ void oc_tex3d_write(OCTextureDesc obj, T val, oc_uint x, oc_uint y, oc_uint z = 0) noexcept {
     if constexpr (oc_is_same_v<T, uchar> || oc_is_same_v<T, float>) {
         switch (obj.pixel_storage) {
@@ -558,6 +607,62 @@ __device__ void oc_tex3d_write(OCTextureDesc obj, T val, oc_uint x, oc_uint y, o
         return;
     } else if constexpr (oc_is_same_v<T, oc_uint4>) {
         surf3Dwrite(make_uint4(val.x, val.y, val.z, val.w), obj.surface, x * sizeof(uint4), y, z, cudaBoundaryModeZero);
+        return;
+    }
+    assert(0);
+    __builtin_unreachable();
+}
+
+
+template<typename T>
+__device__ void oc_tex2d_write(OCTextureDesc obj, T val, oc_uint x, oc_uint y) noexcept {
+    if constexpr (oc_is_same_v<T, uchar> || oc_is_same_v<T, float>) {
+        switch (obj.pixel_storage) {
+            case OCPixelStorage::BYTE1: {
+                uchar v = oc_convert_scalar<uchar>(val);
+                surf2Dwrite(v, obj.surface, x * sizeof(uchar), y, cudaBoundaryModeZero);
+                return;
+            }
+            case OCPixelStorage::FLOAT1: {
+                oc_float v = oc_convert_vector<float>(val);
+                surf2Dwrite(v, obj.surface, x * sizeof(float), y, cudaBoundaryModeZero);
+                return;
+            }
+        }
+    } else if constexpr (oc_is_same_v<T, oc_uchar2> || oc_is_same_v<T, oc_float2>) {
+        switch (obj.pixel_storage) {
+            case OCPixelStorage::BYTE2: {
+                oc_uchar2 v = oc_convert_vector<oc_uchar2>(val);
+                surf2Dwrite(make_uchar2(v.x, v.y), obj.surface, x * sizeof(uchar2), y, cudaBoundaryModeZero);
+                return;
+            }
+            case OCPixelStorage::FLOAT2: {
+                oc_float2 v = oc_convert_vector<oc_float2>(val);
+                surf2Dwrite(make_float2(v.x, v.y), obj.surface, x * sizeof(float2), y, cudaBoundaryModeZero);
+                return;
+            }
+        }
+    } else if constexpr (oc_is_same_v<T, oc_uchar4> || oc_is_same_v<T, oc_float4>) {
+        switch (obj.pixel_storage) {
+            case OCPixelStorage::BYTE4: {
+                oc_uchar4 v = oc_convert_vector<oc_uchar4>(val);
+                surf2Dwrite(make_uchar4(v.x, v.y, v.z, v.w), obj.surface, x * sizeof(uchar4), y, cudaBoundaryModeZero);
+                return;
+            }
+            case OCPixelStorage::FLOAT4: {
+                oc_float4 v = oc_convert_vector<oc_float4>(val);
+                surf2Dwrite(make_float4(v.x, v.y, v.z, v.w), obj.surface, x * sizeof(float4), y, cudaBoundaryModeZero);
+                return;
+            }
+        }
+    } else if constexpr (oc_is_same_v<T, oc_uint>) {
+        surf2Dwrite(val, obj.surface, x * sizeof(oc_uint), y, cudaBoundaryModeZero);
+        return;
+    } else if constexpr (oc_is_same_v<T, oc_uint2>) {
+        surf2Dwrite(make_uint2(val.x, val.y), obj.surface, x * sizeof(uint2), y, cudaBoundaryModeZero);
+        return;
+    } else if constexpr (oc_is_same_v<T, oc_uint4>) {
+        surf2Dwrite(make_uint4(val.x, val.y, val.z, val.w), obj.surface, x * sizeof(uint4), y, cudaBoundaryModeZero);
         return;
     }
     assert(0);
