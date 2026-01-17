@@ -571,8 +571,16 @@ OC_MAKE_IS_TYPE_VECTOR(float)
 OC_MAKE_IS_TYPE_VECTOR(uchar)
 OC_MAKE_IS_TYPE_VECTOR(char)
 
-//template<typename T>
-//using is_integer_general_vector = std::disjunction<is_uin>
+#define OC_MAKE_GENERAL_INTEGER_VECTOR_TRAIT(placeholder, dim)                                                              \
+    template<typename T>                                                                                                    \
+    using is_general_integer_vector##dim = std::disjunction<is_general_uint_vector##dim<T>, is_general_int_vector##dim<T>>; \
+    OC_DEFINE_TEMPLATE_VALUE(is_general_integer_vector##dim)
+
+// placeholder is used to avoid compile warning
+OC_MAKE_GENERAL_INTEGER_VECTOR_TRAIT(placeholder, )
+OC_MAKE_GENERAL_INTEGER_VECTOR_TRAIT(placeholder, 2)
+OC_MAKE_GENERAL_INTEGER_VECTOR_TRAIT(placeholder, 3)
+OC_MAKE_GENERAL_INTEGER_VECTOR_TRAIT(placeholder, 4)
 
 #undef OC_MAKE_IS_TYPE_VECTOR
 
