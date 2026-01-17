@@ -30,10 +30,9 @@ CommandList CUDABindlessArray::update_slotSOA(bool async) noexcept {
 #define OC_MAKE_REALLOCATE_CMD(arg)                                                            \
     if (buffers_.device_buffer().size() > c_max_slot_num) {                                    \
         append(ret, arg##s_.device_buffer().reallocate(buffers_.host_buffer().size(), async)); \
-        ret.push_back(HostFunctionCommand::create([&]() {                                      \
+        ret.push_back(HostFunctionCommand::create(async, [&]() {                               \
             slot_soa_.arg##_slot = arg##s_.handle();                                           \
-        },                                                                                     \
-                                                  async));                                     \
+        }));                                                                                   \
     }
 
     OC_MAKE_REALLOCATE_CMD(buffer)

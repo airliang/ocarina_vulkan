@@ -357,7 +357,7 @@ private:
     std::function<void()> function_;
 
 public:
-    HostFunctionCommand(std::function<void()> f, bool async)
+    HostFunctionCommand(bool async, std::function<void()> f)
         : Command(async), function_(ocarina::move(f)) {}
     [[nodiscard]] std::function<void()> function() const noexcept { return function_; }
     OC_MAKE_CMD_COMMON_FUNC(HostFunctionCommand)
