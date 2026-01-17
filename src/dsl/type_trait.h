@@ -439,9 +439,6 @@ class Accel;
 class BindlessArray;
 
 template<typename T>
-class Texture2D;
-
-template<typename T>
 using is_valid_buffer_element = std::conjunction<std::negation<is_param_struct<T>>,
                                                  std::disjunction<is_simple_type<T>, is_valid_dsl_type<T>>>;
 

@@ -11,13 +11,13 @@
 
 namespace ocarina {
 
-CUDATexture::CUDATexture(CUDADevice *device, uint3 res, PixelStorage pixel_storage, uint level_num)
+CUDATexture3D::CUDATexture3D(CUDADevice *device, uint3 res, PixelStorage pixel_storage, uint level_num)
     : device_(device), res_(res), level_num_(level_num) {
     proxy_.pixel_storage = pixel_storage;
     init();
 }
 
-void CUDATexture::init() {
+void CUDATexture3D::init() {
     CUDA_ARRAY3D_DESCRIPTOR array_desc{};
     array_desc.Width = res_.x;
     array_desc.Height = res_.y;
@@ -68,13 +68,13 @@ void CUDATexture::init() {
     OC_CU_CHECK(cuTexObjectCreate(&proxy_.texture, &res_desc, &tex_desc, nullptr));
 }
 
-CUDATexture::~CUDATexture() {
+CUDATexture3D::~CUDATexture3D() {
     OC_CU_CHECK(cuArrayDestroy(array_handle_));
     OC_CU_CHECK(cuTexObjectDestroy(proxy_.texture));
     OC_CU_CHECK(cuSurfObjectDestroy(proxy_.surface));
 }
-size_t CUDATexture::data_size() const noexcept { return CUDADevice::size(Type::Tag::TEXTURE); }
-size_t CUDATexture::data_alignment() const noexcept { return CUDADevice::alignment(Type::Tag::TEXTURE); }
-size_t CUDATexture::max_member_size() const noexcept { return sizeof(handle_ty); }
+size_t CUDATexture3D::data_size() const noexcept { return CUDADevice::size(Type::Tag::TEXTURE); }
+size_t CUDATexture3D::data_alignment() const noexcept { return CUDADevice::alignment(Type::Tag::TEXTURE); }
+size_t CUDATexture3D::max_member_size() const noexcept { return sizeof(handle_ty); }
 
 }// namespace ocarina

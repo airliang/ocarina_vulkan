@@ -19,9 +19,6 @@ class BufferView;
 class Texture3D;
 class ByteBuffer;
 
-template<typename T>
-class Texture2D;
-
 class Accel;
 
 class BindlessArray;
@@ -150,18 +147,6 @@ template<>
 struct TypeDesc<Texture3D> {
     static ocarina::string_view description() noexcept {
         return "texture3d";
-    }
-    static ocarina::string_view name() noexcept {
-        return description();
-    }
-};
-
-template<typename T>
-struct TypeDesc<Texture2D<T>> {
-    static ocarina::string &description() noexcept {
-        static thread_local string str = ocarina::format("texture2d<{}>",
-                                                         TypeDesc<T>::description());
-        return str;
     }
     static ocarina::string_view name() noexcept {
         return description();

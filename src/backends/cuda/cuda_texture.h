@@ -11,7 +11,7 @@
 
 namespace ocarina {
 class CUDADevice;
-class CUDATexture : public Texture3D::Impl {
+class CUDATexture3D : public Texture3D::Impl {
 private:
     TextureDesc proxy_;
     CUDADevice *device_{};
@@ -20,8 +20,8 @@ private:
     uint level_num_{1u};
 
 public:
-    CUDATexture(CUDADevice *device, uint3 res, PixelStorage pixel_storage, uint level_num);
-    ~CUDATexture() override;
+    CUDATexture3D(CUDADevice *device, uint3 res, PixelStorage pixel_storage, uint level_num);
+    ~CUDATexture3D() override;
     void init();
     [[nodiscard]] uint3 resolution() const noexcept override { return res_; }
     [[nodiscard]] handle_ty array_handle() const noexcept override {

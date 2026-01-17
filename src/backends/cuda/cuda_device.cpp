@@ -174,7 +174,7 @@ handle_ty CUDADevice::create_texture(uint3 res, PixelStorage pixel_storage,
                                      uint level_num,
                                      const string &desc) noexcept {
     return use_context([&] {
-        auto texture = ocarina::new_with_allocator<CUDATexture>(this, res, pixel_storage, level_num);
+        auto texture = ocarina::new_with_allocator<CUDATexture3D>(this, res, pixel_storage, level_num);
         MemoryStats::instance().on_tex_allocate(reinterpret_cast<handle_ty>(texture),
                                                 res, pixel_storage, desc);
         return reinterpret_cast<handle_ty>(texture);
@@ -331,7 +331,7 @@ void CUDADevice::destroy_shader(handle_ty handle) noexcept {
 void CUDADevice::destroy_texture(handle_ty handle) noexcept {
     use_context([&] {
         MemoryStats::instance().on_tex_free(handle);
-        ocarina::delete_with_allocator(reinterpret_cast<CUDATexture *>(handle));
+        ocarina::delete_with_allocator(reinterpret_cast<CUDATexture3D *>(handle));
     });
 }
 

@@ -251,12 +251,12 @@ struct Ref<Texture3D>
     OC_REF_COMMON(Ref<Texture3D>)
 };
 
-template<typename T>
-struct Ref<Texture2D<T>>
-    : detail::EnableTextureSample<Ref<Texture2D<T>>>,
-      detail::EnableTextureReadAndWrite<Ref<Texture2D<T>>> {
-    OC_REF_COMMON(Ref<Texture2D<T>>)
-};
+//template<typename T>
+//struct Ref<Texture2D<T>>
+//    : detail::EnableTextureSample<Ref<Texture2D<T>>>,
+//      detail::EnableTextureReadAndWrite<Ref<Texture2D<T>>> {
+//    OC_REF_COMMON(Ref<Texture2D<T>>)
+//};
 
 template<>
 struct Ref<Accel> {
