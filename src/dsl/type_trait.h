@@ -434,7 +434,7 @@ class ByteBuffer;
 
 class ByteBufferView;
 
-class Texture;
+class Texture3D;
 class Accel;
 class BindlessArray;
 
@@ -517,7 +517,7 @@ template<typename T>
 struct is_texture_impl : std::false_type {};
 
 template<>
-struct is_texture_impl<Texture> : std::true_type {};
+struct is_texture_impl<Texture3D> : std::true_type {};
 
 }// namespace detail
 

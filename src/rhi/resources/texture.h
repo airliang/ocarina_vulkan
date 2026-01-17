@@ -25,7 +25,7 @@ namespace detail {
 }
 }// namespace detail
 
-class Texture : public RHIResource {
+class Texture3D : public RHIResource {
 protected:
     uint channel_num_{};
 
@@ -47,8 +47,8 @@ public:
     };
 
 public:
-    Texture() = default;
-    explicit Texture(Device::Impl *device, uint3 res,
+    Texture3D() = default;
+    explicit Texture3D(Device::Impl *device, uint3 res,
                      PixelStorage pixel_storage, uint level_num = 1u,
                      const string &desc = "")
         : RHIResource(device, Tag::TEXTURE,
@@ -56,7 +56,7 @@ public:
                                              detail::compute_mip_level_num(res, level_num), desc)),
           channel_num_(ocarina::channel_num(pixel_storage)) {}
 
-    explicit Texture(Device::Impl *device, Image *image_resource, const TextureViewCreation &texture_view)
+    explicit Texture3D(Device::Impl *device, Image *image_resource, const TextureViewCreation &texture_view)
         : RHIResource(device, Tag::TEXTURE,
                       device->create_texture(image_resource, texture_view)),
           channel_num_(ocarina::channel_num(texture_view.format)) {}
@@ -91,7 +91,7 @@ public:
     template<typename U, typename V>
     requires(is_all_floating_point_expr_v<U, V>)
     [[nodiscard]] auto sample(uint channel_num, const U &u, const V &v) const noexcept {
-        return make_expr<Texture>(expression()).sample(channel_num, u, v);
+        return make_expr<Texture3D>(expression()).sample(channel_num, u, v);
     }
 
     template<typename UV>
@@ -105,7 +105,7 @@ public:
     template<typename U, typename V, typename W>
     requires(is_all_floating_point_expr_v<U, V>)
     [[nodiscard]] auto sample(uint channel_num, const U &u, const V &v, const W &w) const noexcept {
-        return make_expr<Texture>(expression()).sample(channel_num, u, v, w);
+        return make_expr<Texture3D>(expression()).sample(channel_num, u, v, w);
     }
 
     template<typename UVW>
@@ -119,7 +119,7 @@ public:
     template<typename Target, typename X, typename Y>
     requires(is_all_integral_expr_v<X, Y>)
     OC_NODISCARD auto read(const X &x, const Y &y) const noexcept {
-        return make_expr<Texture>(expression()).read<Target>(x, y);
+        return make_expr<Texture3D>(expression()).read<Target>(x, y);
     }
 
     template<typename Target, typename XY>
@@ -135,7 +135,7 @@ public:
     requires(is_all_integral_expr_v<X, Y> &&
              (is_uchar_element_expr_v<Val> || is_float_element_expr_v<Val>))
     void write(const Val &elm, const X &x, const Y &y) noexcept {
-        make_expr<Texture>(expression()).write(elm, x, y);
+        make_expr<Texture3D>(expression()).write(elm, x, y);
     }
 
     template<typename Val>
@@ -186,9 +186,9 @@ public:
 };
 
 template<typename T>
-class Texture2D : public Texture {
+class Texture2D : public Texture3D {
 public:
-    using Super = Texture;
+    using Super = Texture3D;
     static constexpr auto Dim = vector_dimension_v<T>;
 
 public:
@@ -196,7 +196,7 @@ public:
     explicit Texture2D(Device::Impl *device, uint2 res,
                        PixelStorage pixel_storage, uint level_num = 1u,
                        const string &desc = "")
-        : Texture(device, make_uint3(res, 1u), pixel_storage, level_num, desc) {}
+        : Texture3D(device, make_uint3(res, 1u), pixel_storage, level_num, desc) {}
 
     template<typename... Args>
     [[nodiscard]] auto sample(Args &&...args) const noexcept {

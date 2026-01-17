@@ -16,7 +16,7 @@ class BufferDesc;
 template<typename T, int... dims>
 class BufferView;
 
-class Texture;
+class Texture3D;
 class ByteBuffer;
 
 template<typename T>
@@ -147,9 +147,9 @@ template<>
 struct TypeDesc<BufferDesc<>> : public TypeDesc<ByteBuffer> {};
 
 template<>
-struct TypeDesc<Texture> {
+struct TypeDesc<Texture3D> {
     static ocarina::string_view description() noexcept {
-        return "texture";
+        return "texture3d";
     }
     static ocarina::string_view name() noexcept {
         return description();

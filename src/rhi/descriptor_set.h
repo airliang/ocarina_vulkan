@@ -10,7 +10,7 @@
 
 namespace ocarina {
 struct RHIPipeline;
-class Texture;
+class Texture3D;
 
 class DescriptorSet : concepts::Noncopyable {
 public:
@@ -20,7 +20,7 @@ public:
     bool is_global() const { return is_global_; }
 
     virtual void update_buffer(uint64_t name_id, void *data, uint32_t size) = 0;
-    virtual void update_texture(uint64_t name_id, Texture *texture) = 0;
+    virtual void update_texture(uint64_t name_id, Texture3D *texture) = 0;
 
 private:
     bool is_global_ = false;
@@ -64,7 +64,7 @@ public:
     //virtual void bind_texture(uint64_t name_id, handle_ty texture) = 0;
     virtual void update_buffer(uint64_t name_id, void *data, uint32_t size) = 0;
     virtual void update_push_constants(uint64_t name_id, void *data, uint32_t size, RHIPipeline* pipeline) = 0;
-    virtual void update_texture(uint64_t name_id, Texture* texture) = 0;
+    virtual void update_texture(uint64_t name_id, Texture3D * texture) = 0;
 
 protected:
     //unique_ptr<DescriptorSet> descriptor_set_ = nullptr;

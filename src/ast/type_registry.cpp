@@ -84,7 +84,7 @@ namespace detail {
         ret == "matrix"sv ||
         ret == "struct"sv ||
         ret == "buffer"sv ||
-        ret == "texture"sv ||
+        ret == "texture3d"sv ||
         ret == "array"sv) {
         auto [start, end] = bracket_matching_near(str);
         ret = str.substr(0, end + 1);

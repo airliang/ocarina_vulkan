@@ -111,10 +111,10 @@ public:
     }
 };
 
-class ManagedTexture : public Texture, public Image {
+class ManagedTexture : public Texture3D, public Image {
 public:
     using host_ty = ocarina::Image;
-    using device_ty = ocarina::Texture;
+    using device_ty = ocarina::Texture3D;
 
 public:
     ManagedTexture() = default;

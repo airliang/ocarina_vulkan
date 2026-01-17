@@ -405,18 +405,18 @@ public:
         if (has_registered()) {
             return bindless_array_->tex3d_var(*index_).sample(channel_num, OC_FORWARD(args)...);
         } else {
-            return Texture::sample(channel_num, OC_FORWARD(args)...);
+            return Texture3D::sample(channel_num, OC_FORWARD(args)...);
         }
     }
 
     template<typename Target, typename... Args>
     OC_NODISCARD auto read(Args &&...args) const noexcept {
-        return Texture::read<Target>(OC_FORWARD(args)...);
+        return Texture3D::read<Target>(OC_FORWARD(args)...);
     }
 
     template<typename... Args>
     OC_NODISCARD auto write(Args &&...args) noexcept {
-        return Texture::write(OC_FORWARD(args)...);
+        return Texture3D::write(OC_FORWARD(args)...);
     }
 };
 }// namespace ocarina

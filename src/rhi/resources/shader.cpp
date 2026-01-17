@@ -7,7 +7,7 @@
 
 namespace ocarina {
 
-void ArgumentList::_encode_texture(const Texture &texture) noexcept {
+void ArgumentList::_encode_texture3d(const Texture3D &texture) noexcept {
     push_memory_block(texture.memory_block());
 }
 

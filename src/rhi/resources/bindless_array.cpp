@@ -14,12 +14,12 @@ BindlessArray::BindlessArray(Device::Impl *device)
     : RHIResource(device, Tag::BINDLESS_ARRAY,
                   device->create_bindless_array()) {}
 
-size_t BindlessArray::emplace(const Texture &texture) noexcept {
+size_t BindlessArray::emplace(const Texture3D &texture) noexcept {
     return impl()->emplace_texture3d(texture.tex_handle());
 }
 
 void BindlessArray::set_texture3d(ocarina::handle_ty index,
-                                const ocarina::Texture &texture) noexcept {
+                                const ocarina::Texture3D &texture) noexcept {
     impl()->set_texture3d(index, texture.tex_handle());
 }
 

@@ -245,10 +245,10 @@ public:
 };
 
 template<>
-struct Ref<Texture>
-    : detail::EnableTextureSample<Ref<Texture>>,
-      detail::EnableTextureReadAndWrite<Ref<Texture>> {
-    OC_REF_COMMON(Ref<Texture>)
+struct Ref<Texture3D>
+    : detail::EnableTextureSample<Ref<Texture3D>>,
+      detail::EnableTextureReadAndWrite<Ref<Texture3D>> {
+    OC_REF_COMMON(Ref<Texture3D>)
 };
 
 template<typename T>

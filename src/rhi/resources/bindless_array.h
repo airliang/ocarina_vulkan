@@ -80,8 +80,8 @@ public:
         impl()->set_buffer(index, buffer.handle(), buffer.offset_in_byte(),
                            buffer.size_in_byte());
     }
-    size_t emplace(const Texture &texture) noexcept;
-    void set_texture3d(handle_ty index, const Texture &texture) noexcept;
+    size_t emplace(const Texture3D &texture) noexcept;
+    void set_texture3d(handle_ty index, const Texture3D &texture) noexcept;
     [[nodiscard]] uint buffer_num() const noexcept;
     [[nodiscard]] uint texture_num() const noexcept;
     [[nodiscard]] CommandList upload_handles(bool async = true) noexcept;

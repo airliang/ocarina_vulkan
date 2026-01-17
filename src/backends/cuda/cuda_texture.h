@@ -11,7 +11,7 @@
 
 namespace ocarina {
 class CUDADevice;
-class CUDATexture : public Texture::Impl {
+class CUDATexture : public Texture3D::Impl {
 private:
     TextureDesc proxy_;
     CUDADevice *device_{};

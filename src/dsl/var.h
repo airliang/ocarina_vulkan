@@ -219,7 +219,7 @@ using BufferVar = Var<Buffer<T>>;
 
 using ByteBufferVar = Var<ByteBuffer>;
 
-using TextureVar = Var<Texture>;
+using TextureVar = Var<Texture3D>;
 
 using BindlessArrayVar = Var<BindlessArray>;
 
