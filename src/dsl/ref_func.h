@@ -20,10 +20,10 @@ requires(!is_param_struct_v<expr_value_t<Lhs>> && !is_param_struct_v<expr_value_
 void assign(Lhs &&lhs, Rhs &&rhs) noexcept;// implement in stmt_builder.h
 
 [[nodiscard]] OC_DSL_API Var<uint> correct_index(Var<uint> index, Var<uint> size, const string &desc,
-                                      const string &tb) noexcept;// implement in env.cpp
+                                                 const string &tb) noexcept;// implement in env.cpp
 
 [[nodiscard]] OC_DSL_API Var<uint> correct_index(Var<uint> index, uint size, const string &desc,
-                                      const string &tb) noexcept;// implement in env.cpp
+                                                 const string &tb) noexcept;// implement in env.cpp
 
 [[nodiscard]] OC_DSL_API Var<uint> divide(Var<uint> lhs, Var<uint> rhs) noexcept;// implement in env.cpp
 
@@ -304,8 +304,8 @@ struct EnableTextureReadAndWrite {
     }
 
     template<typename Target, typename XY>
-    requires((is_general_int_vector2_v<remove_device_t<XY>> || is_general_uint_vector2_v<remove_device_t<XY>>) &&
-                 (is_uchar_element_expr_v<Target> || is_float_element_expr_v<Target>))
+    requires((is_general_integer_vector2_v<remove_device_t<XY>>) &&
+             (is_uchar_element_expr_v<Target> || is_float_element_expr_v<Target>))
     OC_NODISCARD auto read(const XY &xy) const noexcept {
         return [&]<typename Arg>(const Arg &arg) {
             return read<Target>(arg.x, arg.y);
@@ -314,7 +314,7 @@ struct EnableTextureReadAndWrite {
 
     template<typename Target, typename XYZ>
     requires((is_general_int_vector3_v<remove_device_t<XYZ>> || is_general_uint_vector3_v<remove_device_t<XYZ>>) &&
-                 (is_uchar_element_expr_v<Target> || is_float_element_expr_v<Target>))
+             (is_uchar_element_expr_v<Target> || is_float_element_expr_v<Target>))
     OC_NODISCARD auto read(const XYZ &xyz) const noexcept {
         return [&]<typename Arg>(const Arg &arg) {
             return read<Target>(arg.x, arg.y, arg.z);
@@ -347,7 +347,7 @@ struct EnableTextureReadAndWrite {
     }
 
     template<typename XYZ, typename Val>
-    requires(is_general_uint_vector3_v<remove_device_t<XYZ>>)
+    requires(is_general_integer_vector3_v<remove_device_t<XYZ>>)
     void write(const Val &elm, const XYZ &xyz) noexcept {
         [&]<typename Arg>(const Arg &arg) {
             write(elm, arg.x, arg.y, arg.z);
@@ -355,7 +355,7 @@ struct EnableTextureReadAndWrite {
     }
 
     template<typename XY, typename Val>
-    requires(is_general_uint_vector2_v<remove_device_t<XY>>)
+    requires(is_general_integer_vector2_v<remove_device_t<XY>>)
     void write(const Val &elm, const XY &xy) noexcept {
         [&]<typename Arg>(const Arg &arg) {
             write(elm, arg.x, arg.y);
