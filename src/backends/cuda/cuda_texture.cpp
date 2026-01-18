@@ -133,4 +133,9 @@ CUDATexture2D::CUDATexture2D(CUDADevice *device, uint3 res, PixelStorage pixel_s
     init();
 }
 
+CUDATexture2D::CUDATexture2D(ocarina::CUDADevice *device, ocarina::uint external_handle)
+    : CUDATexture(device) {
+    
+}
+
 }// namespace ocarina

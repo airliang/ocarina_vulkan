@@ -21,6 +21,7 @@ protected:
     CUarray array_{};
     CUDATexture(CUDADevice *device, uint3 res,
                 PixelStorage pixel_storage, uint level_num);
+    CUDATexture(CUDADevice *device) : device_(device) {}
 
 public:
     [[nodiscard]] uint3 resolution() const noexcept override { return res_; }
@@ -46,6 +47,7 @@ public:
 class CUDATexture2D : public CUDATexture {
 public:
     CUDATexture2D(CUDADevice *device, uint3 res, PixelStorage pixel_storage, uint level_num);
+    CUDATexture2D(CUDADevice *device,uint external_handle);
     void init();
 };
 

@@ -170,6 +170,17 @@ handle_ty CUDADevice::create_stream() noexcept {
     });
 }
 
+handle_ty CUDADevice::create_texture2d_from_external(ocarina::uint handle,
+                                                     const string &desc) noexcept {
+    return use_context([&] {
+        auto texture = ocarina::new_with_allocator<CUDATexture2D>(this, handle);
+        MemoryStats::instance().on_tex_allocate(reinterpret_cast<handle_ty>(texture),
+                                                texture->resolution(),
+                                                texture->pixel_storage(), desc);
+        return reinterpret_cast<handle_ty>(texture);
+    });
+}
+
 handle_ty CUDADevice::create_texture2d(ocarina::uint2 res, ocarina::PixelStorage pixel_storage,
                                        ocarina::uint level_num, const std::string &desc) noexcept {
     return use_context([&] {

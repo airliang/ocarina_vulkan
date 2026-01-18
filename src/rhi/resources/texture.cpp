@@ -32,6 +32,10 @@ Texture2D::Texture2D(Device::Impl *device, Image *image_resource, const TextureV
     : Texture(device, Tag::TEXTURE2D,
               device->create_texture2d(image_resource, texture_view)) {}
 
+Texture2D::Texture2D(Device::Impl *device, ocarina::uint external_handle,
+                     const string &desc)
+    : Texture(device, Tag::TEXTURE2D, device->create_texture2d_from_external(external_handle, desc)) {}
+
 TextureOpCommand *Texture2D::upload(const void *data, bool async) const noexcept {
     return Texture2DUploadCommand::create(data, array_handle(), impl()->resolution(),
                                           impl()->pixel_storage(), async);
@@ -56,7 +60,7 @@ DataCopyCommand *Texture2D::copy_from(const ocarina::Texture &src, bool async) c
 }
 
 BufferToTextureCommand *Texture2D::copy_from_buffer_impl(handle_ty buffer_handle,
-                                                  size_t buffer_offset_in_byte, bool async) const noexcept {
+                                                         size_t buffer_offset_in_byte, bool async) const noexcept {
     return BufferToTexture2DCommand::create(buffer_handle, buffer_offset_in_byte, array_handle(),
                                             impl()->pixel_storage(),
                                             impl()->resolution(), 0, async);
@@ -107,7 +111,7 @@ DataCopyCommand *Texture3D::copy_from(const ocarina::Texture &src, bool async) c
 }
 
 BufferToTextureCommand *Texture3D::copy_from_buffer_impl(handle_ty buffer_handle,
-                                                  size_t buffer_offset_in_byte, bool async) const noexcept {
+                                                         size_t buffer_offset_in_byte, bool async) const noexcept {
     return BufferToTexture3DCommand::create(buffer_handle, buffer_offset_in_byte, array_handle(),
                                             impl()->pixel_storage(),
                                             impl()->resolution(), 0, async);

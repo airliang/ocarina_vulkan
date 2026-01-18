@@ -42,6 +42,10 @@ Texture2D Device::create_texture2d(ocarina::uint2 res, ocarina::PixelStorage sto
     return create<Texture2D>(res, storage, 1, desc);
 }
 
+Texture2D Device::create_texture2d_from_external(ocarina::uint external_handle, const string &desc) const noexcept {
+    return create<Texture2D>(external_handle);
+}
+
 Texture3D Device::create_texture(Image *image_resource, const TextureViewCreation &texture_view) const noexcept {
     Texture3D tex(impl_.get(), image_resource, texture_view);
     return tex;

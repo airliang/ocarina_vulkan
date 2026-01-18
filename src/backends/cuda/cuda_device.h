@@ -120,6 +120,8 @@ public:
     [[nodiscard]] handle_ty create_texture2d(uint2 res, PixelStorage pixel_storage,
                                              uint level_num,
                                              const string &desc) noexcept override;
+    [[nodiscard]] handle_ty create_texture2d_from_external(ocarina::uint handle,
+                                                           const string &desc) noexcept override;
     [[nodiscard]] handle_ty create_texture3d(Image *image, const TextureViewCreation &texture_view) noexcept override {
         OC_NOT_IMPLEMENT_ERROR(create_texture3d);
         return 0;

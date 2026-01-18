@@ -150,6 +150,7 @@ public:
     Texture(Device::Impl *device, PixelStorage pixel_storage,
             RHIResource::Tag tag, handle_ty handle);
 
+
     [[nodiscard]] Impl *impl() noexcept { return reinterpret_cast<Impl *>(handle_); }
     [[nodiscard]] const Impl *impl() const noexcept { return reinterpret_cast<const Impl *>(handle_); }
     [[nodiscard]] Impl *operator->() noexcept { return impl(); }
@@ -201,6 +202,9 @@ public:
 
     explicit Texture2D(Device::Impl *device, Image *image_resource,
                        const TextureViewCreation &texture_view);
+
+    Texture2D(Device::Impl *device, uint external_handle,
+              const string &desc = "");
 
     [[nodiscard]] TextureOpCommand *upload(const void *data, bool async = true) const noexcept override;
     [[nodiscard]] TextureOpCommand *upload_sync(const void *data) const noexcept override;
