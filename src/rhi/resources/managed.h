@@ -138,11 +138,11 @@ public:
         device_ty::download_immediately(pixel_ptr());
     }
 
-    [[nodiscard]] TextureUploadCommand *upload(bool async = true) const noexcept {
+    [[nodiscard]] Texture3DUploadCommand *upload(bool async = true) const noexcept {
         return device_ty ::upload(pixel_ptr(), async);
     }
 
-    [[nodiscard]] TextureDownloadCommand *download(bool async = true) noexcept {
+    [[nodiscard]] Texture3DDownloadCommand *download(bool async = true) noexcept {
         return device_ty::download(pixel_ptr(), async);
     }
 };

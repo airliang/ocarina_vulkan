@@ -23,10 +23,10 @@ public:
     void visit(const BufferByteSetCommand *cmd) noexcept override;
     void visit(const BufferCopyCommand *cmd) noexcept override;
     void visit(const BufferReallocateCommand *cmd) noexcept override;
-    void visit(const TextureUploadCommand *cmd) noexcept override;
-    void visit(const TextureDownloadCommand *cmd) noexcept override;
-    void visit(const TextureCopyCommand *cmd) noexcept override;
-    void visit(const BufferToTextureCommand *cmd) noexcept override;
+    void visit(const Texture3DUploadCommand *cmd) noexcept override;
+    void visit(const Texture3DDownloadCommand *cmd) noexcept override;
+    void visit(const Texture3DCopyCommand *cmd) noexcept override;
+    void visit(const BufferToTexture3DCommand *cmd) noexcept override;
     void visit(const BLASBuildCommand *cmd) noexcept override;
     void visit(const TLASBuildCommand *cmd) noexcept override;
     void visit(const TLASUpdateCommand *cmd) noexcept override;

@@ -53,41 +53,41 @@ void CUDACommandVisitor::visit(const BufferCopyCommand *cmd) noexcept {
 }
 
 void CUDACommandVisitor::visit(const BufferReallocateCommand *cmd) noexcept {
-//    if (cmd->async() && stream_) {
-//        RHIResource *rhi_resource = cmd->rhi_resource();
-//        if (rhi_resource->handle()) {
-//            OC_CU_CHECK(cuMemFreeAsync(rhi_resource->handle(), stream_));
-//        }
-//        if (cmd->new_size() > 0) {
-//            OC_CU_CHECK(cuMemAllocAsync(reinterpret_cast<handle_ty *>(rhi_resource->handle_ptr()),
-//                                        cmd->new_size(), stream_));
-//        }
-//    } else {
-        device_->use_context([&] {
-            RHIResource *rhi_resource = cmd->rhi_resource();
-            if (rhi_resource->handle()) {
-                bool exportable = false;
-                auto *exportable_resource = dynamic_cast<ExportableResource *>(rhi_resource);
-                if (exportable_resource->exported()) {
-                    exportable = true;
-                }
-                handle_ty *ptr = reinterpret_cast<handle_ty *>(rhi_resource->handle_ptr());
-                device_->memory_free(ptr);
-                *ptr = 0;
-                //OC_CU_CHECK(cuMemFree(rhi_resource->handle()));
+    //    if (cmd->async() && stream_) {
+    //        RHIResource *rhi_resource = cmd->rhi_resource();
+    //        if (rhi_resource->handle()) {
+    //            OC_CU_CHECK(cuMemFreeAsync(rhi_resource->handle(), stream_));
+    //        }
+    //        if (cmd->new_size() > 0) {
+    //            OC_CU_CHECK(cuMemAllocAsync(reinterpret_cast<handle_ty *>(rhi_resource->handle_ptr()),
+    //                                        cmd->new_size(), stream_));
+    //        }
+    //    } else {
+    device_->use_context([&] {
+        RHIResource *rhi_resource = cmd->rhi_resource();
+        if (rhi_resource->handle()) {
+            bool exportable = false;
+            auto *exportable_resource = dynamic_cast<ExportableResource *>(rhi_resource);
+            if (exportable_resource->exported()) {
+                exportable = true;
             }
-            if (cmd->new_size() > 0) {
-                bool exportable = false;
-                auto *exportable_resource = dynamic_cast<ExportableResource *>(rhi_resource);
-                if (exportable_resource->exported()) {
-                    exportable = true;
-                }
-                device_->memory_allocate(reinterpret_cast<handle_ty *>(rhi_resource->handle_ptr()), cmd->new_size(), exportable);
-                //OC_CU_CHECK(cuMemAlloc(reinterpret_cast<handle_ty *>(rhi_resource->handle_ptr()),
-                //                       cmd->new_size()));
+            handle_ty *ptr = reinterpret_cast<handle_ty *>(rhi_resource->handle_ptr());
+            device_->memory_free(ptr);
+            *ptr = 0;
+            //OC_CU_CHECK(cuMemFree(rhi_resource->handle()));
+        }
+        if (cmd->new_size() > 0) {
+            bool exportable = false;
+            auto *exportable_resource = dynamic_cast<ExportableResource *>(rhi_resource);
+            if (exportable_resource->exported()) {
+                exportable = true;
             }
-        });
-//    }
+            device_->memory_allocate(reinterpret_cast<handle_ty *>(rhi_resource->handle_ptr()), cmd->new_size(), exportable);
+            //OC_CU_CHECK(cuMemAlloc(reinterpret_cast<handle_ty *>(rhi_resource->handle_ptr()),
+            //                       cmd->new_size()));
+        }
+    });
+    //    }
 }
 
 void CUDACommandVisitor::visit(const BufferDownloadCommand *cmd) noexcept {
@@ -148,7 +148,7 @@ namespace detail {
 
 }// namespace detail
 
-void CUDACommandVisitor::visit(const TextureUploadCommand *cmd) noexcept {
+void CUDACommandVisitor::visit(const Texture3DUploadCommand *cmd) noexcept {
     device_->use_context([&] {
         CUDA_MEMCPY3D desc = detail::memcpy_desc(cmd);
         desc.srcMemoryType = CU_MEMORYTYPE_HOST;
@@ -163,7 +163,7 @@ void CUDACommandVisitor::visit(const TextureUploadCommand *cmd) noexcept {
     });
 }
 
-void CUDACommandVisitor::visit(const TextureDownloadCommand *cmd) noexcept {
+void CUDACommandVisitor::visit(const Texture3DDownloadCommand *cmd) noexcept {
     device_->use_context([&] {
         CUDA_MEMCPY3D desc = detail::memcpy_desc(cmd);
         desc.srcMemoryType = CU_MEMORYTYPE_ARRAY;
@@ -178,7 +178,7 @@ void CUDACommandVisitor::visit(const TextureDownloadCommand *cmd) noexcept {
     });
 }
 
-void CUDACommandVisitor::visit(const TextureCopyCommand *cmd) noexcept {
+void CUDACommandVisitor::visit(const Texture3DCopyCommand *cmd) noexcept {
     device_->use_context([&] {
         CUDA_MEMCPY3D copy{};
         uint pitch = pixel_size(cmd->pixel_storage()) * cmd->resolution().x;
@@ -197,7 +197,7 @@ void CUDACommandVisitor::visit(const TextureCopyCommand *cmd) noexcept {
     });
 }
 
-void CUDACommandVisitor::visit(const ocarina::BufferToTextureCommand *cmd) noexcept {
+void CUDACommandVisitor::visit(const ocarina::BufferToTexture3DCommand *cmd) noexcept {
     device_->use_context([&] {
         CUDA_MEMCPY3D copy{};
         copy.srcMemoryType = CU_MEMORYTYPE_DEVICE;

@@ -26,9 +26,6 @@ namespace detail {
 }// namespace detail
 
 class Texture : public RHIResource {
-protected:
-    uint channel_num_{};
-
 public:
     class Impl {
     public:
@@ -49,7 +46,6 @@ public:
     using RHIResource::RHIResource;
     Texture(Device::Impl *device, PixelStorage pixel_storage,
             RHIResource::Tag tag, handle_ty handle);
-    OC_MAKE_MEMBER_GETTER(channel_num, )
 };
 
 class Texture3D : public Texture {
@@ -103,25 +99,25 @@ public:
     [[nodiscard]] size_t data_size() const noexcept override { return impl()->data_size(); }
     [[nodiscard]] size_t data_alignment() const noexcept override { return impl()->data_alignment(); }
     [[nodiscard]] size_t max_member_size() const noexcept override { return impl()->max_member_size(); }
-    [[nodiscard]] TextureUploadCommand *upload(const void *data, bool async = true) const noexcept {
-        return TextureUploadCommand::create(data, array_handle(), impl()->resolution(),
+    [[nodiscard]] Texture3DUploadCommand *upload(const void *data, bool async = true) const noexcept {
+        return Texture3DUploadCommand::create(data, array_handle(), impl()->resolution(),
                                             impl()->pixel_storage(), async);
     }
-    [[nodiscard]] TextureUploadCommand *upload_sync(const void *data) const noexcept {
+    [[nodiscard]] Texture3DUploadCommand *upload_sync(const void *data) const noexcept {
         return upload(data, false);
     }
-    [[nodiscard]] TextureDownloadCommand *download(void *data, bool async = true) const noexcept {
-        return TextureDownloadCommand::create(data, array_handle(), impl()->resolution(),
+    [[nodiscard]] Texture3DDownloadCommand *download(void *data, bool async = true) const noexcept {
+        return Texture3DDownloadCommand::create(data, array_handle(), impl()->resolution(),
                                               impl()->pixel_storage(), async);
     }
-    [[nodiscard]] TextureDownloadCommand *download_sync(void *data) const noexcept {
+    [[nodiscard]] Texture3DDownloadCommand *download_sync(void *data) const noexcept {
         return download(data, false);
     }
 
     template<typename Arg>
     requires is_buffer_or_view_v<Arg>
-    [[nodiscard]] BufferToTextureCommand *copy_from(const Arg &buffer, size_t buffer_offset, bool async = true) const noexcept {
-        return BufferToTextureCommand::create(buffer.handle(), buffer_offset * buffer.element_size(), array_handle(),
+    [[nodiscard]] BufferToTexture3DCommand *copy_from(const Arg &buffer, size_t buffer_offset, bool async = true) const noexcept {
+        return BufferToTexture3DCommand::create(buffer.handle(), buffer_offset * buffer.element_size(), array_handle(),
                                               impl()->pixel_storage(),
                                               impl()->resolution(), 0, async);
     }
