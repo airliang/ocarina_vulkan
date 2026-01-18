@@ -77,7 +77,7 @@ int main(int argc, char *argv[]) {
         Uint2 xy = dispatch_idx().xy();
         //        static_assert(is_all_integral_expr_v<Uint>);
                 auto va2l = texture_var.read<float4>(dispatch_idx().xy());
-//        $info("{} {}, {} {} {} {}", uv, val);
+        $info("{} {}, {} {} {} {}", uv, val);
     };
     auto shader = device.compile(kernel);
     stream << shader(tex).dispatch(image.resolution()) << Env::printer().retrieve()<< synchronize() << commit();

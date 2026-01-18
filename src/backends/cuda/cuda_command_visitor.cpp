@@ -132,7 +132,7 @@ void CUDACommandVisitor::visit(const ocarina::HostFunctionCommand *cmd) noexcept
 
 namespace detail {
 
-[[nodiscard]] CUDA_MEMCPY3D memcpy_desc(const TextureOpCommand *cmd) noexcept {
+[[nodiscard]] CUDA_MEMCPY3D memcpy3d_desc(const TextureOpCommand *cmd) noexcept {
     CUDA_MEMCPY3D memcpy_desc{};
     memcpy_desc.srcXInBytes = 0;
     memcpy_desc.srcY = 0;
@@ -146,11 +146,24 @@ namespace detail {
     return memcpy_desc;
 }
 
+[[nodiscard]] CUDA_MEMCPY2D memcpy2d_desc(const TextureOpCommand *cmd) noexcept {
+    CUDA_MEMCPY2D memcpy_desc{};
+    memcpy_desc.srcXInBytes = 0;
+    memcpy_desc.srcY = 0;
+    memcpy_desc.srcPitch = cmd->width_in_bytes();
+    memcpy_desc.dstPitch = cmd->width_in_bytes();
+    memcpy_desc.dstXInBytes = 0;
+    memcpy_desc.dstY = 0;
+    memcpy_desc.WidthInBytes = cmd->width_in_bytes();
+    memcpy_desc.Height = cmd->height();
+    return memcpy_desc;
+}
+
 }// namespace detail
 
 void CUDACommandVisitor::visit(const Texture3DUploadCommand *cmd) noexcept {
     device_->use_context([&] {
-        CUDA_MEMCPY3D desc = detail::memcpy_desc(cmd);
+        CUDA_MEMCPY3D desc = detail::memcpy3d_desc(cmd);
         desc.srcMemoryType = CU_MEMORYTYPE_HOST;
         desc.srcHost = cmd->host_ptr<const void *>();
         desc.dstMemoryType = CU_MEMORYTYPE_ARRAY;
@@ -165,13 +178,22 @@ void CUDACommandVisitor::visit(const Texture3DUploadCommand *cmd) noexcept {
 
 void CUDACommandVisitor::visit(const ocarina::Texture2DUploadCommand *cmd) noexcept {
     device_->use_context([&] {
-
+        CUDA_MEMCPY2D desc = detail::memcpy2d_desc(cmd);
+        desc.srcMemoryType = CU_MEMORYTYPE_HOST;
+        desc.srcHost = cmd->host_ptr<const void *>();
+        desc.dstMemoryType = CU_MEMORYTYPE_ARRAY;
+        desc.dstArray = cmd->device_handle<CUarray>();
+        if (cmd->async() && stream_) {
+            OC_CU_CHECK(cuMemcpy2DAsync(&desc, stream_));
+        } else {
+            OC_CU_CHECK(cuMemcpy2D(&desc));
+        }
     });
 }
 
 void CUDACommandVisitor::visit(const Texture3DDownloadCommand *cmd) noexcept {
     device_->use_context([&] {
-        CUDA_MEMCPY3D desc = detail::memcpy_desc(cmd);
+        CUDA_MEMCPY3D desc = detail::memcpy3d_desc(cmd);
         desc.srcMemoryType = CU_MEMORYTYPE_ARRAY;
         desc.dstMemoryType = CU_MEMORYTYPE_HOST;
         desc.srcArray = cmd->device_handle<CUarray>();

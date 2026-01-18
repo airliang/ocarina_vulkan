@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
     bindless_array->emplace_texture3d(texture.tex_handle());
 
     Buffer<float> f_buffer = device.create_buffer<float>(count);
-    Kernel kn = [&](Var<float> a, Var<float> b, BufferVar<float> c, TextureVar tex) {
+    Kernel kn = [&](Var<float> a, Var<float> b, BufferVar<float> c, Texture3DVar tex) {
 
         Float ll = log(a);
 
