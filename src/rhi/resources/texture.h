@@ -64,6 +64,20 @@ public:
     [[nodiscard]] uint pixel_size() const noexcept {
         return ::ocarina::pixel_size(impl()->pixel_storage());
     }
+    void upload_immediately(const void *data) const noexcept;
+    void download_immediately(void *data) const noexcept;
+    [[nodiscard]] virtual TextureOpCommand *upload(const void *data, bool async = true) const noexcept = 0;
+    [[nodiscard]] virtual TextureOpCommand *upload_sync(const void *data) const noexcept = 0;
+    [[nodiscard]] virtual TextureOpCommand *download(void *data, bool async = true) const noexcept = 0;
+    [[nodiscard]] virtual TextureOpCommand *download_sync(void *data) const noexcept = 0;
+    [[nodiscard]] virtual BufferToTextureCommand *copy_from_impl(handle_ty buffer_handle, size_t buffer_offset_in_byte,
+                                                                 bool async = true) const noexcept = 0;
+
+    template<typename Arg>
+    requires is_buffer_or_view_v<Arg>
+    [[nodiscard]] BufferToTextureCommand *copy_from(const Arg &buffer, size_t buffer_offset, bool async = true) const noexcept {
+        return copy_from_impl(buffer.handle(), buffer_offset * buffer.element_size(), async);
+    }
 
     [[nodiscard]] uint3 resolution() const noexcept { return impl()->resolution(); }
     [[nodiscard]] handle_ty array_handle() const noexcept { return impl()->array_handle(); }
@@ -84,20 +98,13 @@ public:
     explicit Texture3D(Device::Impl *device, Image *image_resource,
                        const TextureViewCreation &texture_view);
 
-    [[nodiscard]] Texture3DUploadCommand *upload(const void *data, bool async = true) const noexcept;
-    [[nodiscard]] Texture3DUploadCommand *upload_sync(const void *data) const noexcept;
-    [[nodiscard]] Texture3DDownloadCommand *download(void *data, bool async = true) const noexcept;
-    [[nodiscard]] Texture3DDownloadCommand *download_sync(void *data) const noexcept;
-
-    template<typename Arg>
-    requires is_buffer_or_view_v<Arg>
-    [[nodiscard]] BufferToTexture3DCommand *copy_from(const Arg &buffer, size_t buffer_offset, bool async = true) const noexcept {
-        return BufferToTexture3DCommand::create(buffer.handle(), buffer_offset * buffer.element_size(), array_handle(),
-                                                impl()->pixel_storage(),
-                                                impl()->resolution(), 0, async);
-    }
-    void upload_immediately(const void *data) const noexcept;
-    void download_immediately(void *data) const noexcept;
+    [[nodiscard]] TextureOpCommand *upload(const void *data, bool async = true) const noexcept override;
+    [[nodiscard]] TextureOpCommand *upload_sync(const void *data) const noexcept override;
+    [[nodiscard]] TextureOpCommand *download(void *data, bool async = true) const noexcept override;
+    [[nodiscard]] TextureOpCommand *download_sync(void *data) const noexcept override;
+    [[nodiscard]] BufferToTextureCommand *copy_from_impl(ocarina::handle_ty buffer_handle,
+                                                         size_t buffer_offset_in_byte,
+                                                         bool async = true) const noexcept override;
 
     /// for dsl
     [[nodiscard]] const Expression *expression() const noexcept override;

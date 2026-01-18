@@ -11,6 +11,13 @@ Texture::Texture(Device::Impl *device, ocarina::PixelStorage pixel_storage,
     : RHIResource(device, tag, handle) {
 }
 
+void Texture::upload_immediately(const void *data) const noexcept {
+    upload_sync(data)->accept(*device_->command_visitor());
+}
+
+void Texture::download_immediately(void *data) const noexcept {
+    download_sync(data)->accept(*device_->command_visitor());
+}
 
 Texture3D::Texture3D(Device::Impl *device, uint3 res,
                      PixelStorage pixel_storage, uint level_num,
@@ -23,30 +30,29 @@ Texture3D::Texture3D(Device::Impl *device, Image *image_resource, const TextureV
     : Texture(device, Tag::TEXTURE3D,
               device->create_texture3d(image_resource, texture_view)) {}
 
-Texture3DUploadCommand *Texture3D::upload(const void *data, bool async) const noexcept {
+TextureOpCommand *Texture3D::upload(const void *data, bool async) const noexcept {
     return Texture3DUploadCommand::create(data, array_handle(), impl()->resolution(),
                                           impl()->pixel_storage(), async);
 }
 
-Texture3DUploadCommand *Texture3D::upload_sync(const void *data) const noexcept {
+TextureOpCommand *Texture3D::upload_sync(const void *data) const noexcept {
     return upload(data, false);
 }
 
-Texture3DDownloadCommand *Texture3D::download(void *data, bool async) const noexcept {
+TextureOpCommand *Texture3D::download(void *data, bool async) const noexcept {
     return Texture3DDownloadCommand::create(data, array_handle(), impl()->resolution(),
                                             impl()->pixel_storage(), async);
 }
 
-Texture3DDownloadCommand *Texture3D::download_sync(void *data) const noexcept {
+TextureOpCommand *Texture3D::download_sync(void *data) const noexcept {
     return download(data, false);
 }
 
-void Texture3D::upload_immediately(const void *data) const noexcept {
-    upload_sync(data)->accept(*device_->command_visitor());
-}
-
-void Texture3D::download_immediately(void *data) const noexcept {
-    download_sync(data)->accept(*device_->command_visitor());
+BufferToTextureCommand *Texture3D::copy_from_impl(ocarina::handle_ty buffer_handle,
+                                                  size_t buffer_offset_in_byte, bool async) const noexcept {
+    return BufferToTexture3DCommand::create(buffer_handle, buffer_offset_in_byte, array_handle(),
+                                            impl()->pixel_storage(),
+                                            impl()->resolution(), 0, async);
 }
 
 const Expression *Texture3D::expression() const noexcept {
@@ -55,6 +61,5 @@ const Expression *Texture3D::expression() const noexcept {
                                                                                            memory_block());
     return captured_resource.expression();
 }
-
 
 }// namespace ocarina

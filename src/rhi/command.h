@@ -251,17 +251,17 @@ public:
     OC_MAKE_CMD_COMMON_FUNC(BufferUploadCommand)
 };
 
-class OC_RHI_API BufferToTexture3DCommand final : public DataCopyCommand {
-private:
+class BufferToTextureCommand : public DataCopyCommand {
+protected:
     PixelStorage storage_;
     size_t buffer_offset_;
     uint3 res_;
     uint level_;
 
 public:
-    BufferToTexture3DCommand(handle_ty src, size_t buffer_offset,
-                             handle_ty dst, PixelStorage ps,
-                             uint3 res, size_t level, bool async)
+    BufferToTextureCommand(handle_ty src, size_t buffer_offset,
+                           handle_ty dst, PixelStorage ps,
+                           uint3 res, size_t level, bool async)
         : DataCopyCommand(src, dst, async), storage_(ps), res_(res),
           buffer_offset_(buffer_offset), level_(level) {}
     [[nodiscard]] PixelStorage pixel_storage() const noexcept { return storage_; }
@@ -273,31 +273,17 @@ public:
     [[nodiscard]] size_t size_in_bytes() const noexcept { return height() * width_in_bytes(); }
     [[nodiscard]] uint level() const noexcept { return level_; }
     [[nodiscard]] uint3 resolution() const noexcept { return res_; }
+};
+
+class OC_RHI_API BufferToTexture3DCommand final : public BufferToTextureCommand {
+public:
+    using BufferToTextureCommand::BufferToTextureCommand;
     OC_MAKE_CMD_COMMON_FUNC(BufferToTexture3DCommand)
 };
 
-class OC_RHI_API BufferToTexture2DCommand final : public DataCopyCommand {
-private:
-    PixelStorage storage_;
-    size_t buffer_offset_;
-    uint3 res_;
-    uint level_;
-
+class OC_RHI_API BufferToTexture2DCommand final : public BufferToTextureCommand {
 public:
-    BufferToTexture2DCommand(handle_ty src, size_t buffer_offset,
-                             handle_ty dst, PixelStorage ps,
-                             uint3 res, size_t level, bool async)
-        : DataCopyCommand(src, dst, async), storage_(ps), res_(res),
-          buffer_offset_(buffer_offset), level_(level) {}
-    [[nodiscard]] PixelStorage pixel_storage() const noexcept { return storage_; }
-    [[nodiscard]] size_t buffer_offset() const noexcept { return buffer_offset_; }
-    [[nodiscard]] size_t width() const noexcept { return res_.x; }
-    [[nodiscard]] size_t height() const noexcept { return res_.y; }
-    [[nodiscard]] size_t depth() const noexcept { return res_.z; }
-    [[nodiscard]] size_t width_in_bytes() const noexcept { return pixel_size(storage_) * width(); }
-    [[nodiscard]] size_t size_in_bytes() const noexcept { return height() * width_in_bytes(); }
-    [[nodiscard]] uint level() const noexcept { return level_; }
-    [[nodiscard]] uint3 resolution() const noexcept { return res_; }
+    using BufferToTextureCommand::BufferToTextureCommand;
     OC_MAKE_CMD_COMMON_FUNC(BufferToTexture2DCommand)
 };
 
@@ -315,9 +301,11 @@ private:
 
 protected:
     TextureOpCommand(handle_ty data, handle_ty device_handle, uint2 resolution, PixelStorage storage, bool async)
-        : DataOpCommand(data, device_handle, 0, async), pixel_storage_(storage), resolution_(resolution.x, resolution.y, 1) {}
+        : DataOpCommand(data, device_handle, 0, async),
+          pixel_storage_(storage), resolution_(resolution.x, resolution.y, 1) {}
     TextureOpCommand(handle_ty data, handle_ty device_handle, uint3 resolution, PixelStorage storage, bool async)
-        : DataOpCommand(data, device_handle, 0, async), pixel_storage_(storage), resolution_(resolution) {}
+        : DataOpCommand(data, device_handle, 0, async),
+          pixel_storage_(storage), resolution_(resolution) {}
 
 public:
     [[nodiscard]] PixelStorage pixel_storage() const noexcept { return pixel_storage_; }
