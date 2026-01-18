@@ -16,7 +16,8 @@ class OC_RHI_API RHIResource : public concepts::Noncopyable {
 public:
     enum Tag : uint8_t {
         BUFFER,
-        TEXTURE,
+        TEXTURE3D,
+        TEXTURE2D,
         BINDLESS_ARRAY,
         STREAM,
         SHADER,

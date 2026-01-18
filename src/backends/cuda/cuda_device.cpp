@@ -328,7 +328,7 @@ void CUDADevice::destroy_shader(handle_ty handle) noexcept {
     ocarina::delete_with_allocator(reinterpret_cast<CUDAShader *>(handle));
 }
 
-void CUDADevice::destroy_texture(handle_ty handle) noexcept {
+void CUDADevice::destroy_texture3d(handle_ty handle) noexcept {
     use_context([&] {
         MemoryStats::instance().on_tex_free(handle);
         ocarina::delete_with_allocator(reinterpret_cast<CUDATexture3D *>(handle));

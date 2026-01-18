@@ -71,7 +71,7 @@ public:
         [[nodiscard]] virtual handle_ty create_texture3d(uint3 res, PixelStorage pixel_storage,
                                                        uint level_num, const string &desc) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_texture(Image *image, const TextureViewCreation &texture_view) noexcept = 0;
-        virtual void destroy_texture(handle_ty handle) noexcept = 0;
+        virtual void destroy_texture3d(handle_ty handle) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_shader(const Function &function) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept = 0;
         virtual void destroy_shader(handle_ty handle) noexcept = 0;

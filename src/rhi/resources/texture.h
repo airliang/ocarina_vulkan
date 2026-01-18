@@ -64,13 +64,13 @@ public:
     explicit Texture3D(Device::Impl *device, uint3 res,
                        PixelStorage pixel_storage, uint level_num = 1u,
                        const string &desc = "")
-        : RHIResource(device, Tag::TEXTURE,
+        : RHIResource(device, Tag::TEXTURE3D,
                       device->create_texture3d(res, pixel_storage,
                                                detail::compute_mip_level_num(res, level_num), desc)),
           channel_num_(ocarina::channel_num(pixel_storage)) {}
 
     explicit Texture3D(Device::Impl *device, Image *image_resource, const TextureViewCreation &texture_view)
-        : RHIResource(device, Tag::TEXTURE,
+        : RHIResource(device, Tag::TEXTURE3D,
                       device->create_texture(image_resource, texture_view)),
           channel_num_(ocarina::channel_num(texture_view.format)) {}
 
