@@ -73,6 +73,7 @@ public:
         [[nodiscard]] virtual handle_ty create_texture2d(uint2 res, PixelStorage pixel_storage,
                                                          uint level_num, const string &desc) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_texture3d(Image *image, const TextureViewCreation &texture_view) noexcept = 0;
+        [[nodiscard]] virtual handle_ty create_texture2d(Image *image, const TextureViewCreation &texture_view) noexcept = 0;
         virtual void destroy_texture3d(handle_ty handle) noexcept = 0;
         virtual void destroy_texture2d(handle_ty handle) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_shader(const Function &function) noexcept = 0;
@@ -191,7 +192,7 @@ public:
     void init_rtx() noexcept { impl_->init_rtx(); }
     [[nodiscard]] Texture3D create_texture3d(uint3 res, PixelStorage storage, const string &desc = "") const noexcept;
     [[nodiscard]] Texture3D create_texture3d(uint2 res, PixelStorage storage, const string &desc = "") const noexcept;
-//    [[nodiscard]] Texture2D create_texture2d(uint2 res, PixelStorage storage, const string &desc = "") const noexcept;
+    [[nodiscard]] Texture2D create_texture2d(uint2 res, PixelStorage storage, const string &desc = "") const noexcept;
     [[nodiscard]] Texture3D create_texture(Image *image_resource, const TextureViewCreation &texture_view) const noexcept;
     template<typename T>
     [[nodiscard]] auto compile(const Kernel<T> &kernel, const string &shader_desc = "", ShaderTag tag = CS) const noexcept {

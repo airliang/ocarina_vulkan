@@ -88,15 +88,96 @@ public:
     [[nodiscard]] size_t max_member_size() const noexcept override { return impl()->max_member_size(); }
 };
 
+template<typename texture_type>
+class TextureBehaviour {
+public:
+    [[nodiscard]] const texture_type *self() const noexcept {
+        return static_cast<const texture_type *>(this);
+    }
+
+    [[nodiscard]] texture_type *self() noexcept {
+        return static_cast<texture_type *>(this);
+    }
+
+    template<typename U, typename V>
+    requires(is_all_floating_point_expr_v<U, V>)
+    [[nodiscard]] auto sample(uint channel_num, const U &u, const V &v) const noexcept {
+        return make_expr<texture_type>(self()->expression()).sample(channel_num, u, v);
+    }
+
+    template<typename UV>
+    requires(is_float_vector2_v<expr_value_t<swizzle_decay_t<UV>>>)
+    OC_NODISCARD auto sample(uint channel_num, const UV &uv) const noexcept {
+        return [this]<typename T>(uint channel_num, const T &uv) {
+            return this->sample(channel_num, uv.x, uv.y);
+        }(channel_num, decay_swizzle(uv));
+    }
+
+    template<typename U, typename V, typename W>
+    requires(is_all_floating_point_expr_v<U, V>)
+    [[nodiscard]] auto sample(uint channel_num, const U &u, const V &v, const W &w) const noexcept {
+        return make_expr<texture_type>(self()->expression()).sample(channel_num, u, v, w);
+    }
+
+    template<typename UVW>
+    requires(is_float_vector3_v<expr_value_t<swizzle_decay_t<UVW>>>)
+    OC_NODISCARD auto sample(uint channel_num, const UVW &uvw) const noexcept {
+        return [this]<typename T>(uint channel_num, const T &uvw) {
+            return this->sample(channel_num, uvw.x, uvw.y, uvw.z);
+        }(channel_num, decay_swizzle(uvw));
+    }
+
+    template<typename Target, typename X, typename Y>
+    requires(is_all_integral_expr_v<X, Y>)
+    OC_NODISCARD auto read(const X &x, const Y &y) const noexcept {
+        return make_expr<texture_type>(self()->expression()).template read<Target>(x, y);
+    }
+
+    template<typename Target, typename XY>
+    requires((is_general_integer_vector2_v<remove_device_t<XY>>) &&
+             (is_uchar_element_expr_v<Target> || is_float_element_expr_v<Target>))
+    OC_NODISCARD auto read(const XY &xy) const noexcept {
+        return [this]<typename T>(const T &xy) {
+            return read<Target>(xy.x, xy.y);
+        }(decay_swizzle(xy));
+    }
+
+    template<typename X, typename Y, typename Val>
+    requires(is_all_integral_expr_v<X, Y> &&
+             (is_uchar_element_expr_v<Val> || is_float_element_expr_v<Val>))
+    void write(const Val &elm, const X &x, const Y &y) noexcept {
+        make_expr<texture_type>(self()->expression()).write(elm, x, y);
+    }
+
+    template<typename Val>
+    void write(const Val &elm, const Uint2 &xy) noexcept {
+        write(elm, xy.x, xy.y);
+    }
+};
+
 class OC_RHI_API Texture2D : public Texture {
 public:
     Texture2D() = default;
     explicit Texture2D(Device::Impl *device, uint2 res,
                        PixelStorage pixel_storage, uint level_num = 1u,
                        const string &desc = "");
+
+    explicit Texture2D(Device::Impl *device, Image *image_resource,
+                       const TextureViewCreation &texture_view);
+
+    [[nodiscard]] TextureOpCommand *upload(const void *data, bool async = true) const noexcept override;
+    [[nodiscard]] TextureOpCommand *upload_sync(const void *data) const noexcept override;
+    [[nodiscard]] TextureOpCommand *download(void *data, bool async = true) const noexcept override;
+    [[nodiscard]] TextureOpCommand *download_sync(void *data) const noexcept override;
+    [[nodiscard]] BufferToTextureCommand *copy_from_impl(ocarina::handle_ty buffer_handle,
+                                                         size_t buffer_offset_in_byte,
+                                                         bool async) const noexcept override;
+
+    /// for dsl
+    [[nodiscard]] const Expression *expression() const noexcept override;
 };
 
-class OC_RHI_API Texture3D : public Texture {
+class OC_RHI_API Texture3D : public Texture, public TextureBehaviour<Texture3D> {
 public:
     Texture3D() = default;
     explicit Texture3D(Device::Impl *device, uint3 res,
@@ -116,60 +197,6 @@ public:
 
     /// for dsl
     [[nodiscard]] const Expression *expression() const noexcept override;
-    template<typename U, typename V>
-    requires(is_all_floating_point_expr_v<U, V>)
-    [[nodiscard]] auto sample(uint channel_num, const U &u, const V &v) const noexcept {
-        return make_expr<Texture3D>(expression()).sample(channel_num, u, v);
-    }
-
-    template<typename UV>
-    requires(is_float_vector2_v<expr_value_t<swizzle_decay_t<UV>>>)
-    OC_NODISCARD auto sample(uint channel_num, const UV &uv) const noexcept {
-        return [this]<typename T>(uint channel_num, const T &uv) {
-            return this->sample(channel_num, uv.x, uv.y);
-        }(channel_num, decay_swizzle(uv));
-    }
-
-    template<typename U, typename V, typename W>
-    requires(is_all_floating_point_expr_v<U, V>)
-    [[nodiscard]] auto sample(uint channel_num, const U &u, const V &v, const W &w) const noexcept {
-        return make_expr<Texture3D>(expression()).sample(channel_num, u, v, w);
-    }
-
-    template<typename UVW>
-    requires(is_float_vector3_v<expr_value_t<swizzle_decay_t<UVW>>>)
-    OC_NODISCARD auto sample(uint channel_num, const UVW &uvw) const noexcept {
-        return [this]<typename T>(uint channel_num, const T &uvw) {
-            return this->sample(channel_num, uvw.x, uvw.y, uvw.z);
-        }(channel_num, decay_swizzle(uvw));
-    }
-
-    template<typename Target, typename X, typename Y>
-    requires(is_all_integral_expr_v<X, Y>)
-    OC_NODISCARD auto read(const X &x, const Y &y) const noexcept {
-        return make_expr<Texture3D>(expression()).read<Target>(x, y);
-    }
-
-    template<typename Target, typename XY>
-    requires((is_general_integer_vector2_v<remove_device_t<XY>>) &&
-             (is_uchar_element_expr_v<Target> || is_float_element_expr_v<Target>))
-    OC_NODISCARD auto read(const XY &xy) const noexcept {
-        return [this]<typename T>(const T &xy) {
-            return read<Target>(xy.x, xy.y);
-        }(decay_swizzle(xy));
-    }
-
-    template<typename X, typename Y, typename Val>
-    requires(is_all_integral_expr_v<X, Y> &&
-             (is_uchar_element_expr_v<Val> || is_float_element_expr_v<Val>))
-    void write(const Val &elm, const X &x, const Y &y) noexcept {
-        make_expr<Texture3D>(expression()).write(elm, x, y);
-    }
-
-    template<typename Val>
-    void write(const Val &elm, const Uint2 &xy) noexcept {
-        write(elm, xy.x, xy.y);
-    }
 };
 
 }// namespace ocarina

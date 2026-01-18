@@ -65,7 +65,7 @@ private:
     uint32_t compute_capability_{};
 
     /// key:buffer, value: CUgraphicsResource *
-    std::map<handle_ty , CUgraphicsResource> shared_handle_map_;
+    std::map<handle_ty, CUgraphicsResource> shared_handle_map_;
     thread_safety<std::mutex> memory_guard_;
     std::unordered_map<handle_ty, ExportableResource::Data> exported_resources;
 
@@ -115,12 +115,19 @@ public:
     [[nodiscard]] handle_ty create_buffer(size_t size, const string &desc, bool exported) noexcept override;
     void destroy_buffer(handle_ty handle) noexcept override;
     [[nodiscard]] handle_ty create_texture3d(uint3 res, PixelStorage pixel_storage,
-                                           uint level_num,
-                                           const string &desc) noexcept override;
+                                             uint level_num,
+                                             const string &desc) noexcept override;
     [[nodiscard]] handle_ty create_texture2d(uint2 res, PixelStorage pixel_storage,
                                              uint level_num,
                                              const string &desc) noexcept override;
-    [[nodiscard]] handle_ty create_texture3d(Image *image, const TextureViewCreation &texture_view) noexcept override { return 0; }
+    [[nodiscard]] handle_ty create_texture3d(Image *image, const TextureViewCreation &texture_view) noexcept override {
+        OC_NOT_IMPLEMENT_ERROR(create_texture3d);
+        return 0;
+    }
+    [[nodiscard]] handle_ty create_texture2d(Image *image, const TextureViewCreation &texture_view) noexcept override {
+        OC_NOT_IMPLEMENT_ERROR(create_texture2d);
+        return 0;
+    }
     void destroy_texture3d(handle_ty handle) noexcept override;
     void destroy_texture2d(handle_ty handle) noexcept override;
     [[nodiscard]] handle_ty create_shader(const Function &function) noexcept override;

@@ -37,10 +37,10 @@ Texture3D Device::create_texture3d(uint2 res, PixelStorage storage, const string
     return create_texture3d(make_uint3(res, 1u), storage, desc);
 }
 
-//Texture2D Device::create_texture2d(ocarina::uint2 res, ocarina::PixelStorage storage,
-//                                   const std::string &desc) const noexcept {
-//    return {};
-//}
+Texture2D Device::create_texture2d(ocarina::uint2 res, ocarina::PixelStorage storage,
+                                   const std::string &desc) const noexcept {
+    return create<Texture2D>(res, storage, 1, desc);
+}
 
 Texture3D Device::create_texture(Image *image_resource, const TextureViewCreation &texture_view) const noexcept {
     Texture3D tex(impl_.get(), image_resource, texture_view);
