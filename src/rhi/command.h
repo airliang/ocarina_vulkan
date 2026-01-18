@@ -21,6 +21,10 @@ namespace ocarina {
         Texture3DUploadCommand,   \
         Texture3DDownloadCommand, \
         Texture3DCopyCommand,     \
+        BufferToTexture2DCommand, \
+        Texture2DUploadCommand,   \
+        Texture2DDownloadCommand, \
+        Texture2DCopyCommand,     \
         HostFunctionCommand,      \
         SynchronizeCommand,       \
         BLASBuildCommand,         \
@@ -161,6 +165,28 @@ public:
     OC_MAKE_CMD_COMMON_FUNC(Texture3DCopyCommand)
 };
 
+class OC_RHI_API Texture2DCopyCommand : public DataCopyCommand {
+private:
+    PixelStorage storage_;
+    uint3 res_;
+    uint src_level_;
+    uint dst_level_;
+
+public:
+    Texture2DCopyCommand(uint64_t src, uint64_t dst, uint3 res, PixelStorage pixel_storage,
+                         uint src_level, uint dst_level, bool async) noexcept
+        : DataCopyCommand{src, dst, async},
+          res_(res), src_level_(src_level),
+          dst_level_(dst_level),
+          storage_(pixel_storage) {}
+
+    [[nodiscard]] uint src_level() const noexcept { return src_level_; }
+    [[nodiscard]] uint dst_level() const noexcept { return dst_level_; }
+    [[nodiscard]] PixelStorage pixel_storage() const noexcept { return storage_; }
+    [[nodiscard]] uint3 resolution() const noexcept { return res_; }
+    OC_MAKE_CMD_COMMON_FUNC(Texture2DCopyCommand)
+};
+
 class OC_RHI_API DataOpCommand : public Command {
 protected:
     handle_ty host_ptr_{};
@@ -250,6 +276,31 @@ public:
     OC_MAKE_CMD_COMMON_FUNC(BufferToTexture3DCommand)
 };
 
+class OC_RHI_API BufferToTexture2DCommand final : public DataCopyCommand {
+private:
+    PixelStorage storage_;
+    size_t buffer_offset_;
+    uint3 res_;
+    uint level_;
+
+public:
+    BufferToTexture2DCommand(handle_ty src, size_t buffer_offset,
+                             handle_ty dst, PixelStorage ps,
+                             uint3 res, size_t level, bool async)
+        : DataCopyCommand(src, dst, async), storage_(ps), res_(res),
+          buffer_offset_(buffer_offset), level_(level) {}
+    [[nodiscard]] PixelStorage pixel_storage() const noexcept { return storage_; }
+    [[nodiscard]] size_t buffer_offset() const noexcept { return buffer_offset_; }
+    [[nodiscard]] size_t width() const noexcept { return res_.x; }
+    [[nodiscard]] size_t height() const noexcept { return res_.y; }
+    [[nodiscard]] size_t depth() const noexcept { return res_.z; }
+    [[nodiscard]] size_t width_in_bytes() const noexcept { return pixel_size(storage_) * width(); }
+    [[nodiscard]] size_t size_in_bytes() const noexcept { return height() * width_in_bytes(); }
+    [[nodiscard]] uint level() const noexcept { return level_; }
+    [[nodiscard]] uint3 resolution() const noexcept { return res_; }
+    OC_MAKE_CMD_COMMON_FUNC(BufferToTexture2DCommand)
+};
+
 class OC_RHI_API BufferDownloadCommand final : public BufferOpCommand {
 public:
     BufferDownloadCommand(void *hp, handle_ty dp, size_t d_offset, size_t size, bool async)
@@ -285,11 +336,25 @@ public:
     OC_MAKE_CMD_COMMON_FUNC(Texture3DUploadCommand)
 };
 
+class OC_RHI_API Texture2DUploadCommand final : public TextureOpCommand {
+public:
+    Texture2DUploadCommand(const void *data, handle_ty device_handle, uint3 resolution, PixelStorage storage, bool async)
+        : TextureOpCommand(reinterpret_cast<handle_ty>(data), device_handle, resolution, storage, async) {}
+    OC_MAKE_CMD_COMMON_FUNC(Texture2DUploadCommand)
+};
+
 class OC_RHI_API Texture3DDownloadCommand final : public TextureOpCommand {
 public:
     Texture3DDownloadCommand(void *data, handle_ty device_handle, uint3 resolution, PixelStorage storage, bool async)
         : TextureOpCommand(reinterpret_cast<handle_ty>(data), device_handle, resolution, storage, async) {}
     OC_MAKE_CMD_COMMON_FUNC(Texture3DDownloadCommand)
+};
+
+class OC_RHI_API Texture2DDownloadCommand final : public TextureOpCommand {
+public:
+    Texture2DDownloadCommand(void *data, handle_ty device_handle, uint3 resolution, PixelStorage storage, bool async)
+        : TextureOpCommand(reinterpret_cast<handle_ty>(data), device_handle, resolution, storage, async) {}
+    OC_MAKE_CMD_COMMON_FUNC(Texture2DDownloadCommand)
 };
 
 class OC_RHI_API SynchronizeCommand final : public Command {

@@ -163,6 +163,12 @@ void CUDACommandVisitor::visit(const Texture3DUploadCommand *cmd) noexcept {
     });
 }
 
+void CUDACommandVisitor::visit(const ocarina::Texture2DUploadCommand *cmd) noexcept {
+    device_->use_context([&] {
+
+    });
+}
+
 void CUDACommandVisitor::visit(const Texture3DDownloadCommand *cmd) noexcept {
     device_->use_context([&] {
         CUDA_MEMCPY3D desc = detail::memcpy_desc(cmd);
@@ -175,6 +181,12 @@ void CUDACommandVisitor::visit(const Texture3DDownloadCommand *cmd) noexcept {
         } else {
             OC_CU_CHECK(cuMemcpy3D(&desc));
         }
+    });
+}
+
+void CUDACommandVisitor::visit(const Texture2DDownloadCommand *cmd) noexcept {
+    device_->use_context([&] {
+
     });
 }
 
@@ -197,6 +209,12 @@ void CUDACommandVisitor::visit(const Texture3DCopyCommand *cmd) noexcept {
     });
 }
 
+void CUDACommandVisitor::visit(const Texture2DCopyCommand *cmd) noexcept {
+    device_->use_context([&] {
+
+    });
+}
+
 void CUDACommandVisitor::visit(const ocarina::BufferToTexture3DCommand *cmd) noexcept {
     device_->use_context([&] {
         CUDA_MEMCPY3D copy{};
@@ -214,6 +232,12 @@ void CUDACommandVisitor::visit(const ocarina::BufferToTexture3DCommand *cmd) noe
         } else {
             OC_CU_CHECK(cuMemcpy3D(&copy));
         }
+    });
+}
+
+void CUDACommandVisitor::visit(const ocarina::BufferToTexture2DCommand *cmd) noexcept {
+    device_->use_context([&] {
+
     });
 }
 
