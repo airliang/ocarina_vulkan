@@ -170,6 +170,11 @@ handle_ty CUDADevice::create_stream() noexcept {
     });
 }
 
+handle_ty CUDADevice::create_texture2d(ocarina::uint2 res, ocarina::PixelStorage pixel_storage,
+                                       ocarina::uint level_num, const std::string &desc) noexcept {
+    return {};
+}
+
 handle_ty CUDADevice::create_texture3d(uint3 res, PixelStorage pixel_storage,
                                      uint level_num,
                                      const string &desc) noexcept {
@@ -333,6 +338,10 @@ void CUDADevice::destroy_texture3d(handle_ty handle) noexcept {
         MemoryStats::instance().on_tex_free(handle);
         ocarina::delete_with_allocator(reinterpret_cast<CUDATexture3D *>(handle));
     });
+}
+
+void CUDADevice::destroy_texture2d(ocarina::handle_ty handle) noexcept {
+    
 }
 
 void CUDADevice::destroy_stream(handle_ty handle) noexcept {

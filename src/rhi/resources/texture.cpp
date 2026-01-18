@@ -19,6 +19,14 @@ void Texture::download_immediately(void *data) const noexcept {
     download_sync(data)->accept(*device_->command_visitor());
 }
 
+Texture2D::Texture2D(Device::Impl *device, uint2 res,
+                     PixelStorage pixel_storage, uint level_num,
+                     const string &desc)
+    : Texture(device, Tag::TEXTURE2D,
+              device->create_texture2d(res, pixel_storage,
+                                       detail::compute_mip_level_num(make_uint3(res, 1), level_num), desc)) {}
+
+
 Texture3D::Texture3D(Device::Impl *device, uint3 res,
                      PixelStorage pixel_storage, uint level_num,
                      const string &desc)

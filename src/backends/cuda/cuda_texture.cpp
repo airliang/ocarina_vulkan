@@ -11,18 +11,31 @@
 
 namespace ocarina {
 
-CUDATexture3D::CUDATexture3D(CUDADevice *device, uint3 res, PixelStorage pixel_storage, uint level_num)
+CUDATexture::CUDATexture(CUDADevice *device, uint3 res, PixelStorage pixel_storage, uint level_num)
     : device_(device), res_(res), level_num_(level_num) {
     descriptor_.pixel_storage = pixel_storage;
+}
+
+CUDATexture3D::CUDATexture3D(CUDADevice *device, uint3 res, PixelStorage pixel_storage, uint level_num)
+    : CUDATexture(device, res, pixel_storage, level_num) {
     init();
 }
 
-size_t CUDATexture3D::data_size() const noexcept { return CUDADevice::size(Type::Tag::TEXTURE3D); }
-size_t CUDATexture3D::data_alignment() const noexcept { return CUDADevice::alignment(Type::Tag::TEXTURE3D); }
-size_t CUDATexture3D::max_member_size() const noexcept { return sizeof(handle_ty); }
+CUDATexture2D::CUDATexture2D(CUDADevice *device, uint3 res, PixelStorage pixel_storage, uint level_num)
+    : CUDATexture(device, res, pixel_storage, level_num) {
+    init();
+}
 
-const TextureDesc &CUDATexture3D::descriptor() const noexcept {
+size_t CUDATexture::data_size() const noexcept { return CUDADevice::size(Type::Tag::TEXTURE3D); }
+size_t CUDATexture::data_alignment() const noexcept { return CUDADevice::alignment(Type::Tag::TEXTURE3D); }
+size_t CUDATexture::max_member_size() const noexcept { return sizeof(handle_ty); }
+
+const TextureDesc &CUDATexture::descriptor() const noexcept {
     return descriptor_;
+}
+
+void CUDATexture2D::init() {
+    
 }
 
 void CUDATexture3D::init() {
@@ -76,11 +89,10 @@ void CUDATexture3D::init() {
     OC_CU_CHECK(cuTexObjectCreate(&descriptor_.texture, &res_desc, &tex_desc, nullptr));
 }
 
-CUDATexture3D::~CUDATexture3D() {
+CUDATexture::~CUDATexture() {
     OC_CU_CHECK(cuArrayDestroy(array_));
     OC_CU_CHECK(cuTexObjectDestroy(descriptor_.texture));
     OC_CU_CHECK(cuSurfObjectDestroy(descriptor_.surface));
 }
-
 
 }// namespace ocarina

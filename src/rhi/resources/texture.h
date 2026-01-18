@@ -88,6 +88,14 @@ public:
     [[nodiscard]] size_t max_member_size() const noexcept override { return impl()->max_member_size(); }
 };
 
+class OC_RHI_API Texture2D : public Texture {
+public:
+    Texture2D() = default;
+    explicit Texture2D(Device::Impl *device, uint2 res,
+                       PixelStorage pixel_storage, uint level_num = 1u,
+                       const string &desc = "");
+};
+
 class OC_RHI_API Texture3D : public Texture {
 public:
     Texture3D() = default;
@@ -104,7 +112,7 @@ public:
     [[nodiscard]] TextureOpCommand *download_sync(void *data) const noexcept override;
     [[nodiscard]] BufferToTextureCommand *copy_from_impl(ocarina::handle_ty buffer_handle,
                                                          size_t buffer_offset_in_byte,
-                                                         bool async = true) const noexcept override;
+                                                         bool async) const noexcept override;
 
     /// for dsl
     [[nodiscard]] const Expression *expression() const noexcept override;
