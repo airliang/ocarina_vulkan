@@ -164,9 +164,13 @@ public:
         make_expr<texture_type>(self()->expression()).write(elm, x, y);
     }
 
-    template<typename Val>
-    void write(const Val &elm, const Uint2 &xy) noexcept {
-        write(elm, xy.x, xy.y);
+    template<typename Target, typename XY>
+    requires((is_general_integer_vector2_v<remove_device_t<XY>>) &&
+             (is_uchar_element_expr_v<Target> || is_float_element_expr_v<Target>))
+    void write(const Target &elm, const XY &xy) noexcept {
+        [this]<typename T>(const Target &elm, const T &xy) {
+            this->write(elm, xy.x, xy.y);
+        }(elm, decay_swizzle(xy));
     }
 
     template<typename X, typename Y, typename Z, typename Val>
@@ -176,9 +180,13 @@ public:
         make_expr<texture_type>(self()->expression()).write(elm, x, y, z);
     }
 
-    template<typename Val>
-    void write(const Val &elm, const Uint3 &xyz) noexcept {
-        write(elm, xyz.x, xyz.y, xyz.z);
+    template<typename Target, typename XYZ>
+    requires((is_general_integer_vector3_v<remove_device_t<XYZ>>) &&
+             (is_uchar_element_expr_v<Target> || is_float_element_expr_v<Target>))
+    void write(const Target &elm, const XYZ &xyz) noexcept {
+        [this]<typename T>(const Target &elm, const T &xyz) {
+            this->write(elm, xyz.x, xyz.y, xyz.z);
+        }(elm, decay_swizzle(xyz));
     }
 };
 
