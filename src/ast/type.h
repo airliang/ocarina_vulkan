@@ -156,6 +156,7 @@ struct struct_member_tuple<Matrix<N, M>> {
     template<>                                                                                    \
     struct ocarina::struct_member_tuple<S> {                                                      \
         using this_type = S;                                                                      \
+        static constexpr string_view struct_name = #S;                                            \
         static constexpr string_view members[] = {MAP_LIST(OC_STRINGIFY, __VA_ARGS__)};           \
         using type = ocarina::tuple<MAP_LIST(OC_MEMBER_TYPE_MAP, ##__VA_ARGS__)>;                 \
         using offset = std::index_sequence<MAP_LIST(OC_TYPE_OFFSET_OF, ##__VA_ARGS__)>;           \

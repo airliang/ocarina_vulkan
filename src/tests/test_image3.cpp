@@ -65,6 +65,9 @@ int main(int argc, char *argv[]) {
 
     stream << bindless.upload_handles();
 
+    Ray ray;
+    cout << to_str(ray) << endl;
+
     // 我擦
     Kernel kernel = [&](Texture2DVar texture_var) {
         Float2 uv = make_float2(dispatch_idx()) / make_float2(dispatch_dim());
@@ -77,7 +80,7 @@ int main(int argc, char *argv[]) {
         Uint2 xy = dispatch_idx().xy();
         //        static_assert(is_all_integral_expr_v<Uint>);
                 auto va2l = texture_var.read<float4>(dispatch_idx().xy());
-        $info("{} {}, {} {} {} {}", uv, val);
+//        $info("{} {}, {} {} {} {}", uv, val);
     };
     auto shader = device.compile(kernel);
     stream << shader(tex).dispatch(image.resolution()) << Env::printer().retrieve()<< synchronize() << commit();
