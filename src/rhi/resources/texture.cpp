@@ -50,6 +50,11 @@ TextureOpCommand *Texture2D::download_sync(void *data) const noexcept {
     return download(data, false);
 }
 
+DataCopyCommand *Texture2D::copy_from(const ocarina::Texture &src, bool async) const noexcept {
+    return Texture2DCopyCommand::create(src.array_handle(), array_handle(),
+                                        resolution(), impl()->pixel_storage(), 0, 0, async);
+}
+
 BufferToTextureCommand *Texture2D::copy_from_impl(ocarina::handle_ty buffer_handle,
                                                   size_t buffer_offset_in_byte, bool async) const noexcept {
     return BufferToTexture2DCommand::create(buffer_handle, buffer_offset_in_byte, array_handle(),
@@ -94,6 +99,11 @@ TextureOpCommand *Texture3D::download(void *data, bool async) const noexcept {
 
 TextureOpCommand *Texture3D::download_sync(void *data) const noexcept {
     return download(data, false);
+}
+
+DataCopyCommand *Texture3D::copy_from(const ocarina::Texture &src, bool async) const noexcept {
+    return Texture3DCopyCommand::create(src.array_handle(), array_handle(),
+                                        resolution(), impl()->pixel_storage(), 0, 0, async);
 }
 
 BufferToTextureCommand *Texture3D::copy_from_impl(ocarina::handle_ty buffer_handle,

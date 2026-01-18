@@ -60,13 +60,16 @@ int main(int argc, char *argv[]) {
 
     auto bindless = device.create_bindless_array();
     auto tex = device.create_texture2d(image.resolution(), image.pixel_storage(), "test");
-    stream << tex.upload(image.pixel_ptr());
+    auto tex2 = device.create_texture2d(image.resolution(), image.pixel_storage(), "test");
+    stream << tex2.upload(image.pixel_ptr());
     bindless->emplace_texture2d(tex.tex_handle());
+    bindless->emplace_texture2d(tex2.tex_handle());
 
-    stream << bindless.upload_handles();
+    stream << bindless.upload_handles() << tex.copy_from(tex2);
 
     Ray ray;
     cout << to_str(ray) << endl;
+
 
     // 我擦
     Kernel kernel = [&](Texture2DVar texture_var) {
