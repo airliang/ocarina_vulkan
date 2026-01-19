@@ -126,6 +126,9 @@ uint64_t CUDADevice::get_aligned_memory_size(handle_ty handle) const {
 
 handle_ty CUDADevice::create_buffer(size_t size, const string &desc, bool exported) noexcept {
     OC_ASSERT(size > 0);
+    if (desc == "") {
+        OC_WARNING("buffer is no description");
+    }
     return use_context([&] {
         handle_ty handle{};
         memory_allocate(&handle, size, exported);
@@ -170,11 +173,34 @@ handle_ty CUDADevice::create_stream() noexcept {
     });
 }
 
-handle_ty CUDADevice::create_texture(uint3 res, PixelStorage pixel_storage,
-                                     uint level_num,
-                                     const string &desc) noexcept {
+handle_ty CUDADevice::create_texture2d_from_external(ocarina::uint handle,
+                                                     const string &desc) noexcept {
     return use_context([&] {
-        auto texture = ocarina::new_with_allocator<CUDATexture>(this, res, pixel_storage, level_num);
+        auto texture = ocarina::new_with_allocator<CUDATexture2D>(this, handle);
+        MemoryStats::instance().on_tex_allocate(reinterpret_cast<handle_ty>(texture),
+                                                texture->resolution(),
+                                                texture->pixel_storage(), desc);
+        return reinterpret_cast<handle_ty>(texture);
+    });
+}
+
+handle_ty CUDADevice::create_texture2d(ocarina::uint2 res, ocarina::PixelStorage pixel_storage,
+                                       ocarina::uint level_num, const std::string &desc) noexcept {
+    return use_context([&] {
+        auto texture = ocarina::new_with_allocator<CUDATexture2D>(this, make_uint3(res, 1),
+                                                                  pixel_storage, level_num);
+        MemoryStats::instance().on_tex_allocate(reinterpret_cast<handle_ty>(texture),
+                                                make_uint3(res, 1),
+                                                pixel_storage, desc);
+        return reinterpret_cast<handle_ty>(texture);
+    });
+}
+
+handle_ty CUDADevice::create_texture3d(uint3 res, PixelStorage pixel_storage,
+                                       uint level_num,
+                                       const string &desc) noexcept {
+    return use_context([&] {
+        auto texture = ocarina::new_with_allocator<CUDATexture3D>(this, res, pixel_storage, level_num);
         MemoryStats::instance().on_tex_allocate(reinterpret_cast<handle_ty>(texture),
                                                 res, pixel_storage, desc);
         return reinterpret_cast<handle_ty>(texture);
@@ -225,7 +251,6 @@ void CUDADevice::destroy_bindless_array(handle_ty handle) noexcept {
     ocarina::delete_with_allocator(reinterpret_cast<CUDABindlessArray *>(handle));
 }
 
-
 handle_ty CUDADevice::create_buffer_from_external(ocarina::uint buffer_handle) noexcept {
     CUdeviceptr handle;
     CUgraphicsResource shared_handle;
@@ -240,6 +265,25 @@ handle_ty CUDADevice::create_buffer_from_external(ocarina::uint buffer_handle) n
         shared_handle_map_.insert(make_pair(ret, shared_handle));
         return ret;
     });
+}
+
+void CUDADevice::register_shared_resource(ocarina::handle_ty handle, CUgraphicsResource resource) {
+    if (shared_handle_map_.contains(handle)) {
+        return;
+    }
+    shared_handle_map_.insert(make_pair(handle, resource));
+}
+
+void CUDADevice::unregister_shared_resource(ocarina::handle_ty handle) {
+    shared_handle_map_.erase(handle);
+}
+
+bool CUDADevice::is_external_resource(ocarina::handle_ty handle) const {
+    return shared_handle_map_.contains(handle);
+}
+
+CUgraphicsResource CUDADevice::get_shared_resource(ocarina::handle_ty handle) const {
+    return shared_handle_map_.at(handle);
 }
 
 //void CUDADevice::register_external_tex_to_buffer(handle_ty *handle, ocarina::uint tex_handle) noexcept {
@@ -328,10 +372,17 @@ void CUDADevice::destroy_shader(handle_ty handle) noexcept {
     ocarina::delete_with_allocator(reinterpret_cast<CUDAShader *>(handle));
 }
 
-void CUDADevice::destroy_texture(handle_ty handle) noexcept {
+void CUDADevice::destroy_texture3d(handle_ty handle) noexcept {
     use_context([&] {
         MemoryStats::instance().on_tex_free(handle);
-        ocarina::delete_with_allocator(reinterpret_cast<CUDATexture *>(handle));
+        ocarina::delete_with_allocator(reinterpret_cast<CUDATexture3D *>(handle));
+    });
+}
+
+void CUDADevice::destroy_texture2d(ocarina::handle_ty handle) noexcept {
+    use_context([&] {
+        MemoryStats::instance().on_tex_free(handle);
+        ocarina::delete_with_allocator(reinterpret_cast<CUDATexture2D *>(handle));
     });
 }
 

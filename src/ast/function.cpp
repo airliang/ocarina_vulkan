@@ -305,8 +305,11 @@ const RefExpr *Function::argument(const Type *type) noexcept {
         case Type::Tag::BYTE_BUFFER:
             tag = Variable::Tag::BYTE_BUFFER;
             break;
-        case Type::Tag::TEXTURE:
-            tag = Variable::Tag::TEXTURE;
+        case Type::Tag::TEXTURE3D:
+            tag = Variable::Tag::TEXTURE3D;
+            break;
+        case Type::Tag::TEXTURE2D:
+            tag = Variable::Tag::TEXTURE2D;
             break;
         case Type::Tag::ACCEL:
             tag = Variable::Tag::ACCEL;

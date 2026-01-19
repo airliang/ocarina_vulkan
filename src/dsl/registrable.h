@@ -380,13 +380,13 @@ public:
     }
 };
 
-class RegistrableTexture : public ManagedTexture, public Registrable {
+class RegistrableTexture3D : public ManagedTexture3D, public Registrable {
 public:
-    RegistrableTexture() = default;
-    explicit RegistrableTexture(BindlessArray &bindless_array) : Registrable(&bindless_array) {}
+    RegistrableTexture3D() = default;
+    explicit RegistrableTexture3D(BindlessArray &bindless_array) : Registrable(&bindless_array) {}
     void register_self() noexcept {
         if (has_registered()) {
-            bindless_array_->set_texture(index_.hv(), *this);
+            bindless_array_->set_texture3d(index_.hv(), *this);
         } else {
             index_ = bindless_array_->emplace(*this);
         }
@@ -395,7 +395,7 @@ public:
 
     void unregister() noexcept {
         if (has_registered()) {
-            (*bindless_array_)->remove_texture(index_.hv());
+            (*bindless_array_)->remove_texture3d(index_.hv());
             index_ = InvalidUI32;
         }
     }
@@ -403,20 +403,20 @@ public:
     template<typename... Args>
     OC_NODISCARD auto sample(uint channel_num, Args &&...args) const noexcept {
         if (has_registered()) {
-            return bindless_array_->tex_var(*index_).sample(channel_num, OC_FORWARD(args)...);
+            return bindless_array_->tex3d_var(*index_).sample(channel_num, OC_FORWARD(args)...);
         } else {
-            return Texture::sample(channel_num, OC_FORWARD(args)...);
+            return Texture3D::sample(channel_num, OC_FORWARD(args)...);
         }
     }
 
     template<typename Target, typename... Args>
     OC_NODISCARD auto read(Args &&...args) const noexcept {
-        return Texture::read<Target>(OC_FORWARD(args)...);
+        return Texture3D::read<Target>(OC_FORWARD(args)...);
     }
 
     template<typename... Args>
     OC_NODISCARD auto write(Args &&...args) noexcept {
-        return Texture::write(OC_FORWARD(args)...);
+        return Texture3D::write(OC_FORWARD(args)...);
     }
 };
 }// namespace ocarina

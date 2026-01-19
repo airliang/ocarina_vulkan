@@ -92,7 +92,7 @@ public:
 
     DrawCallItem get_draw_call_item(Device *device, RHIRenderPass *render_pass);
 
-    void add_texture(uint64_t name_id, Texture* texture);
+    void add_texture(uint64_t name_id, Texture3D * texture);
 
 private:
     void update_descriptor_sets(Device *device);
@@ -113,7 +113,7 @@ private:
     bool shader_dirty = false;
     RHIPipeline *pipeline_ = nullptr;
 
-    std::unordered_map<uint64_t, Texture*> textures_;
+    std::unordered_map<uint64_t, Texture3D *> textures_;
     std::vector<DescriptorSet *> descriptor_sets_;
 
     DrawCallItem item_;

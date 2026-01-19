@@ -109,7 +109,7 @@ DrawCallItem Primitive::get_draw_call_item(Device *device, RHIRenderPass *render
     return item_;
 }
 
-void Primitive::add_texture(uint64_t name_id, Texture *texture) {
+void Primitive::add_texture(uint64_t name_id, Texture3D *texture) {
     textures_.insert(std::make_pair(name_id, texture));
 
     for (auto &descriptor_set : descriptor_sets_) {

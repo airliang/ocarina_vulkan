@@ -434,12 +434,10 @@ class ByteBuffer;
 
 class ByteBufferView;
 
-class Texture;
+class Texture3D;
+class Texture2D;
 class Accel;
 class BindlessArray;
-
-template<typename T>
-class Texture2D;
 
 template<typename T>
 using is_valid_buffer_element = std::conjunction<std::negation<is_param_struct<T>>,
@@ -517,13 +515,44 @@ template<typename T>
 struct is_texture_impl : std::false_type {};
 
 template<>
-struct is_texture_impl<Texture> : std::true_type {};
+struct is_texture_impl<Texture3D> : std::true_type {};
+
+template<>
+struct is_texture_impl<Texture2D> : std::true_type {};
 
 }// namespace detail
 
 template<typename T>
 using is_texture = detail::is_texture_impl<std::remove_cvref_t<T>>;
 OC_DEFINE_TEMPLATE_VALUE(is_texture)
+
+namespace detail {
+
+template<typename T>
+struct is_texture2d_impl : std::false_type {};
+
+template<>
+struct is_texture2d_impl<Texture2D> : std::true_type {};
+
+}// namespace detail
+
+template<typename T>
+using is_texture2d = detail::is_texture2d_impl<std::remove_cvref_t<T>>;
+OC_DEFINE_TEMPLATE_VALUE(is_texture2d)
+
+namespace detail {
+
+template<typename T>
+struct is_texture3d_impl : std::false_type {};
+
+template<>
+struct is_texture3d_impl<Texture3D> : std::true_type {};
+
+}// namespace detail
+
+template<typename T>
+using is_texture3d = detail::is_texture3d_impl<std::remove_cvref_t<T>>;
+OC_DEFINE_TEMPLATE_VALUE(is_texture3d)
 
 namespace detail {
 template<typename T>

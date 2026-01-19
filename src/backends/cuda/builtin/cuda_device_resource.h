@@ -218,7 +218,8 @@ struct OCBufferDesc {
 
 struct OCBindlessArrayDesc {
     OCBufferDesc *buffer_slot;
-    cudaTextureObject_t *tex_slot{};
+    cudaTextureObject_t *tex3d_slot{};
+    cudaTextureObject_t *tex2d_slot{};
 };
 
 template<typename A, typename B>
@@ -236,125 +237,6 @@ static constexpr bool oc_is_same_v = oc_is_same<A, B>::value;
 
 using uchar = unsigned char;
 
-__device__ auto oc_tex_sample_float1(OCTextureDesc obj, oc_float u, oc_float v, oc_float w = 0.f) noexcept {
-    auto ret = tex3D<float>(obj.texture, u, v, w);
-    return ret;
-}
-__device__ auto oc_tex_sample_float2(OCTextureDesc obj, oc_float u, oc_float v, oc_float w = 0.f) noexcept {
-    auto ret = tex3D<float2>(obj.texture, u, v, w);
-    return oc_make_float2(ret.x, ret.y);
-}
-__device__ auto oc_tex_sample_float4(OCTextureDesc obj, oc_float u, oc_float v, oc_float w = 0.f) noexcept {
-    auto ret = tex3D<float4>(obj.texture, u, v, w);
-    return oc_make_float4(ret.x, ret.y, ret.z, ret.w);
-}
-
-template<oc_uint N>
-__device__ oc_array<float, N> _oc_tex_sample_float(cudaTextureObject_t texture, oc_float u, oc_float v, oc_float w = 0.f) noexcept {
-    if constexpr (N == 1) {
-        auto ret = tex3D<float>(texture, u, v, w);
-        return {ret};
-    } else if constexpr (N == 2) {
-        auto ret = tex3D<float2>(texture, u, v, w);
-        return {ret.x, ret.y};
-    } else if constexpr (N == 3) {
-        auto ret = tex3D<float4>(texture, u, v, w);
-        return {ret.x, ret.y, ret.z};
-    } else if constexpr (N == 4) {
-        auto ret = tex3D<float4>(texture, u, v, w);
-        return {ret.x, ret.y, ret.z, ret.w};
-    }
-    return {};
-}
-
-template<oc_uint N>
-__device__ oc_array<float, N> oc_tex_sample_float(OCTextureDesc obj, oc_float u, oc_float v, oc_float w = 0.f) noexcept {
-    return _oc_tex_sample_float<N>(obj.texture, u, v, w);
-}
-
-template<typename T>
-__device__ T &oc_bindless_array_buffer_read(OCBindlessArrayDesc bindless_array, oc_uint buffer_index, oc_ulong index) noexcept {
-    T *buffer = reinterpret_cast<T *>(bindless_array.buffer_slot[buffer_index].head());
-    return buffer[index];
-}
-
-__device__ oc_uint oc_bindless_array_buffer_size(OCBindlessArrayDesc bindless_array, oc_uint buffer_index) noexcept {
-    return bindless_array.buffer_slot[buffer_index].size_in_byte;
-}
-
-template<typename T>
-__device__ T &oc_bindless_array_byte_buffer_read(OCBindlessArrayDesc bindless_array, oc_uint buffer_index, oc_ulong offset) noexcept {
-    char *buffer = reinterpret_cast<char *>(bindless_array.buffer_slot[buffer_index].head());
-    return *reinterpret_cast<T *>(&buffer[offset]);
-}
-
-template<typename T>
-__device__ void oc_bindless_array_buffer_write(OCBindlessArrayDesc bindless_array, oc_uint buffer_index,
-                                               oc_ulong index, const T &val) noexcept {
-    T *buffer = reinterpret_cast<T *>(bindless_array.buffer_slot[buffer_index].head());
-    buffer[index] = val;
-}
-
-template<typename T>
-__device__ void oc_bindless_array_byte_buffer_write(OCBindlessArrayDesc bindless_array, oc_uint buffer_index,
-                                                    oc_ulong offset, const T &val) noexcept {
-    char *buffer = reinterpret_cast<char *>(bindless_array.buffer_slot[buffer_index].head());
-    T *ref = (reinterpret_cast<T *>(&(buffer[offset])));
-    ref[0] = val;
-}
-
-template<typename T>
-__device__ T &oc_byte_buffer_read(OCBuffer<oc_uchar> buffer, oc_ulong offset) noexcept {
-    T *ref = (reinterpret_cast<T *>(&(buffer.ptr[offset])));
-    return ref[0];
-}
-
-template<int N>
-__device__ auto oc_byte_buffer_read(OCBuffer<oc_uchar> buffer, oc_ulong offset) noexcept {
-    if constexpr (N == 1) {
-        oc_uint *ref = (reinterpret_cast<oc_uint *>(&(buffer.ptr[offset])));
-        return ref[0];
-    } else if constexpr (N == 2) {
-        oc_uint2 *ref = (reinterpret_cast<oc_uint2 *>(&(buffer.ptr[offset])));
-        return ref[0];
-    } else if constexpr (N == 3) {
-        oc_uint3 *ref = (reinterpret_cast<oc_uint3 *>(&(buffer.ptr[offset])));
-        return ref[0];
-    } else if constexpr (N == 4) {
-        oc_uint4 *ref = (reinterpret_cast<oc_uint4 *>(&(buffer.ptr[offset])));
-        return ref[0];
-    }
-}
-
-template<typename T>
-__device__ void oc_byte_buffer_write(OCBuffer<oc_uchar> buffer, oc_ulong offset, const T &val) noexcept {
-    T *ref = (reinterpret_cast<T *>(&(buffer.ptr[offset])));
-    ref[0] = val;
-}
-
-template<typename T>
-__device__ T oc_bindless_array_tex_sample(OCBindlessArrayDesc bindless_array, oc_uint tex_index,
-                                          oc_float u, oc_float v, oc_float w = 0.f) noexcept {
-    cudaTextureObject_t texture = bindless_array.tex_slot[tex_index];
-    if constexpr (oc_is_same_v<T, oc_float>) {
-        float ret = tex3D<float>(texture, u, v, w);
-        return ret;
-    } else if constexpr (oc_is_same_v<T, oc_float2>) {
-        float2 ret = tex3D<float2>(texture, u, v, w);
-        return oc_make_float2(ret.x, ret.y);
-    } else if constexpr (oc_is_same_v<T, oc_float4>) {
-        float4 ret = tex3D<float4>(texture, u, v, w);
-        return oc_make_float4(ret.x, ret.y, ret.z, ret.w);
-    }
-    return T{};
-}
-
-template<oc_uint N>
-__device__ oc_array<float, N> oc_bindless_array_tex_sample(OCBindlessArrayDesc bindless_array, oc_uint tex_index,
-                                                           oc_float u, oc_float v, oc_float w = 0.f) noexcept {
-    cudaTextureObject_t texture = bindless_array.tex_slot[tex_index];
-    return _oc_tex_sample_float<N>(texture, u, v, w);
-}
 
 template<typename T>
 struct oc_type {
@@ -416,6 +298,127 @@ using oc_type_element_t = typename oc_type<T>::element_type;
 #undef OC_MAKE_TYPE
 #undef OC_MAKE_TYPE_DIM
 
+
+template<typename T>
+__device__ T &oc_bindless_array_buffer_read(OCBindlessArrayDesc bindless_array, oc_uint buffer_index, oc_ulong index) noexcept {
+    T *buffer = reinterpret_cast<T *>(bindless_array.buffer_slot[buffer_index].head());
+    return buffer[index];
+}
+
+__device__ oc_uint oc_bindless_array_buffer_size(OCBindlessArrayDesc bindless_array, oc_uint buffer_index) noexcept {
+    return bindless_array.buffer_slot[buffer_index].size_in_byte;
+}
+
+template<typename T>
+__device__ T &oc_bindless_array_byte_buffer_read(OCBindlessArrayDesc bindless_array, oc_uint buffer_index, oc_ulong offset) noexcept {
+    char *buffer = reinterpret_cast<char *>(bindless_array.buffer_slot[buffer_index].head());
+    return *reinterpret_cast<T *>(&buffer[offset]);
+}
+
+template<typename T>
+__device__ void oc_bindless_array_buffer_write(OCBindlessArrayDesc bindless_array, oc_uint buffer_index,
+                                               oc_ulong index, const T &val) noexcept {
+    T *buffer = reinterpret_cast<T *>(bindless_array.buffer_slot[buffer_index].head());
+    buffer[index] = val;
+}
+
+template<typename T>
+__device__ void oc_bindless_array_byte_buffer_write(OCBindlessArrayDesc bindless_array, oc_uint buffer_index,
+                                                    oc_ulong offset, const T &val) noexcept {
+    char *buffer = reinterpret_cast<char *>(bindless_array.buffer_slot[buffer_index].head());
+    T *ref = (reinterpret_cast<T *>(&(buffer[offset])));
+    ref[0] = val;
+}
+
+template<typename T>
+__device__ T &oc_byte_buffer_read(OCBuffer<oc_uchar> buffer, oc_ulong offset) noexcept {
+    T *ref = (reinterpret_cast<T *>(&(buffer.ptr[offset])));
+    return ref[0];
+}
+
+template<int N>
+__device__ auto oc_byte_buffer_read(OCBuffer<oc_uchar> buffer, oc_ulong offset) noexcept {
+    if constexpr (N == 1) {
+        oc_uint *ref = (reinterpret_cast<oc_uint *>(&(buffer.ptr[offset])));
+        return ref[0];
+    } else if constexpr (N == 2) {
+        oc_uint2 *ref = (reinterpret_cast<oc_uint2 *>(&(buffer.ptr[offset])));
+        return ref[0];
+    } else if constexpr (N == 3) {
+        oc_uint3 *ref = (reinterpret_cast<oc_uint3 *>(&(buffer.ptr[offset])));
+        return ref[0];
+    } else if constexpr (N == 4) {
+        oc_uint4 *ref = (reinterpret_cast<oc_uint4 *>(&(buffer.ptr[offset])));
+        return ref[0];
+    }
+}
+
+template<typename T>
+__device__ void oc_byte_buffer_write(OCBuffer<oc_uchar> buffer, oc_ulong offset, const T &val) noexcept {
+    T *ref = (reinterpret_cast<T *>(&(buffer.ptr[offset])));
+    ref[0] = val;
+}
+
+template<oc_uint N>
+__device__ oc_array<float, N> oc_tex3d_sample_float_impl(cudaTextureObject_t texture, oc_float u, oc_float v, oc_float w = 0.f) noexcept {
+    if constexpr (N == 1) {
+        auto ret = tex3D<float>(texture, u, v, w);
+        return {ret};
+    } else if constexpr (N == 2) {
+        auto ret = tex3D<float2>(texture, u, v, w);
+        return {ret.x, ret.y};
+    } else if constexpr (N == 3) {
+        auto ret = tex3D<float4>(texture, u, v, w);
+        return {ret.x, ret.y, ret.z};
+    } else if constexpr (N == 4) {
+        auto ret = tex3D<float4>(texture, u, v, w);
+        return {ret.x, ret.y, ret.z, ret.w};
+    }
+    return {};
+}
+
+template<oc_uint N>
+__device__ oc_array<float, N> oc_tex3d_sample_float(OCTextureDesc obj, oc_float u, oc_float v, oc_float w = 0.f) noexcept {
+    return oc_tex3d_sample_float_impl<N>(obj.texture, u, v, w);
+}
+
+template<oc_uint N>
+__device__ oc_array<float, N> oc_bindless_array_tex3d_sample(OCBindlessArrayDesc bindless_array, oc_uint tex_index,
+                                                           oc_float u, oc_float v, oc_float w = 0.f) noexcept {
+    cudaTextureObject_t texture = bindless_array.tex3d_slot[tex_index];
+    return oc_tex3d_sample_float_impl<N>(texture, u, v, w);
+}
+
+template<oc_uint N>
+__device__ oc_array<float, N> oc_tex2d_sample_float_impl(cudaTextureObject_t texture, oc_float u, oc_float v) noexcept {
+    if constexpr (N == 1) {
+        auto ret = tex2D<float>(texture, u, v);
+        return {ret};
+    } else if constexpr (N == 2) {
+        auto ret = tex2D<float2>(texture, u, v);
+        return {ret.x, ret.y};
+    } else if constexpr (N == 3) {
+        auto ret = tex2D<float4>(texture, u, v);
+        return {ret.x, ret.y, ret.z};
+    } else if constexpr (N == 4) {
+        auto ret = tex2D<float4>(texture, u, v);
+        return {ret.x, ret.y, ret.z, ret.w};
+    }
+    return {};
+}
+
+template<oc_uint N>
+__device__ oc_array<float, N> oc_tex2d_sample_float(OCTextureDesc obj, oc_float u, oc_float v) noexcept {
+    return oc_tex2d_sample_float_impl<N>(obj.texture, u, v);
+}
+
+template<oc_uint N>
+__device__ oc_array<float, N> oc_bindless_array_tex2d_sample(OCBindlessArrayDesc bindless_array, oc_uint tex_index,
+                                                           oc_float u, oc_float v) noexcept {
+    cudaTextureObject_t texture = bindless_array.tex2d_slot[tex_index];
+    return oc_tex2d_sample_float_impl<N>(texture, u, v);
+}
+
 template<typename Dst, typename Src>
 __device__ auto oc_convert_scalar(const Src &src) noexcept {
     static_assert(oc_type_dim<Src> == 1 && oc_type_dim<Dst> == 1);
@@ -458,7 +461,7 @@ __device__ auto oc_fit(const Src &src) noexcept {
 }
 
 template<typename T>
-__device__ T oc_texture_read(OCTextureDesc obj, oc_uint x, oc_uint y, oc_uint z = 0) noexcept {
+__device__ T oc_tex3d_read(OCTextureDesc obj, oc_uint x, oc_uint y, oc_uint z = 0) noexcept {
     if constexpr (oc_is_same_v<T, uchar> || oc_is_same_v<T, float>) {
         switch (obj.pixel_storage) {
             case OCPixelStorage::BYTE1: {
@@ -507,7 +510,56 @@ __device__ T oc_texture_read(OCTextureDesc obj, oc_uint x, oc_uint y, oc_uint z 
 }
 
 template<typename T>
-__device__ void oc_texture_write(OCTextureDesc obj, T val, oc_uint x, oc_uint y, oc_uint z = 0) noexcept {
+__device__ T oc_tex2d_read(OCTextureDesc obj, oc_uint x, oc_uint y) noexcept {
+    if constexpr (oc_is_same_v<T, uchar> || oc_is_same_v<T, float>) {
+        switch (obj.pixel_storage) {
+            case OCPixelStorage::BYTE1: {
+                auto v = surf2Dread<uchar>(obj.surface, x * sizeof(oc_uchar), y, cudaBoundaryModeZero);
+                return oc_convert_scalar<T>(v);
+            }
+            case OCPixelStorage::FLOAT1: {
+                auto v = surf2Dread<float>(obj.surface, x * sizeof(float), y, cudaBoundaryModeZero);
+                return oc_convert_scalar<T>(v);
+            }
+        }
+    } else if constexpr (oc_is_same_v<T, oc_uchar2> || oc_is_same_v<T, oc_float2>) {
+        switch (obj.pixel_storage) {
+            case OCPixelStorage::BYTE2: {
+                auto v = surf2Dread<uchar2>(obj.surface, x * sizeof(uchar2), y, cudaBoundaryModeZero);
+                return oc_convert_vector<T>(oc_make_uchar2(v.x, v.y));
+            }
+            case OCPixelStorage::FLOAT2: {
+                auto v = surf2Dread<float2>(obj.surface, x * sizeof(float2), y, cudaBoundaryModeZero);
+                return oc_convert_vector<T>(oc_make_float2(v.x, v.y));
+            }
+        }
+    } else if constexpr (oc_is_same_v<T, oc_uchar4> || oc_is_same_v<T, oc_float4>) {
+        switch (obj.pixel_storage) {
+            case OCPixelStorage::BYTE4: {
+                auto v = surf2Dread<uchar4>(obj.surface, x * sizeof(uchar4), y, cudaBoundaryModeZero);
+                return oc_convert_vector<T>(oc_make_uchar4(v.x, v.y, v.z, v.w));
+            }
+            case OCPixelStorage::FLOAT4: {
+                auto v = surf2Dread<float4>(obj.surface, x * sizeof(float4), y, cudaBoundaryModeZero);
+                return oc_convert_vector<T>(oc_make_float4(v.x, v.y, v.z, v.w));
+            }
+        }
+    } else if constexpr (oc_is_same_v<T, oc_uint>) {
+        auto v = surf2Dread<unsigned int>(obj.surface, x * sizeof(unsigned int), y, cudaBoundaryModeZero);
+        return v;
+    } else if constexpr (oc_is_same_v<T, oc_uint2>) {
+        auto v = surf2Dread<uint2>(obj.surface, x * sizeof(uint2), y, cudaBoundaryModeZero);
+        return oc_make_uint2(v.x, v.y);
+    } else if constexpr (oc_is_same_v<T, oc_uint4>) {
+        auto v = surf2Dread<uint4>(obj.surface, x * sizeof(uint4), y, cudaBoundaryModeZero);
+        return oc_make_uint4(v.x, v.y, v.z, v.w);
+    }
+    assert(0);
+    __builtin_unreachable();
+}
+
+template<typename T>
+__device__ void oc_tex3d_write(OCTextureDesc obj, T val, oc_uint x, oc_uint y, oc_uint z = 0) noexcept {
     if constexpr (oc_is_same_v<T, uchar> || oc_is_same_v<T, float>) {
         switch (obj.pixel_storage) {
             case OCPixelStorage::BYTE1: {
@@ -555,6 +607,62 @@ __device__ void oc_texture_write(OCTextureDesc obj, T val, oc_uint x, oc_uint y,
         return;
     } else if constexpr (oc_is_same_v<T, oc_uint4>) {
         surf3Dwrite(make_uint4(val.x, val.y, val.z, val.w), obj.surface, x * sizeof(uint4), y, z, cudaBoundaryModeZero);
+        return;
+    }
+    assert(0);
+    __builtin_unreachable();
+}
+
+
+template<typename T>
+__device__ void oc_tex2d_write(OCTextureDesc obj, T val, oc_uint x, oc_uint y) noexcept {
+    if constexpr (oc_is_same_v<T, uchar> || oc_is_same_v<T, float>) {
+        switch (obj.pixel_storage) {
+            case OCPixelStorage::BYTE1: {
+                uchar v = oc_convert_scalar<uchar>(val);
+                surf2Dwrite(v, obj.surface, x * sizeof(uchar), y, cudaBoundaryModeZero);
+                return;
+            }
+            case OCPixelStorage::FLOAT1: {
+                oc_float v = oc_convert_vector<float>(val);
+                surf2Dwrite(v, obj.surface, x * sizeof(float), y, cudaBoundaryModeZero);
+                return;
+            }
+        }
+    } else if constexpr (oc_is_same_v<T, oc_uchar2> || oc_is_same_v<T, oc_float2>) {
+        switch (obj.pixel_storage) {
+            case OCPixelStorage::BYTE2: {
+                oc_uchar2 v = oc_convert_vector<oc_uchar2>(val);
+                surf2Dwrite(make_uchar2(v.x, v.y), obj.surface, x * sizeof(uchar2), y, cudaBoundaryModeZero);
+                return;
+            }
+            case OCPixelStorage::FLOAT2: {
+                oc_float2 v = oc_convert_vector<oc_float2>(val);
+                surf2Dwrite(make_float2(v.x, v.y), obj.surface, x * sizeof(float2), y, cudaBoundaryModeZero);
+                return;
+            }
+        }
+    } else if constexpr (oc_is_same_v<T, oc_uchar4> || oc_is_same_v<T, oc_float4>) {
+        switch (obj.pixel_storage) {
+            case OCPixelStorage::BYTE4: {
+                oc_uchar4 v = oc_convert_vector<oc_uchar4>(val);
+                surf2Dwrite(make_uchar4(v.x, v.y, v.z, v.w), obj.surface, x * sizeof(uchar4), y, cudaBoundaryModeZero);
+                return;
+            }
+            case OCPixelStorage::FLOAT4: {
+                oc_float4 v = oc_convert_vector<oc_float4>(val);
+                surf2Dwrite(make_float4(v.x, v.y, v.z, v.w), obj.surface, x * sizeof(float4), y, cudaBoundaryModeZero);
+                return;
+            }
+        }
+    } else if constexpr (oc_is_same_v<T, oc_uint>) {
+        surf2Dwrite(val, obj.surface, x * sizeof(oc_uint), y, cudaBoundaryModeZero);
+        return;
+    } else if constexpr (oc_is_same_v<T, oc_uint2>) {
+        surf2Dwrite(make_uint2(val.x, val.y), obj.surface, x * sizeof(uint2), y, cudaBoundaryModeZero);
+        return;
+    } else if constexpr (oc_is_same_v<T, oc_uint4>) {
+        surf2Dwrite(make_uint4(val.x, val.y, val.z, val.w), obj.surface, x * sizeof(uint4), y, cudaBoundaryModeZero);
         return;
     }
     assert(0);

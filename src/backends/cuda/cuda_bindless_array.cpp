@@ -9,46 +9,32 @@ namespace ocarina {
 
 CUDABindlessArray::CUDABindlessArray(CUDADevice *device)
     : device_(device), buffers_(device, c_max_slot_num, "CUDABindlessArray::buffers_"),
-      textures_(device, c_max_slot_num, "CUDABindlessArray::textures_") {
+      tex3ds_(device, c_max_slot_num, "CUDABindlessArray::tex3ds_"),
+      tex2ds_(device, c_max_slot_num, "CUDABindlessArray::tex2ds_") {
     slot_soa_.buffer_slot = buffers_.handle();
-    slot_soa_.tex_slot = textures_.handle();
-}
-
-size_t CUDABindlessArray::emplace_buffer(handle_ty handle, uint offset_in_byte, size_t size_in_byte) noexcept {
-    auto ret = buffers_.host_buffer().size();
-    buffers_.emplace_back(reinterpret_cast<std::byte *>(handle), offset_in_byte, size_in_byte);
-    OC_ERROR_IF(ret >= c_max_slot_num, ocarina::format("slot_size is {}, buffer_num is {}", c_max_slot_num, ret));
-    return ret;
-}
-
-size_t CUDABindlessArray::emplace_texture(handle_ty handle) noexcept {
-    auto ret = textures_.host_buffer().size();
-    textures_.push_back(handle);
-    OC_ERROR_IF(ret >= c_max_slot_num, ocarina::format("slot_size is {}, tex_num is {}", c_max_slot_num, ret));
-    return ret;
-}
-
-void CUDABindlessArray::prepare_slotSOA(Device &device) noexcept {
-    buffers_.reset_device_buffer_immediately(device);
-    textures_.reset_device_buffer_immediately(device);
-    slot_soa_.buffer_slot = buffers_.handle();
-    slot_soa_.tex_slot = textures_.handle();
+    slot_soa_.tex3d_slot = tex3ds_.handle();
+    slot_soa_.tex2d_slot = tex2ds_.handle();
 }
 
 CommandList CUDABindlessArray::update_slotSOA(bool async) noexcept {
     CommandList ret;
-    append(ret, buffers_.device_buffer().reallocate(buffers_.host_buffer().size(), async));
-    append(ret, textures_.device_buffer().reallocate(textures_.host_buffer().size(), async));
-    ret.push_back(HostFunctionCommand::create([&]() {
-        slot_soa_.buffer_slot = buffers_.handle();
-        slot_soa_.tex_slot = textures_.handle();
-    },
-                                              async));
+#define OC_MAKE_REALLOCATE_CMD(arg)                                                            \
+    if (buffers_.device_buffer().size() > c_max_slot_num) {                                    \
+        append(ret, arg##s_.device_buffer().reallocate(buffers_.host_buffer().size(), async)); \
+        ret.push_back(HostFunctionCommand::create(async, [&]() {                               \
+            slot_soa_.arg##_slot = arg##s_.handle();                                           \
+        }));                                                                                   \
+    }
+
+    OC_MAKE_REALLOCATE_CMD(buffer)
+    OC_MAKE_REALLOCATE_CMD(tex2d)
+    OC_MAKE_REALLOCATE_CMD(tex3d)
+
+#undef OC_MAKE_REALLOCATE_CMD
     return ret;
 }
 
 namespace detail {
-
 template<typename T>
 void remove_by_index(vector<T> &v, handle_ty index) noexcept {
     auto iter = v.begin();
@@ -59,15 +45,17 @@ void remove_by_index(vector<T> &v, handle_ty index) noexcept {
         }
     }
 }
-
 }// namespace detail
+
+size_t CUDABindlessArray::emplace_buffer(handle_ty handle, uint offset_in_byte, size_t size_in_byte) noexcept {
+    auto ret = buffers_.host_buffer().size();
+    buffers_.emplace_back(reinterpret_cast<std::byte *>(handle), offset_in_byte, size_in_byte);
+    OC_ERROR_IF(ret >= c_max_slot_num, ocarina::format("slot_size is {}, buffer_num is {}", c_max_slot_num, ret));
+    return ret;
+}
 
 void CUDABindlessArray::remove_buffer(handle_ty index) noexcept {
     detail::remove_by_index(buffers_.host_buffer(), index);
-}
-
-void CUDABindlessArray::remove_texture(handle_ty index) noexcept {
-    detail::remove_by_index(textures_.host_buffer(), index);
 }
 
 void CUDABindlessArray::set_buffer(ocarina::handle_ty index, ocarina::handle_ty handle,
@@ -77,37 +65,98 @@ void CUDABindlessArray::set_buffer(ocarina::handle_ty index, ocarina::handle_ty 
                                         offset_in_byte, size_in_byte};
 }
 
-ByteBufferDesc CUDABindlessArray::buffer_view(ocarina::uint index) const noexcept {
-    return buffers_.host_buffer().at(index);
-}
-
-void CUDABindlessArray::set_texture(ocarina::handle_ty index, ocarina::handle_ty handle) noexcept {
-    OC_ASSERT(index < textures_.host_buffer().size());
-    textures_.host_buffer().at(index) = handle;
-}
-
 size_t CUDABindlessArray::buffer_num() const noexcept {
     return buffers_.host_buffer().size();
 }
 
-size_t CUDABindlessArray::texture_num() const noexcept {
-    return textures_.host_buffer().size();
-}
-
-size_t CUDABindlessArray::buffer_slots_size() const noexcept {
+size_t CUDABindlessArray::buffer_slot_size() const noexcept {
     return sizeof(ByteBufferDesc) * c_max_slot_num;
-}
-
-size_t CUDABindlessArray::tex_slots_size() const noexcept {
-    return sizeof(CUtexObject) * c_max_slot_num;
-}
-
-BufferUploadCommand *CUDABindlessArray::upload_texture_handles(bool async) const noexcept {
-    return textures_.upload(async);
 }
 
 BufferUploadCommand *CUDABindlessArray::upload_buffer_handles(bool async) const noexcept {
     return buffers_.upload(async);
+}
+
+size_t CUDABindlessArray::emplace_texture3d(handle_ty handle) noexcept {
+    auto ret = tex3ds_.host_buffer().size();
+    tex3ds_.push_back(handle);
+    OC_ERROR_IF(ret >= c_max_slot_num, ocarina::format("slot_size is {}, tex_num is {}", c_max_slot_num, ret));
+    return ret;
+}
+
+size_t CUDABindlessArray::emplace_texture3d(ocarina::TextureDesc desc) noexcept {
+    auto ret = tex3ds_.host_buffer().size();
+//    tex3ds_.push_back(handle);
+    OC_ERROR_IF(ret >= c_max_slot_num, ocarina::format("slot_size is {}, tex_num is {}", c_max_slot_num, ret));
+    return ret;
+}
+
+void CUDABindlessArray::remove_texture3d(handle_ty index) noexcept {
+    detail::remove_by_index(tex3ds_.host_buffer(), index);
+}
+
+void CUDABindlessArray::set_texture3d(ocarina::handle_ty index, ocarina::handle_ty handle) noexcept {
+    OC_ASSERT(index < tex3ds_.host_buffer().size());
+    tex3ds_.host_buffer().at(index) = handle;
+}
+
+void CUDABindlessArray::set_texture3d(ocarina::handle_ty index, ocarina::TextureDesc desc) noexcept {
+    OC_ASSERT(index < tex3ds_.host_buffer().size());
+}
+
+size_t CUDABindlessArray::texture3d_num() const noexcept {
+    return tex3ds_.host_buffer().size();
+}
+
+size_t CUDABindlessArray::tex3d_slot_size() const noexcept {
+    return sizeof(CUtexObject) * c_max_slot_num;
+}
+
+BufferUploadCommand *CUDABindlessArray::upload_texture3d_handles(bool async) const noexcept {
+    return tex3ds_.upload(async);
+}
+
+size_t CUDABindlessArray::emplace_texture2d(handle_ty handle) noexcept {
+    auto ret = tex2ds_.host_buffer().size();
+    tex2ds_.push_back(handle);
+    OC_ERROR_IF(ret >= c_max_slot_num, ocarina::format("slot_size is {}, tex_num is {}", c_max_slot_num, ret));
+    return ret;
+}
+
+size_t CUDABindlessArray::emplace_texture2d(ocarina::TextureDesc desc) noexcept {
+    auto ret = tex2ds_.host_buffer().size();
+//    tex2ds_.push_back(handle);
+//    OC_ERROR_IF(ret >= c_max_slot_num, ocarina::format("slot_size is {}, tex_num is {}", c_max_slot_num, ret));
+    return ret;
+}
+
+void CUDABindlessArray::remove_texture2d(handle_ty index) noexcept {
+    detail::remove_by_index(tex2ds_.host_buffer(), index);
+}
+
+void CUDABindlessArray::set_texture2d(ocarina::handle_ty index, ocarina::handle_ty handle) noexcept {
+    OC_ASSERT(index < tex2ds_.host_buffer().size());
+    tex2ds_.host_buffer().at(index) = handle;
+}
+
+void CUDABindlessArray::set_texture2d(ocarina::handle_ty index, ocarina::TextureDesc desc) noexcept {
+    OC_ASSERT(index < tex2ds_.host_buffer().size());
+}
+
+size_t CUDABindlessArray::tex2d_slot_size() const noexcept {
+    return sizeof(CUtexObject) * c_max_slot_num;
+}
+
+size_t CUDABindlessArray::texture2d_num() const noexcept {
+    return tex2ds_.host_buffer().size();
+}
+
+BufferUploadCommand *CUDABindlessArray::upload_texture2d_handles(bool async) const noexcept {
+    return tex2ds_.upload(async);
+}
+
+ByteBufferDesc CUDABindlessArray::buffer_view(ocarina::uint index) const noexcept {
+    return buffers_.host_buffer().at(index);
 }
 
 }// namespace ocarina

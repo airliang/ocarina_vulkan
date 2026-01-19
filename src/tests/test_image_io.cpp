@@ -24,11 +24,11 @@ int main(int argc, char *argv[]) {
     auto path2 = R"(D:\work\engine\Vision\gallery\cbox-sss.jpg)";
     auto image_io = Image::load(path1, LINEAR);
 
-    auto image = device.create_texture(image_io.resolution(), image_io.pixel_storage());
-    auto image_out = device.create_texture(image_io.resolution(), image_io.pixel_storage());
+    auto image = device.create_texture3d(image_io.resolution(), image_io.pixel_storage());
+    auto image_out = device.create_texture3d(image_io.resolution(), image_io.pixel_storage());
     stream << image.upload_sync(image_io.pixel_ptr());
 
-    Kernel kernel = [&](TextureVar img) {
+    Kernel kernel = [&](Texture3DVar img) {
         uint2 res = image_io.resolution();
         int r = 5;
         Var p = img.sample(4, 0.6f,0.6f).as_vec4();

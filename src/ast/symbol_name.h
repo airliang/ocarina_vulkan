@@ -59,8 +59,10 @@ template<typename T>
             return "b";
         case Tag::BYTE_BUFFER:
             return "bb";
-        case Tag::TEXTURE:
-            return "t";
+        case Tag::TEXTURE3D:
+            return "t3d";
+        case Tag::TEXTURE2D:
+            return "t2d";
         case Tag::ACCEL:
             return "acc";
         case Tag::BINDLESS_ARRAY:

@@ -161,11 +161,7 @@ void CUDACodegen::visit(const CallExpr *expr) noexcept {
                 expr->template_arg(0));
             break;
         }
-        case CallOp::BINDLESS_ARRAY_TEX_SAMPLE: {
-            uint N = std::get<uint>(expr->template_arg(0));
-            current_scratch() << "oc_bindless_array_tex_sample<" << N << ">";
-            break;
-        }
+
         case CallOp::UNREACHABLE: current_scratch() << "__builtin_unreachable"; break;
         case CallOp::MAKE_RAY: OC_GEN_FUNC_NAME(make_ray); break;
         case CallOp::TRACE_OCCLUSION: OC_GEN_FUNC_NAME(trace_occlusion); break;
@@ -175,21 +171,42 @@ void CUDACodegen::visit(const CallExpr *expr) noexcept {
         case CallOp::IS_NULL_TEXTURE: OC_GEN_FUNC_NAME(is_null_texture); break;
         case CallOp::BUFFER_SIZE: OC_GEN_FUNC_NAME(buffer_size); break;
         case CallOp::BYTE_BUFFER_SIZE: OC_GEN_FUNC_NAME(buffer_size); break;
-        case CallOp::TEX_SAMPLE: {
+
+        case CallOp::BINDLESS_ARRAY_TEX3D_SAMPLE: {
             uint N = std::get<uint>(expr->template_arg(0));
-            current_scratch() << "oc_tex_sample_float<" << N << ">";
+            current_scratch() << "oc_bindless_array_tex3d_sample<" << N << ">";
             break;
         }
-        case CallOp::TEX_READ: {
+        case CallOp::TEX3D_SAMPLE: {
+            uint N = std::get<uint>(expr->template_arg(0));
+            current_scratch() << "oc_tex3d_sample_float<" << N << ">";
+            break;
+        }
+        case CallOp::TEX3D_READ: {
             auto output_type = expr->template_arg(0);
-            current_scratch() << ocarina::format("oc_texture_read<oc_{}>",
+            current_scratch() << ocarina::format("oc_tex3d_read<oc_{}>",
                                                  std::get<const Type *>(output_type)->name());
             break;
         }
-        case CallOp::TEX_WRITE: {
-            current_scratch() << "oc_texture_write";
+        case CallOp::TEX3D_WRITE: OC_GEN_FUNC_NAME(tex3d_write); break;
+
+        case CallOp::BINDLESS_ARRAY_TEX2D_SAMPLE: {
+            uint N = std::get<uint>(expr->template_arg(0));
+            current_scratch() << "oc_bindless_array_tex2d_sample<" << N << ">";
             break;
         }
+        case CallOp::TEX2D_SAMPLE: {
+            uint N = std::get<uint>(expr->template_arg(0));
+            current_scratch() << "oc_tex2d_sample_float<" << N << ">";
+            break;
+        }
+        case CallOp::TEX2D_READ: {
+            auto output_type = expr->template_arg(0);
+            current_scratch() << ocarina::format("oc_tex2d_read<oc_{}>",
+                                                 std::get<const Type *>(output_type)->name());
+            break;
+        }
+        case CallOp::TEX2D_WRITE: OC_GEN_FUNC_NAME(tex2d_write); break;
         case CallOp::COUNT: break;
         default: OC_ASSERT(0); break;
     }
@@ -404,7 +421,10 @@ void CUDACodegen::_emit_type_name(const Type *type) noexcept {
             case Type::Tag::BYTE_BUFFER:
                 current_scratch() << "OCBuffer<oc_uchar>";
                 break;
-            case Type::Tag::TEXTURE:
+            case Type::Tag::TEXTURE3D:
+                current_scratch() << "OCTextureDesc";
+                break;
+            case Type::Tag::TEXTURE2D:
                 current_scratch() << "OCTextureDesc";
                 break;
             case Type::Tag::BINDLESS_ARRAY:

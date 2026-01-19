@@ -27,8 +27,8 @@ struct prototype_to_shader_invocation<Buffer<T>> {
 };
 
 template<>
-struct prototype_to_shader_invocation<Texture> {
-    using type = const Texture &;
+struct prototype_to_shader_invocation<Texture3D> {
+    using type = const Texture3D &;
 };
 
 template<>
@@ -68,7 +68,8 @@ private:
         push_memory_block(buffer.memory_block());
     }
 
-    void _encode_texture(const Texture &texture) noexcept;
+    void _encode_texture3d(const Texture3D &texture) noexcept;
+    void _encode_texture2d(const Texture2D &texture) noexcept;
     void _encode_bindless_array(const BindlessArray &bindless_array) noexcept;
     void _encode_accel(const Accel &accel) noexcept {
         push_memory_block(accel.memory_block());
@@ -140,8 +141,10 @@ public:
             });
         } else if constexpr (is_buffer_v<T> || is_buffer_proxy_v<T>) {
             _encode_buffer(OC_FORWARD(arg));
-        } else if constexpr (is_texture_v<T>) {
-            _encode_texture(OC_FORWARD(arg));
+        } else if constexpr (is_texture3d_v<T>) {
+            _encode_texture3d(OC_FORWARD(arg));
+        } else if constexpr (is_texture2d_v<T>) {
+            _encode_texture2d(OC_FORWARD(arg));
         } else if constexpr (is_accel_v<T>) {
             _encode_accel(OC_FORWARD(arg));
         } else if constexpr (is_bindless_array_v<T>) {

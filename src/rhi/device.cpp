@@ -29,16 +29,25 @@ BindlessArray Device::create_bindless_array() const noexcept {
     return create<BindlessArray>();
 }
 
-Texture Device::create_texture(uint3 res, PixelStorage storage, const string &desc) const noexcept {
-    return create<Texture>(res, storage, 1, desc);
+Texture3D Device::create_texture3d(uint3 res, PixelStorage storage, const string &desc) const noexcept {
+    return create<Texture3D>(res, storage, 1, desc);
 }
 
-Texture Device::create_texture(uint2 res, PixelStorage storage, const string &desc) const noexcept {
-    return create_texture(make_uint3(res, 1u), storage, desc);
+Texture3D Device::create_texture3d(uint2 res, PixelStorage storage, const string &desc) const noexcept {
+    return create_texture3d(make_uint3(res, 1u), storage, desc);
 }
 
-Texture Device::create_texture(Image *image_resource, const TextureViewCreation &texture_view) const noexcept {
-    Texture tex(impl_.get(), image_resource, texture_view);
+Texture2D Device::create_texture2d(ocarina::uint2 res, ocarina::PixelStorage storage,
+                                   const std::string &desc) const noexcept {
+    return create<Texture2D>(res, storage, 1, desc);
+}
+
+Texture2D Device::create_texture2d_from_external(ocarina::uint external_handle, const string &desc) const noexcept {
+    return create<Texture2D>(external_handle);
+}
+
+Texture3D Device::create_texture(Image *image_resource, const TextureViewCreation &texture_view) const noexcept {
+    Texture3D tex(impl_.get(), image_resource, texture_view);
     return tex;
 }
 

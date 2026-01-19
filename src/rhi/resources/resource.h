@@ -16,7 +16,8 @@ class OC_RHI_API RHIResource : public concepts::Noncopyable {
 public:
     enum Tag : uint8_t {
         BUFFER,
-        TEXTURE,
+        TEXTURE3D,
+        TEXTURE2D,
         BINDLESS_ARRAY,
         STREAM,
         SHADER,
@@ -48,6 +49,7 @@ public:
 
     RHIResource &operator=(RHIResource &&other) noexcept {
         if (&other == this) { return *this; }
+        destroy();
         tag_ = other.tag_;
         device_ = other.device_;
         handle_ = other.handle_;

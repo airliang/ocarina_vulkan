@@ -42,9 +42,6 @@ public:
     [[nodiscard]] handle_ty array_handle() const noexcept override {
         return reinterpret_cast<handle_ty>(image_);
     }
-    [[nodiscard]] const handle_ty *array_handle_ptr() const noexcept override {
-        return reinterpret_cast<handle_ty *>(image_);
-    }
     [[nodiscard]] handle_ty tex_handle() const noexcept override {
         return reinterpret_cast<handle_ty>(image_);
     }

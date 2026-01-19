@@ -156,6 +156,7 @@ struct struct_member_tuple<Matrix<N, M>> {
     template<>                                                                                    \
     struct ocarina::struct_member_tuple<S> {                                                      \
         using this_type = S;                                                                      \
+        static constexpr string_view struct_name = #S;                                            \
         static constexpr string_view members[] = {MAP_LIST(OC_STRINGIFY, __VA_ARGS__)};           \
         using type = ocarina::tuple<MAP_LIST(OC_MEMBER_TYPE_MAP, ##__VA_ARGS__)>;                 \
         using offset = std::index_sequence<MAP_LIST(OC_TYPE_OFFSET_OF, ##__VA_ARGS__)>;           \
@@ -305,7 +306,8 @@ class TypeRegistry;
 
 struct BindlessArrayDesc {
     handle_ty buffer_slot;
-    handle_ty tex_slot;
+    handle_ty tex3d_slot;
+    handle_ty tex2d_slot;
 };
 
 struct TextureDesc {
@@ -388,7 +390,8 @@ public:
 
         BUFFER,
         BYTE_BUFFER,
-        TEXTURE,
+        TEXTURE3D,
+        TEXTURE2D,
         BINDLESS_ARRAY,
         ACCEL,
 
@@ -471,7 +474,7 @@ public:
     [[nodiscard]] constexpr bool is_structure() const noexcept { return tag_ == Tag::STRUCTURE; }
     [[nodiscard]] constexpr bool is_buffer() const noexcept { return tag_ == Tag::BUFFER; }
     [[nodiscard]] constexpr bool is_byte_buffer() const noexcept { return tag_ == Tag::BYTE_BUFFER; }
-    [[nodiscard]] constexpr bool is_texture() const noexcept { return tag_ == Tag::TEXTURE; }
+    [[nodiscard]] constexpr bool is_texture() const noexcept { return tag_ == Tag::TEXTURE3D; }
     [[nodiscard]] constexpr bool is_bindless_array() const noexcept { return tag_ == Tag::BINDLESS_ARRAY; }
     [[nodiscard]] constexpr bool is_accel() const noexcept { return tag_ == Tag::ACCEL; }
     [[nodiscard]] constexpr bool is_resource() const noexcept {

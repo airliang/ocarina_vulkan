@@ -16,11 +16,9 @@ class BufferDesc;
 template<typename T, int... dims>
 class BufferView;
 
-class Texture;
-class ByteBuffer;
-
-template<typename T>
+class Texture3D;
 class Texture2D;
+class ByteBuffer;
 
 class Accel;
 
@@ -147,21 +145,19 @@ template<>
 struct TypeDesc<BufferDesc<>> : public TypeDesc<ByteBuffer> {};
 
 template<>
-struct TypeDesc<Texture> {
+struct TypeDesc<Texture3D> {
     static ocarina::string_view description() noexcept {
-        return "texture";
+        return "texture3d";
     }
     static ocarina::string_view name() noexcept {
         return description();
     }
 };
 
-template<typename T>
-struct TypeDesc<Texture2D<T>> {
-    static ocarina::string &description() noexcept {
-        static thread_local string str = ocarina::format("texture2d<{}>",
-                                                         TypeDesc<T>::description());
-        return str;
+template<>
+struct TypeDesc<Texture2D> {
+    static ocarina::string_view description() noexcept {
+        return "texture2d";
     }
     static ocarina::string_view name() noexcept {
         return description();

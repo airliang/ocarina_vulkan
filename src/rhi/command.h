@@ -11,21 +11,25 @@
 
 namespace ocarina {
 
-#define OC_RUNTIME_CMD           \
-    BufferUploadCommand,         \
-        BufferDownloadCommand,   \
-        BufferByteSetCommand,    \
-        BufferCopyCommand,       \
-        BufferReallocateCommand, \
-        BufferToTextureCommand,  \
-        TextureUploadCommand,    \
-        TextureDownloadCommand,  \
-        TextureCopyCommand,      \
-        HostFunctionCommand,     \
-        SynchronizeCommand,      \
-        BLASBuildCommand,        \
-        TLASBuildCommand,        \
-        TLASUpdateCommand,       \
+#define OC_RUNTIME_CMD            \
+    BufferUploadCommand,          \
+        BufferDownloadCommand,    \
+        BufferByteSetCommand,     \
+        BufferCopyCommand,        \
+        BufferReallocateCommand,  \
+        BufferToTexture3DCommand, \
+        Texture3DUploadCommand,   \
+        Texture3DDownloadCommand, \
+        Texture3DCopyCommand,     \
+        BufferToTexture2DCommand, \
+        Texture2DUploadCommand,   \
+        Texture2DDownloadCommand, \
+        Texture2DCopyCommand,     \
+        HostFunctionCommand,      \
+        SynchronizeCommand,       \
+        BLASBuildCommand,         \
+        TLASBuildCommand,         \
+        TLASUpdateCommand,        \
         ShaderDispatchCommand
 
 /// forward declare
@@ -139,7 +143,7 @@ public:
     OC_MAKE_CMD_COMMON_FUNC(BufferCopyCommand)
 };
 
-class OC_RHI_API TextureCopyCommand : public DataCopyCommand {
+class OC_RHI_API Texture3DCopyCommand : public DataCopyCommand {
 private:
     PixelStorage storage_;
     uint3 res_;
@@ -147,8 +151,8 @@ private:
     uint dst_level_;
 
 public:
-    TextureCopyCommand(uint64_t src, uint64_t dst, uint3 res, PixelStorage pixel_storage,
-                       uint src_level, uint dst_level, bool async) noexcept
+    Texture3DCopyCommand(uint64_t src, uint64_t dst, uint3 res, PixelStorage pixel_storage,
+                         uint src_level, uint dst_level, bool async) noexcept
         : DataCopyCommand{src, dst, async},
           res_(res), src_level_(src_level),
           dst_level_(dst_level),
@@ -158,7 +162,29 @@ public:
     [[nodiscard]] uint dst_level() const noexcept { return dst_level_; }
     [[nodiscard]] PixelStorage pixel_storage() const noexcept { return storage_; }
     [[nodiscard]] uint3 resolution() const noexcept { return res_; }
-    OC_MAKE_CMD_COMMON_FUNC(TextureCopyCommand)
+    OC_MAKE_CMD_COMMON_FUNC(Texture3DCopyCommand)
+};
+
+class OC_RHI_API Texture2DCopyCommand : public DataCopyCommand {
+private:
+    PixelStorage storage_;
+    uint3 res_;
+    uint src_level_;
+    uint dst_level_;
+
+public:
+    Texture2DCopyCommand(uint64_t src, uint64_t dst, uint3 res, PixelStorage pixel_storage,
+                         uint src_level, uint dst_level, bool async) noexcept
+        : DataCopyCommand{src, dst, async},
+          res_(res), src_level_(src_level),
+          dst_level_(dst_level),
+          storage_(pixel_storage) {}
+
+    [[nodiscard]] uint src_level() const noexcept { return src_level_; }
+    [[nodiscard]] uint dst_level() const noexcept { return dst_level_; }
+    [[nodiscard]] PixelStorage pixel_storage() const noexcept { return storage_; }
+    [[nodiscard]] uint3 resolution() const noexcept { return res_; }
+    OC_MAKE_CMD_COMMON_FUNC(Texture2DCopyCommand)
 };
 
 class OC_RHI_API DataOpCommand : public Command {
@@ -201,8 +227,7 @@ private:
     size_t new_size_;
 
 public:
-    BufferReallocateCommand(RHIResource *rhi_resource, size_t new_size, bool async = true)
-        : Command(async), new_size_(new_size), rhi_resource_(rhi_resource) {}
+    BufferReallocateCommand(RHIResource *rhi_resource, size_t new_size, bool async = true);
     [[nodiscard]] RHIResource *rhi_resource() const noexcept { return rhi_resource_; }
     [[nodiscard]] size_t new_size() const noexcept { return new_size_; }
     OC_MAKE_CMD_COMMON_FUNC(BufferReallocateCommand)
@@ -226,8 +251,8 @@ public:
     OC_MAKE_CMD_COMMON_FUNC(BufferUploadCommand)
 };
 
-class OC_RHI_API BufferToTextureCommand final : public DataCopyCommand {
-private:
+class BufferToTextureCommand : public DataCopyCommand {
+protected:
     PixelStorage storage_;
     size_t buffer_offset_;
     uint3 res_;
@@ -248,7 +273,18 @@ public:
     [[nodiscard]] size_t size_in_bytes() const noexcept { return height() * width_in_bytes(); }
     [[nodiscard]] uint level() const noexcept { return level_; }
     [[nodiscard]] uint3 resolution() const noexcept { return res_; }
-    OC_MAKE_CMD_COMMON_FUNC(BufferToTextureCommand)
+};
+
+class OC_RHI_API BufferToTexture3DCommand final : public BufferToTextureCommand {
+public:
+    using BufferToTextureCommand::BufferToTextureCommand;
+    OC_MAKE_CMD_COMMON_FUNC(BufferToTexture3DCommand)
+};
+
+class OC_RHI_API BufferToTexture2DCommand final : public BufferToTextureCommand {
+public:
+    using BufferToTextureCommand::BufferToTextureCommand;
+    OC_MAKE_CMD_COMMON_FUNC(BufferToTexture2DCommand)
 };
 
 class OC_RHI_API BufferDownloadCommand final : public BufferOpCommand {
@@ -263,11 +299,15 @@ private:
     PixelStorage pixel_storage_{};
     uint3 resolution_{};
 
-public:
+protected:
     TextureOpCommand(handle_ty data, handle_ty device_handle, uint2 resolution, PixelStorage storage, bool async)
-        : DataOpCommand(data, device_handle, 0, async), pixel_storage_(storage), resolution_(resolution.x, resolution.y, 1) {}
+        : DataOpCommand(data, device_handle, 0, async),
+          pixel_storage_(storage), resolution_(resolution.x, resolution.y, 1) {}
     TextureOpCommand(handle_ty data, handle_ty device_handle, uint3 resolution, PixelStorage storage, bool async)
-        : DataOpCommand(data, device_handle, 0, async), pixel_storage_(storage), resolution_(resolution) {}
+        : DataOpCommand(data, device_handle, 0, async),
+          pixel_storage_(storage), resolution_(resolution) {}
+
+public:
     [[nodiscard]] PixelStorage pixel_storage() const noexcept { return pixel_storage_; }
     [[nodiscard]] size_t width() const noexcept { return resolution_.x; }
     [[nodiscard]] size_t height() const noexcept { return resolution_.y; }
@@ -277,18 +317,32 @@ public:
     [[nodiscard]] uint3 resolution() const noexcept { return resolution_; }
 };
 
-class OC_RHI_API TextureUploadCommand final : public TextureOpCommand {
+class OC_RHI_API Texture3DUploadCommand final : public TextureOpCommand {
 public:
-    TextureUploadCommand(const void *data, handle_ty device_handle, uint3 resolution, PixelStorage storage, bool async)
+    Texture3DUploadCommand(const void *data, handle_ty device_handle, uint3 resolution, PixelStorage storage, bool async)
         : TextureOpCommand(reinterpret_cast<handle_ty>(data), device_handle, resolution, storage, async) {}
-    OC_MAKE_CMD_COMMON_FUNC(TextureUploadCommand)
+    OC_MAKE_CMD_COMMON_FUNC(Texture3DUploadCommand)
 };
 
-class OC_RHI_API TextureDownloadCommand final : public TextureOpCommand {
+class OC_RHI_API Texture2DUploadCommand final : public TextureOpCommand {
 public:
-    TextureDownloadCommand(void *data, handle_ty device_handle, uint3 resolution, PixelStorage storage, bool async)
+    Texture2DUploadCommand(const void *data, handle_ty device_handle, uint3 resolution, PixelStorage storage, bool async)
         : TextureOpCommand(reinterpret_cast<handle_ty>(data), device_handle, resolution, storage, async) {}
-    OC_MAKE_CMD_COMMON_FUNC(TextureDownloadCommand)
+    OC_MAKE_CMD_COMMON_FUNC(Texture2DUploadCommand)
+};
+
+class OC_RHI_API Texture3DDownloadCommand final : public TextureOpCommand {
+public:
+    Texture3DDownloadCommand(void *data, handle_ty device_handle, uint3 resolution, PixelStorage storage, bool async)
+        : TextureOpCommand(reinterpret_cast<handle_ty>(data), device_handle, resolution, storage, async) {}
+    OC_MAKE_CMD_COMMON_FUNC(Texture3DDownloadCommand)
+};
+
+class OC_RHI_API Texture2DDownloadCommand final : public TextureOpCommand {
+public:
+    Texture2DDownloadCommand(void *data, handle_ty device_handle, uint3 resolution, PixelStorage storage, bool async)
+        : TextureOpCommand(reinterpret_cast<handle_ty>(data), device_handle, resolution, storage, async) {}
+    OC_MAKE_CMD_COMMON_FUNC(Texture2DDownloadCommand)
 };
 
 class OC_RHI_API SynchronizeCommand final : public Command {
@@ -358,7 +412,7 @@ private:
     std::function<void()> function_;
 
 public:
-    HostFunctionCommand(std::function<void()> f, bool async)
+    HostFunctionCommand(bool async, std::function<void()> f)
         : Command(async), function_(ocarina::move(f)) {}
     [[nodiscard]] std::function<void()> function() const noexcept { return function_; }
     OC_MAKE_CMD_COMMON_FUNC(HostFunctionCommand)
