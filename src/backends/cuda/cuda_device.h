@@ -64,7 +64,7 @@ private:
     std::unique_ptr<CommandVisitor> cmd_visitor_;
     uint32_t compute_capability_{};
 
-    /// key:buffer, value: CUgraphicsResource *
+    /// key:buffer, value: CUgraphicsResource
     std::map<handle_ty, CUgraphicsResource> shared_handle_map_;
     thread_safety<std::mutex> memory_guard_;
     std::unordered_map<handle_ty, ExportableResource::Data> exported_resources;
@@ -160,10 +160,12 @@ public:
     void bind_descriptor_sets(DescriptorSet **descriptor_set, uint32_t descriptor_sets_num, RHIPipeline *pipeline) noexcept override {}
     void begin_frame() noexcept override {}
     void end_frame() noexcept override {}
-
     void memory_allocate(handle_ty *handle, size_t size, bool exported) override;
     void memory_free(handle_ty *handle) override;
-
+    void register_shared_resource(handle_ty handle,CUgraphicsResource resource);
+    void unregister_shared_resource(handle_ty handle);
+    [[nodiscard]] bool is_external_resource(handle_ty handle) const;
+    [[nodiscard]] CUgraphicsResource get_shared_resource(handle_ty handle)const ;
     [[nodiscard]] uint64_t get_aligned_memory_size(handle_ty handle) const override;
 
 #if _WIN32 || _WIN64

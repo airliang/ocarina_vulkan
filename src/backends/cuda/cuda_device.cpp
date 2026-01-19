@@ -197,8 +197,8 @@ handle_ty CUDADevice::create_texture2d(ocarina::uint2 res, ocarina::PixelStorage
 }
 
 handle_ty CUDADevice::create_texture3d(uint3 res, PixelStorage pixel_storage,
-                                     uint level_num,
-                                     const string &desc) noexcept {
+                                       uint level_num,
+                                       const string &desc) noexcept {
     return use_context([&] {
         auto texture = ocarina::new_with_allocator<CUDATexture3D>(this, res, pixel_storage, level_num);
         MemoryStats::instance().on_tex_allocate(reinterpret_cast<handle_ty>(texture),
@@ -251,7 +251,6 @@ void CUDADevice::destroy_bindless_array(handle_ty handle) noexcept {
     ocarina::delete_with_allocator(reinterpret_cast<CUDABindlessArray *>(handle));
 }
 
-
 handle_ty CUDADevice::create_buffer_from_external(ocarina::uint buffer_handle) noexcept {
     CUdeviceptr handle;
     CUgraphicsResource shared_handle;
@@ -266,6 +265,25 @@ handle_ty CUDADevice::create_buffer_from_external(ocarina::uint buffer_handle) n
         shared_handle_map_.insert(make_pair(ret, shared_handle));
         return ret;
     });
+}
+
+void CUDADevice::register_shared_resource(ocarina::handle_ty handle, CUgraphicsResource resource) {
+    if (shared_handle_map_.contains(handle)) {
+        return;
+    }
+    shared_handle_map_.insert(make_pair(handle, resource));
+}
+
+void CUDADevice::unregister_shared_resource(ocarina::handle_ty handle) {
+    shared_handle_map_.erase(handle);
+}
+
+bool CUDADevice::is_external_resource(ocarina::handle_ty handle) const {
+    return shared_handle_map_.contains(handle);
+}
+
+CUgraphicsResource CUDADevice::get_shared_resource(ocarina::handle_ty handle) const {
+    return shared_handle_map_.at(handle);
 }
 
 //void CUDADevice::register_external_tex_to_buffer(handle_ty *handle, ocarina::uint tex_handle) noexcept {

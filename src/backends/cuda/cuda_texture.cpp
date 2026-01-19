@@ -6,8 +6,7 @@
 #include "util.h"
 #include "cuda_device.h"
 #include "cuda_runtime_api.h"
-//#include "texture_fetch_functions.h"
-#include <cuda_gl_interop.h>
+#include <cudaGL.h>
 
 namespace ocarina {
 
@@ -17,7 +16,9 @@ CUDATexture::CUDATexture(CUDADevice *device, uint3 res, PixelStorage pixel_stora
 }
 
 CUDATexture::~CUDATexture() {
-    if (array_) {
+    if (is_external()) {
+        unmapping_external_resource();
+    } else {
         OC_CU_CHECK(cuArrayDestroy(array_));
     }
     OC_CU_CHECK(cuTexObjectDestroy(descriptor_.texture));
@@ -27,6 +28,16 @@ CUDATexture::~CUDATexture() {
 size_t CUDATexture::data_size() const noexcept { return CUDADevice::size(Type::Tag::TEXTURE3D); }
 size_t CUDATexture::data_alignment() const noexcept { return CUDADevice::alignment(Type::Tag::TEXTURE3D); }
 size_t CUDATexture::max_member_size() const noexcept { return sizeof(handle_ty); }
+
+bool CUDATexture::is_external() const noexcept {
+    return device_->is_external_resource(reinterpret_cast<handle_ty>(this));
+}
+
+void CUDATexture::unmapping_external_resource() {
+    CUgraphicsResource resource = device_->get_shared_resource(reinterpret_cast<handle_ty>(this));
+    OC_CU_CHECK(cuGraphicsUnmapResources(1, &resource, nullptr));
+    OC_CU_CHECK(cuGraphicsUnregisterResource(resource));
+}
 
 void CUDATexture::init_by_array(CUarray array) {
     CUDA_RESOURCE_DESC res_desc{};
@@ -50,7 +61,7 @@ const TextureDesc &CUDATexture::descriptor() const noexcept {
     return descriptor_;
 }
 
-void CUDATexture2D::init() {
+void CUDATexture2D::init() noexcept {
     CUDA_ARRAY_DESCRIPTOR array_desc{};
     array_desc.Width = res_.x;
     array_desc.Height = res_.y;
@@ -86,7 +97,7 @@ void CUDATexture2D::init() {
     init_by_array(array_);
 }
 
-void CUDATexture3D::init() {
+void CUDATexture3D::init() noexcept {
     CUDA_ARRAY3D_DESCRIPTOR array_desc{};
     array_desc.Width = res_.x;
     array_desc.Height = res_.y;
@@ -135,7 +146,20 @@ CUDATexture2D::CUDATexture2D(CUDADevice *device, uint3 res, PixelStorage pixel_s
 
 CUDATexture2D::CUDATexture2D(ocarina::CUDADevice *device, ocarina::uint external_handle)
     : CUDATexture(device) {
-    
+    init_with_external_handle(external_handle);
+}
+
+void CUDATexture2D::init_with_external_handle(ocarina::uint external_handle) noexcept {
+    CUgraphicsResource res;
+    OC_CU_CHECK(cuGraphicsGLRegisterImage(addressof(res), external_handle, GL_TEXTURE_2D,
+                                          CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD));
+    OC_CU_CHECK(cuGraphicsMapResources(1, addressof(res), 0));
+    OC_CU_CHECK(cuGraphicsSubResourceGetMappedArray((&array_), res, 0, 0));
+    CUDA_ARRAY_DESCRIPTOR array_desc{};
+    OC_CU_CHECK(cuArrayGetDescriptor(&array_desc, array_));
+    descriptor_.pixel_storage = PixelStorage::FLOAT4;
+    res_ = make_uint3(array_desc.Width, array_desc.Height, 0);
+    init_by_array(array_);
 }
 
 }// namespace ocarina
