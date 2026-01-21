@@ -360,14 +360,14 @@ template<typename T>
     return ret;
 }
 
-template<typename T, size_t Dim>
+template<typename T>
 template<typename U, typename V>
 requires(is_all_floating_point_expr_v<U, V>)
-DynamicArray<float> EnableTextureSample<T, Dim>::sample(uint channel_num, const U &u, const V &v)
+DynamicArray<float> EnableTextureSample<T>::sample(uint channel_num, const U &u, const V &v)
     const noexcept {
     const T *texture = static_cast<const T *>(this);
     const CallExpr *expr = Function::current()->call_builtin(DynamicArray<float>::type(channel_num),
-                                                             call_op,
+                                                             CallOp::TEX_SAMPLE,
                                                              {texture->expression(),
                                                               OC_EXPR(u),
                                                               OC_EXPR(v)},
@@ -376,15 +376,14 @@ DynamicArray<float> EnableTextureSample<T, Dim>::sample(uint channel_num, const 
     return eval_dynamic_array(DynamicArray<float>(channel_num, expr));
 }
 
-template<typename T, size_t Dim>
+template<typename T>
 template<typename U, typename V, typename W>
 requires(is_all_floating_point_expr_v<U, V, W>)
-DynamicArray<float> EnableTextureSample<T, Dim>::sample(uint channel_num, const U &u, const V &v, const W &w)
+DynamicArray<float> EnableTextureSample<T>::sample(uint channel_num, const U &u, const V &v, const W &w)
     const noexcept {
     const T *texture = static_cast<const T *>(this);
-    static_assert(Dim == 3,"This method only available on 3D tex");
     const CallExpr *expr = Function::current()->call_builtin(DynamicArray<float>::type(channel_num),
-                                                             call_op,
+                                                             CallOp::TEX_SAMPLE,
                                                              {texture->expression(),
                                                               OC_EXPR(u),
                                                               OC_EXPR(v),
@@ -394,20 +393,20 @@ DynamicArray<float> EnableTextureSample<T, Dim>::sample(uint channel_num, const 
     return eval_dynamic_array(DynamicArray<float>(channel_num, expr));
 }
 
-template<typename T, size_t Dim>
+template<typename T>
 template<typename UVW>
-requires(is_general_float_vector3_v<remove_device_t<UVW>>)
-DynamicArray<float> EnableTextureSample<T, Dim>::sample(uint channel_num, const UVW &uvw)
+requires(is_float_vector3_v<expr_value_t<UVW>>)
+DynamicArray<float> EnableTextureSample<T>::sample(uint channel_num, const UVW &uvw)
     const noexcept {
     return [&]<typename Arg>(const Arg &arg) {
         return sample(channel_num, arg.x, arg.y, arg.z);
     }(decay_swizzle(uvw));
 }
 
-template<typename T, size_t Dim>
+template<typename T>
 template<typename UV>
-requires(is_general_float_vector2_v<remove_device_t<UV>>)
-DynamicArray<float> EnableTextureSample<T, Dim>::sample(uint channel_num, const UV &uv)
+requires(is_float_vector2_v<expr_value_t<UV>>)
+DynamicArray<float> EnableTextureSample<T>::sample(uint channel_num, const UV &uv)
     const noexcept {
     return [&]<typename Arg>(const Arg &arg) {
         return sample(channel_num, arg.x, arg.y);
@@ -427,49 +426,43 @@ template<typename T, typename Offset>
     return detail::eval_dynamic_array(DynamicArray<T>(array_size, expr));
 }
 
-template<size_t Dim>
 template<typename U, typename V>
 requires(is_all_floating_point_expr_v<U, V>)
-DynamicArray<float> BindlessArrayTexture<Dim>::sample(uint channel_num, const U &u,
-                                                      const V &v) const noexcept {
+DynamicArray<float> BindlessArrayTexture::sample(uint channel_num, const U &u, const V &v)
+    const noexcept {
     const CallExpr *expr = Function::current()->call_builtin(DynamicArray<float>::type(channel_num),
-                                                             call_op,
+                                                             CallOp::BINDLESS_ARRAY_TEX_SAMPLE,
                                                              {bindless_array_, index_, OC_EXPR(u), OC_EXPR(v)},
                                                              {channel_num});
     return detail::eval_dynamic_array(DynamicArray<float>(channel_num, expr));
 }
 
-template<size_t Dim>
 template<typename U, typename V, typename W>
 requires(is_all_floating_point_expr_v<U, V, W>)
-DynamicArray<float> BindlessArrayTexture<Dim>::sample(uint channel_num, const U &u,
-                                                      const V &v, const W &w) const noexcept {
-    static_assert(Dim == 3,"This method only available on 3D tex");
+DynamicArray<float> BindlessArrayTexture::sample(uint channel_num, const U &u, const V &v, const W &w)
+    const noexcept {
     const CallExpr *expr = Function::current()->call_builtin(DynamicArray<float>::type(channel_num),
-                                                             call_op,
+                                                             CallOp::BINDLESS_ARRAY_TEX_SAMPLE,
                                                              {bindless_array_, index_, OC_EXPR(u), OC_EXPR(v), OC_EXPR(w)},
                                                              {channel_num});
     return detail::eval_dynamic_array(DynamicArray<float>(channel_num, expr));
 }
 
-template<size_t Dim>
 template<typename UVW>
-requires(is_general_float_vector3_v<remove_device_t<UVW>>)
-DynamicArray<float> BindlessArrayTexture<Dim>::sample(uint channel_num, const UVW &uvw)
+requires(is_float_vector3_v<expr_value_t<UVW>>)
+DynamicArray<float> BindlessArrayTexture::sample(uint channel_num, const UVW &uvw)
     const noexcept {
     return [&]<typename Arg>(const Arg &arg) {
         return sample(channel_num, arg.x, arg.y, arg.z);
     }(decay_swizzle(uvw));
 }
 
-template<size_t Dim>
 template<typename UV>
-requires(is_general_float_vector2_v<remove_device_t<UV>>)
-DynamicArray<float> BindlessArrayTexture<Dim>::sample(uint channel_num, const UV &uv)
+requires(is_float_vector2_v<expr_value_t<UV>>)
+DynamicArray<float> BindlessArrayTexture::sample(uint channel_num, const UV &uv)
     const noexcept {
     return [&]<typename Arg>(const Arg &arg) {
         return sample(channel_num, arg.x, arg.y);
     }(decay_swizzle(uv));
 }
-
 }// namespace ocarina

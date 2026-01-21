@@ -245,17 +245,17 @@ public:
 };
 
 template<>
-struct Ref<Texture3D>
-    : detail::EnableTextureSample<Ref<Texture3D>, 3>,
-      detail::EnableTextureReadAndWrite<Ref<Texture3D>, 3> {
-    OC_REF_COMMON(Ref<Texture3D>)
+struct Ref<Texture>
+    : detail::EnableTextureSample<Ref<Texture>>,
+      detail::EnableTextureReadAndWrite<Ref<Texture>> {
+    OC_REF_COMMON(Ref<Texture>)
 };
 
-template<>
-struct Ref<Texture2D>
-    : detail::EnableTextureSample<Ref<Texture2D>, 2>,
-      detail::EnableTextureReadAndWrite<Ref<Texture2D>, 2> {
-    OC_REF_COMMON(Ref<Texture2D>)
+template<typename T>
+struct Ref<Texture2D<T>>
+    : detail::EnableTextureSample<Ref<Texture2D<T>>>,
+      detail::EnableTextureReadAndWrite<Ref<Texture2D<T>>> {
+    OC_REF_COMMON(Ref<Texture2D<T>>)
 };
 
 template<>
@@ -421,12 +421,8 @@ public:
         const noexcept;// implement in dsl/array.h
 };
 
-template<size_t Dim>
 class BindlessArrayTexture {
 private:
-    static_assert(Dim == 2 || Dim == 3, "The dimension of texture must be 2 or 3!");
-    static constexpr CallOp call_op = Dim == 2 ? CallOp::BINDLESS_ARRAY_TEX2D_SAMPLE :
-                                                 CallOp::BINDLESS_ARRAY_TEX3D_SAMPLE;
     const Expression *bindless_array_{nullptr};
     const Expression *index_{nullptr};
 
@@ -445,12 +441,12 @@ public:
         const noexcept;// implement in dsl/array.h
 
     template<typename UVW>
-    requires(is_general_float_vector3_v<remove_device_t<UVW>>)
+    requires(is_float_vector3_v<expr_value_t<UVW>>)
     OC_NODISCARD DynamicArray<float> sample(uint channel_num, const UVW &uvw)
         const noexcept;// implement in dsl/array.h
 
     template<typename UV>
-    requires(is_general_float_vector2_v<remove_device_t<UV>>)
+    requires(is_float_vector2_v<expr_value_t<UV>>)
     OC_NODISCARD DynamicArray<float> sample(uint channel_num, const UV &uv)
         const noexcept;// implement in dsl/array.h
 };
@@ -466,7 +462,7 @@ public:
                                                     uint buffer_num = 0) const noexcept {
         if (buffer_num != 0) {
             if constexpr (is_integral_v<Index>) {
-                OC_ASSERT(index < buffer_num);
+                OC_ASSERT(index <= buffer_num);
             } else {
                 index = correct_index(index, buffer_num, desc, traceback_string(1));
             }
@@ -476,30 +472,16 @@ public:
 
     template<typename Index>
     requires concepts::integral<expr_value_t<Index>>
-    [[nodiscard]] BindlessArrayTexture<3> tex3d_var(Index index, const string &desc = "",
-                                                   uint tex_num = 0) const noexcept {
+    [[nodiscard]] BindlessArrayTexture tex_var(Index index, const string &desc = "",
+                                               uint tex_num = 0) const noexcept {
         if (tex_num != 0) {
             if constexpr (is_integral_v<Index>) {
-                OC_ASSERT(index < tex_num);
+                OC_ASSERT(index <= tex_num);
             } else {
                 index = correct_index(index, tex_num, desc, traceback_string(1));
             }
         }
-        return BindlessArrayTexture<3>(expression(), OC_EXPR(index));
-    }
-
-    template<typename Index>
-    requires concepts::integral<expr_value_t<Index>>
-    [[nodiscard]] BindlessArrayTexture<2> tex2d_var(Index index, const string &desc = "",
-                                                   uint tex_num = 0) const noexcept {
-        if (tex_num != 0) {
-            if constexpr (is_integral_v<Index>) {
-                OC_ASSERT(index < tex_num);
-            } else {
-                index = correct_index(index, tex_num, desc, traceback_string(1));
-            }
-        }
-        return BindlessArrayTexture<2>(expression(), OC_EXPR(index));
+        return BindlessArrayTexture(expression(), OC_EXPR(index));
     }
 
     template<typename Index>
@@ -508,7 +490,7 @@ public:
                                                           uint buffer_num = 0) const noexcept {
         if (buffer_num != 0) {
             if constexpr (is_integral_v<Index>) {
-                OC_ASSERT(index < buffer_num);
+                OC_ASSERT(index <= buffer_num);
             } else {
                 index = correct_index(index, buffer_num, desc, traceback_string(1));
             }

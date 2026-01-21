@@ -27,8 +27,8 @@ struct prototype_to_shader_invocation<Buffer<T>> {
 };
 
 template<>
-struct prototype_to_shader_invocation<Texture3D> {
-    using type = const Texture3D &;
+struct prototype_to_shader_invocation<Texture> {
+    using type = const Texture &;
 };
 
 template<>
@@ -68,8 +68,7 @@ private:
         push_memory_block(buffer.memory_block());
     }
 
-    void _encode_texture3d(const Texture3D &texture) noexcept;
-    void _encode_texture2d(const Texture2D &texture) noexcept;
+    void _encode_texture(const Texture &texture) noexcept;
     void _encode_bindless_array(const BindlessArray &bindless_array) noexcept;
     void _encode_accel(const Accel &accel) noexcept {
         push_memory_block(accel.memory_block());
@@ -141,10 +140,8 @@ public:
             });
         } else if constexpr (is_buffer_v<T> || is_buffer_proxy_v<T>) {
             _encode_buffer(OC_FORWARD(arg));
-        } else if constexpr (is_texture3d_v<T>) {
-            _encode_texture3d(OC_FORWARD(arg));
-        } else if constexpr (is_texture2d_v<T>) {
-            _encode_texture2d(OC_FORWARD(arg));
+        } else if constexpr (is_texture_v<T>) {
+            _encode_texture(OC_FORWARD(arg));
         } else if constexpr (is_accel_v<T>) {
             _encode_accel(OC_FORWARD(arg));
         } else if constexpr (is_bindless_array_v<T>) {
@@ -192,12 +189,6 @@ public:
         virtual ~Impl() = default;
         virtual void launch(handle_ty stream, ShaderDispatchCommand *cmd) noexcept = 0;
         virtual void compute_fit_size() noexcept {};
-        uint8_t get_push_constant_size() const noexcept {
-            return push_constant_size_;// Default implementation, can be overridden
-        }
-
-    protected:
-        uint8_t push_constant_size_ = 0;// size in bytes
     };
 };
 

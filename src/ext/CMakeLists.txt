@@ -16,6 +16,7 @@ set_target_properties(xxhash PROPERTIES
 set(FMT_OS OFF CACHE BOOL "" FORCE)
 add_subdirectory(fmt)
 target_compile_definitions(fmt-header-only INTERFACE
+        FMT_CONSTEVAL=constexpr
         FMT_EXCEPTIONS=0
         FMT_HEADER_ONLY=1
         FMT_USE_NOEXCEPT=1)

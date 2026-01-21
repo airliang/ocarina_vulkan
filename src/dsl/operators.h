@@ -134,22 +134,14 @@ OC_MAKE_DSL_BINARY_OPERATOR(>=, GREATER_EQUAL, greater_equal)
     requires requires {                                                             \
         std::declval<Lhs &>() op## = std::declval<ocarina::remove_device_t<Rhs>>(); \
     }                                                                               \
-    void operator op## = (const ocarina::Var<Lhs> &lhs, Rhs &&rhs) {                \
+    void operator op##=(const ocarina::Var<Lhs> &lhs, Rhs &&rhs) {                  \
         auto x = lhs op OC_FORWARD(rhs);                                            \
         ocarina::Function::current()->assign(lhs.expression(), x.expression());     \
     }                                                                               \
-                                                                                    \
-    template<typename Lhs, typename Rhs>                                            \
-    requires(ocarina::is_device_swizzle_v<Lhs, 0>)                                  \
-    void operator op## = (Lhs & lhs, Rhs && rhs) {                                  \
-        auto x = lhs.decay() op OC_FORWARD(rhs);                                    \
-        lhs = x;                                                                    \
-    }                                                                               \
-                                                                                    \
     template<typename T, typename U>                                                \
     requires ocarina::is_dynamic_array_v<U> ||                                      \
-                 ocarina::is_scalar_v<ocarina::expr_value_t<U>>                     \
-    void operator op## = (const ocarina::DynamicArray<T> &lhs, U &&rhs) noexcept {  \
+             ocarina::is_scalar_v<ocarina::expr_value_t<U>>                         \
+    void operator op##=(const ocarina::DynamicArray<T> &lhs, U &&rhs) noexcept {    \
         auto x = lhs op OC_FORWARD(rhs);                                            \
         ocarina::Function::current()->assign(lhs.expression(), x.expression());     \
     }

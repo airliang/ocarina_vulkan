@@ -125,7 +125,7 @@ int main(int argc, char *argv[]) {
 //    auto path1 = R"(E:/work/test_dir/D5.png)";
 //    auto path2 = R"(E:/work/test_dir/D5.jpg)";
 //    auto image_io = Image::load(path1, LINEAR);
-//    auto image = device.create_texture3d(image_io.resolution(), image_io.pixel_storage());
+//    auto image = device.create_texture(image_io.resolution(), image_io.pixel_storage());
 //    stream << image.upload_sync(image_io.pixel_ptr());
     device.init_rtx();
 
@@ -159,8 +159,9 @@ int main(int argc, char *argv[]) {
     stream << v_buffer.upload_sync(vert.host_buffer().data());
     stream << t_buffer.upload_sync(triangle.data());
 
+    bindless_array.prepare_slotSOA(device);
     stream << bindless_array->upload_buffer_handles(true) << synchronize();
-    stream << bindless_array->upload_texture3d_handles(true) << synchronize();
+    stream << bindless_array->upload_texture_handles(true) << synchronize();
 
     stream << cube.build_bvh();
 

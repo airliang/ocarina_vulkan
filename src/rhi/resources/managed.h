@@ -111,13 +111,13 @@ public:
     }
 };
 
-class ManagedTexture3D : public Texture3D, public Image {
+class ManagedTexture : public Texture, public Image {
 public:
     using host_ty = ocarina::Image;
-    using device_ty = ocarina::Texture3D;
+    using device_ty = ocarina::Texture;
 
 public:
-    ManagedTexture3D() = default;
+    ManagedTexture() = default;
 
     [[nodiscard]] device_ty &device_tex() noexcept { return *this; }
     [[nodiscard]] const device_ty &device_tex() const noexcept { return *this; }
@@ -125,9 +125,9 @@ public:
     [[nodiscard]] const host_ty &host_tex() const noexcept { return *this; }
 
     void allocate_on_device(Device &device, const string &name = "") noexcept {
-        device_tex() = device.create_texture3d(Image::resolution(),
-                                               Image::pixel_storage(),
-                                               name);
+        device_tex() = device.create_texture(Image::resolution(),
+                                             Image::pixel_storage(),
+                                             name);
     }
 
     void upload_immediately() const noexcept {
@@ -138,11 +138,11 @@ public:
         device_ty::download_immediately(pixel_ptr());
     }
 
-    [[nodiscard]] TextureOpCommand *upload(bool async = true) const noexcept {
+    [[nodiscard]] TextureUploadCommand *upload(bool async = true) const noexcept {
         return device_ty ::upload(pixel_ptr(), async);
     }
 
-    [[nodiscard]] TextureOpCommand *download(bool async = true) noexcept {
+    [[nodiscard]] TextureDownloadCommand *download(bool async = true) noexcept {
         return device_ty::download(pixel_ptr(), async);
     }
 };

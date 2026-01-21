@@ -18,7 +18,7 @@ CommandList &CommandList::operator<<(const vector<Command *> &commands) noexcept
 }
 
 CommandList &CommandList::operator<<(std::function<void()> func) noexcept {
-    return (*this) << HostFunctionCommand::create(true, ocarina::move(func));
+    return (*this) << HostFunctionCommand::create(ocarina::move(func), true);
 }
 
 void CommandList::accept(CommandVisitor &visitor) const noexcept {
@@ -28,7 +28,7 @@ void CommandList::accept(CommandVisitor &visitor) const noexcept {
 }
 
 void CommandList::recycle() noexcept {
-    for (Command *command : (*this)) {
+    for (Command *command :  (*this)) {
         command->recycle();
     }
 }
@@ -43,7 +43,7 @@ void CommandQueue::pop_back() {
     commands_.pop_back();
 }
 
-void CommandQueue::clear() noexcept {
+void CommandQueue::clear() noexcept{
     recycle();
     commands_.clear();
 }

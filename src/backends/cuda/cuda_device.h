@@ -21,8 +21,7 @@ public:
             case Tag::BUFFER: return sizeof(BufferDesc<>);
             case Tag::BYTE_BUFFER: return sizeof(BufferDesc<>);
             case Tag::ACCEL: return sizeof(handle_ty);
-            case Tag::TEXTURE3D: return sizeof(TextureDesc);
-            case Tag::TEXTURE2D: return sizeof(TextureDesc);
+            case Tag::TEXTURE: return sizeof(TextureDesc);
             case Tag::BINDLESS_ARRAY: return sizeof(BindlessArrayDesc);
             default:
                 return 0;
@@ -39,8 +38,7 @@ public:
             case Tag::BUFFER: return alignof(BufferDesc<>);
             case Tag::BYTE_BUFFER: return alignof(BufferDesc<>);
             case Tag::ACCEL: return alignof(handle_ty);
-            case Tag::TEXTURE3D: return alignof(TextureDesc);
-            case Tag::TEXTURE2D: return alignof(TextureDesc);
+            case Tag::TEXTURE: return alignof(TextureDesc);
             case Tag::BINDLESS_ARRAY: return alignof(BindlessArrayDesc);
             default:
                 return 0;
@@ -64,8 +62,6 @@ private:
     std::unique_ptr<CommandVisitor> cmd_visitor_;
     uint32_t compute_capability_{};
 
-    /// key:buffer, value: CUgraphicsResource
-    std::map<handle_ty, CUgraphicsResource> shared_handle_map_;
     thread_safety<std::mutex> memory_guard_;
     std::unordered_map<handle_ty, ExportableResource::Data> exported_resources;
 
@@ -114,24 +110,11 @@ public:
     [[nodiscard]] OptixDeviceContext optix_device_context() const noexcept { return optix_device_context_; }
     [[nodiscard]] handle_ty create_buffer(size_t size, const string &desc, bool exported) noexcept override;
     void destroy_buffer(handle_ty handle) noexcept override;
-    [[nodiscard]] handle_ty create_texture3d(uint3 res, PixelStorage pixel_storage,
-                                             uint level_num,
-                                             const string &desc) noexcept override;
-    [[nodiscard]] handle_ty create_texture2d(uint2 res, PixelStorage pixel_storage,
-                                             uint level_num,
-                                             const string &desc) noexcept override;
-    [[nodiscard]] handle_ty create_texture2d_from_external(ocarina::uint handle,
-                                                           const string &desc) noexcept override;
-    [[nodiscard]] handle_ty create_texture3d(Image *image, const TextureViewCreation &texture_view) noexcept override {
-        OC_NOT_IMPLEMENT_ERROR(create_texture3d);
-        return 0;
-    }
-    [[nodiscard]] handle_ty create_texture2d(Image *image, const TextureViewCreation &texture_view) noexcept override {
-        OC_NOT_IMPLEMENT_ERROR(create_texture2d);
-        return 0;
-    }
-    void destroy_texture3d(handle_ty handle) noexcept override;
-    void destroy_texture2d(handle_ty handle) noexcept override;
+    [[nodiscard]] handle_ty create_texture(uint3 res, PixelStorage pixel_storage,
+                                           uint level_num,
+                                           const string &desc) noexcept override;
+    [[nodiscard]] handle_ty create_texture(Image *image, const TextureViewCreation &texture_view, const TextureSampler& sampler) noexcept override { return 0; }
+    void destroy_texture(handle_ty handle) noexcept override;
     [[nodiscard]] handle_ty create_shader(const Function &function) noexcept override;
     [[nodiscard]] handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type,
                                                     const std::set<string> &options) noexcept override { return InvalidUI64; }
@@ -144,8 +127,12 @@ public:
     void destroy_mesh(handle_ty handle) noexcept override;
     [[nodiscard]] handle_ty create_bindless_array() noexcept override;
     void destroy_bindless_array(handle_ty handle) noexcept override;
-    [[nodiscard]] handle_ty create_texture_from_external(uint tex_handle) noexcept override;
-    [[nodiscard]] handle_ty create_buffer_from_external(uint buffer_handle) noexcept override;
+    void register_shared_buffer(void *&shared_handle, ocarina::uint &gl_handle) noexcept override;
+    void register_shared_tex(void *&shared_handle, ocarina::uint &gl_handle) noexcept override;
+    void mapping_shared_buffer(void *&shared_handle, handle_ty &handle) noexcept override;
+    void mapping_shared_tex(void *&shared_handle, handle_ty &handle) noexcept override;
+    void unmapping_shared(void *&shared_handle) noexcept override;
+    void unregister_shared(void *&shared_handle) noexcept override;
     void init_rtx() noexcept override { init_optix_context(); }
     [[nodiscard]] CommandVisitor *command_visitor() noexcept override;
     void submit_frame() noexcept override {}
@@ -153,19 +140,16 @@ public:
     [[nodiscard]] IndexBuffer *create_index_buffer(const void *initial_data, uint32_t indices_count, bool bit16) noexcept override { return nullptr; }
     [[nodiscard]] RHIRenderPass *create_render_pass(const RenderPassCreation &render_pass_creation) noexcept override { return nullptr; }
     void destroy_render_pass(RHIRenderPass *render_pass) noexcept override {}
-    std::array<DescriptorSetLayout *, max_descriptor_sets_per_shader> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) noexcept override { return {}; }
+    std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) noexcept override { return {}; }
     void bind_pipeline(const handle_ty pipeline) noexcept override {}
     [[nodiscard]] RHIPipeline *get_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass) noexcept override { return nullptr; }
     [[nodiscard]] DescriptorSet *get_global_descriptor_set(const string &name) noexcept override { return nullptr; }
-    void bind_descriptor_sets(DescriptorSet **descriptor_set, uint32_t descriptor_sets_num, RHIPipeline *pipeline) noexcept override {}
     void begin_frame() noexcept override {}
     void end_frame() noexcept override {}
+
     void memory_allocate(handle_ty *handle, size_t size, bool exported) override;
     void memory_free(handle_ty *handle) override;
-    void register_shared_resource(handle_ty handle,CUgraphicsResource resource);
-    void unregister_shared_resource(handle_ty handle);
-    [[nodiscard]] bool is_external_resource(handle_ty handle) const;
-    [[nodiscard]] CUgraphicsResource get_shared_resource(handle_ty handle)const ;
+
     [[nodiscard]] uint64_t get_aligned_memory_size(handle_ty handle) const override;
 
 #if _WIN32 || _WIN64

@@ -75,6 +75,7 @@ void test(Device &device, Stream &stream) {
     vv.reset_device_buffer_immediately(device);
     vv.upload_immediately();
     vv.register_self();
+    ra.prepare_slotSOA(device);
     stream << ra->upload_buffer_handles(true) << synchronize();
 
 
@@ -132,7 +133,7 @@ void test2(Device &device, Stream &stream) {
     vv.reset_device_buffer_immediately(device);
     vv.upload_immediately();
     vv.register_self();
-//    ba.prepare_slotSOA(device);
+    ba.prepare_slotSOA(device);
     stream << ba->upload_buffer_handles(true) << synchronize();
 
     Kernel kernel = [&](Float a) {

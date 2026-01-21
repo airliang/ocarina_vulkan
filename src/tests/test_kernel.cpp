@@ -45,13 +45,11 @@ int main(int argc, char *argv[]) {
     auto path2 = R"(E:/work/compile/ocarina/res/test.png)";
     auto image = Image::load(path2, LINEAR);
 
-    auto texture = device.create_texture3d(image.resolution(), image.pixel_storage());
+    auto texture = device.create_texture(image.resolution(), image.pixel_storage());
     stream << texture.upload_sync(image.pixel_ptr());
-    BindlessArray bindless_array = device.create_bindless_array();
-    bindless_array->emplace_texture3d(texture.tex_handle());
 
     Buffer<float> f_buffer = device.create_buffer<float>(count);
-    Kernel kn = [&](Var<float> a, Var<float> b, BufferVar<float> c, Texture3DVar tex) {
+    Kernel kn = [&](Var<float> a, Var<float> b, BufferVar<float> c, TextureVar tex) {
 
         Float ll = log(a);
 

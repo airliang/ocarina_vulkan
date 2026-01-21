@@ -121,10 +121,10 @@ struct all_is_impl<T, First, Rest...> : std::conjunction<all_is_impl<T, First>,
 
 }// namespace
 
-template<typename Target, typename... Ts>
+template<typename Target, typename ...Ts>
 using all_is = all_is_impl<std::remove_cvref_t<Target>, std::remove_cvref_t<Ts>...>;
 
-template<typename Target, typename... Ts>
+template<typename Target,typename... Ts>
 constexpr auto all_is_v = all_is<Target, Ts...>::value;
 
 template<typename T, size_t N, size_t... Indices>
@@ -501,7 +501,7 @@ template<typename T>
 constexpr auto is_vector4_v = is_vector4<T>::value;
 
 template<typename T, size_t N = 0u>
-using is_general_vector = std::disjunction<is_vector<swizzle_decay_t<T>, N>>;
+using is_general_vector = std::disjunction<is_vector<T, N>, is_host_swizzle<T, N>>;
 
 template<typename T>
 using is_general_vector2 = is_general_vector<T, 2u>;
@@ -551,12 +551,11 @@ OC_MAKE_IS_ALL_CLS(vector, 4)
     using is_all_##type##_vector##dim = std::conjunction<is_##type##_vector##dim<T>...>;                 \
     OC_DEFINE_TEMPLATE_VALUE_MULTI(is_all_##type##_vector##dim)                                          \
     template<typename T>                                                                                 \
-    using is_general_##type##_vector##dim = std::conjunction<is_general_vector##dim<T>,                  \
+    using is_##type##_general_vector##dim = std::conjunction<is_general_vector##dim<T>,                  \
                                                              std::is_same<type_element_t<T>, type>>;     \
-    OC_DEFINE_TEMPLATE_VALUE(is_general_##type##_vector##dim)                                            \
     template<typename... T>                                                                              \
-    using is_all_general_##type##_vector##dim = std::conjunction<is_general_##type##_vector##dim<T>...>; \
-    OC_DEFINE_TEMPLATE_VALUE_MULTI(is_all_general_##type##_vector##dim)
+    using is_all_##type##_general_vector##dim = std::conjunction<is_##type##_general_vector##dim<T>...>; \
+    OC_DEFINE_TEMPLATE_VALUE_MULTI(is_all_##type##_general_vector##dim)
 
 #define OC_MAKE_IS_TYPE_VECTOR(type)    \
     OC_MAKE_IS_TYPE_VECTOR_DIM(type, )  \
@@ -570,17 +569,6 @@ OC_MAKE_IS_TYPE_VECTOR(uint)
 OC_MAKE_IS_TYPE_VECTOR(float)
 OC_MAKE_IS_TYPE_VECTOR(uchar)
 OC_MAKE_IS_TYPE_VECTOR(char)
-
-#define OC_MAKE_GENERAL_INTEGER_VECTOR_TRAIT(placeholder, dim)                                                              \
-    template<typename T>                                                                                                    \
-    using is_general_integer_vector##dim = std::disjunction<is_general_uint_vector##dim<T>, is_general_int_vector##dim<T>>; \
-    OC_DEFINE_TEMPLATE_VALUE(is_general_integer_vector##dim)
-
-// placeholder is used to avoid compile warning
-OC_MAKE_GENERAL_INTEGER_VECTOR_TRAIT(placeholder, )
-OC_MAKE_GENERAL_INTEGER_VECTOR_TRAIT(placeholder, 2)
-OC_MAKE_GENERAL_INTEGER_VECTOR_TRAIT(placeholder, 3)
-OC_MAKE_GENERAL_INTEGER_VECTOR_TRAIT(placeholder, 4)
 
 #undef OC_MAKE_IS_TYPE_VECTOR
 

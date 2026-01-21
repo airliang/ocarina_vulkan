@@ -40,7 +40,7 @@ class Shader;
 
 class Stream;
 
-class Texture3D;
+class Texture;
 
 class RHIMesh;
 
@@ -55,6 +55,7 @@ class DescriptorSet;
 class DescriptorSetLayout;
 struct RHIPipeline;
 class Image;
+class TextureSampler;
 
 class OC_RHI_API Device : public concepts::Noncopyable {
 public:
@@ -68,15 +69,10 @@ public:
         explicit Impl(RHIContext *ctx, const InstanceCreation &instance_creation) : context_(ctx) {}
         [[nodiscard]] virtual handle_ty create_buffer(size_t size, const string &desc, bool exported = false) noexcept = 0;
         virtual void destroy_buffer(handle_ty handle) noexcept = 0;
-        [[nodiscard]] virtual handle_ty create_texture3d(uint3 res, PixelStorage pixel_storage,
-                                                         uint level_num, const string &desc) noexcept = 0;
-        [[nodiscard]] virtual handle_ty create_texture2d(uint2 res, PixelStorage pixel_storage,
-                                                         uint level_num, const string &desc) noexcept = 0;
-        [[nodiscard]] virtual handle_ty create_texture2d_from_external(uint handle, const string &desc) noexcept = 0;
-        [[nodiscard]] virtual handle_ty create_texture3d(Image *image, const TextureViewCreation &texture_view) noexcept = 0;
-        [[nodiscard]] virtual handle_ty create_texture2d(Image *image, const TextureViewCreation &texture_view) noexcept = 0;
-        virtual void destroy_texture3d(handle_ty handle) noexcept = 0;
-        virtual void destroy_texture2d(handle_ty handle) noexcept = 0;
+        [[nodiscard]] virtual handle_ty create_texture(uint3 res, PixelStorage pixel_storage,
+                                                       uint level_num, const string &desc) noexcept = 0;
+        [[nodiscard]] virtual handle_ty create_texture(Image *image, const TextureViewCreation &texture_view, const TextureSampler& sampler) noexcept = 0;
+        virtual void destroy_texture(handle_ty handle) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_shader(const Function &function) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept = 0;
         virtual void destroy_shader(handle_ty handle) noexcept = 0;
@@ -88,8 +84,12 @@ public:
         virtual void destroy_mesh(handle_ty handle) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_bindless_array() noexcept = 0;
         virtual void destroy_bindless_array(handle_ty handle) noexcept = 0;
-        [[nodiscard]] virtual handle_ty create_texture_from_external(uint tex_handle) noexcept { OC_NOT_IMPLEMENT_ERROR(create_texture_from_external); }
-        [[nodiscard]] virtual handle_ty create_buffer_from_external(uint tex_handle) noexcept { OC_NOT_IMPLEMENT_ERROR(create_buffer_from_external); }
+        virtual void register_shared_buffer(void *&shared_handle, uint &gl_handle) noexcept = 0;
+        virtual void register_shared_tex(void *&shared_handle, uint &gl_handle) noexcept = 0;
+        virtual void mapping_shared_buffer(void *&shared_handle, handle_ty &handle) noexcept = 0;
+        virtual void mapping_shared_tex(void *&shared_handle, handle_ty &handle) noexcept = 0;
+        virtual void unmapping_shared(void *&shared_handle) noexcept = 0;
+        virtual void unregister_shared(void *&shared_handle) noexcept = 0;
         [[nodiscard]] RHIContext *context() noexcept { return context_; }
         virtual void init_rtx() noexcept = 0;
         [[nodiscard]] virtual CommandVisitor *command_visitor() noexcept = 0;
@@ -100,11 +100,11 @@ public:
         virtual void end_frame() noexcept = 0;
         virtual RHIRenderPass *create_render_pass(const RenderPassCreation &render_pass_creation) noexcept = 0;
         virtual void destroy_render_pass(RHIRenderPass *render_pass) noexcept = 0;
-        virtual std::array<DescriptorSetLayout *, max_descriptor_sets_per_shader> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) noexcept = 0;
+        virtual std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) noexcept = 0;
         virtual void bind_pipeline(const handle_ty pipeline) noexcept = 0;
         virtual RHIPipeline *get_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass) noexcept = 0;
         virtual DescriptorSet *get_global_descriptor_set(const string &name) noexcept = 0;
-        virtual void bind_descriptor_sets(DescriptorSet **descriptor_set, uint32_t descriptor_sets_num, RHIPipeline *pipeline) noexcept = 0;
+        //virtual void bind_descriptor_sets(DescriptorSet **descriptor_set, uint32_t descriptor_sets_num, RHIPipeline *pipeline) noexcept = 0;
 
         virtual void memory_allocate(handle_ty *handle, size_t size, bool exported = true) {}
         virtual void memory_free(handle_ty *handle) {}
@@ -191,11 +191,9 @@ public:
     [[nodiscard]] Accel create_accel() const noexcept;
     [[nodiscard]] BindlessArray create_bindless_array() const noexcept;
     void init_rtx() noexcept { impl_->init_rtx(); }
-    [[nodiscard]] Texture3D create_texture3d(uint3 res, PixelStorage storage, const string &desc = "") const noexcept;
-    [[nodiscard]] Texture3D create_texture3d(uint2 res, PixelStorage storage, const string &desc = "") const noexcept;
-    [[nodiscard]] Texture2D create_texture2d(uint2 res, PixelStorage storage, const string &desc = "") const noexcept;
-    [[nodiscard]] Texture2D create_texture2d_from_external(uint external_handle, const string &desc = "") const noexcept;
-    [[nodiscard]] Texture3D create_texture(Image *image_resource, const TextureViewCreation &texture_view) const noexcept;
+    [[nodiscard]] Texture create_texture(uint3 res, PixelStorage storage, const string &desc = "") const noexcept;
+    [[nodiscard]] Texture create_texture(uint2 res, PixelStorage storage, const string &desc = "") const noexcept;
+    [[nodiscard]] Texture create_texture(Image *image_resource, const TextureViewCreation &texture_view, const TextureSampler& sampler) const noexcept;
     template<typename T>
     [[nodiscard]] auto compile(const Kernel<T> &kernel, const string &shader_desc = "", ShaderTag tag = CS) const noexcept {
         OC_INFO_FORMAT("compile shader : {}", shader_desc.c_str());
@@ -241,7 +239,7 @@ public:
         impl_->destroy_render_pass(render_pass);
     }
 
-    [[nodiscard]] std::array<DescriptorSetLayout *, max_descriptor_sets_per_shader> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) {
+    [[nodiscard]] std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) {
         return impl_->create_descriptor_set_layout(shaders, shaders_count);
     }
 
@@ -257,12 +255,15 @@ public:
         return impl_->get_global_descriptor_set(name);
     }
 
-    void bind_descriptor_sets(DescriptorSet **descriptor_sets, uint32_t descriptor_sets_num, RHIPipeline *pipeline) noexcept {
-        impl_->bind_descriptor_sets(descriptor_sets, descriptor_sets_num, pipeline);
-    }
+    //void bind_descriptor_sets(DescriptorSet **descriptor_sets, uint32_t descriptor_sets_num, RHIPipeline *pipeline) noexcept {
+    //    impl_->bind_descriptor_sets(descriptor_sets, descriptor_sets_num, pipeline);
+    //}
 
     [[nodiscard]] static Device create_device(const string &backend_name, const ocarina::InstanceCreation &instance_creation);
     [[nodiscard]] static Device create_device(const string &backend_name);
 };
 
+namespace rhi_global {
+//OC_EXPORT_API Device rhi_create_device(const string &backend_name, const ocarina::InstanceCreation &instance_creation);
+}
 }// namespace ocarina

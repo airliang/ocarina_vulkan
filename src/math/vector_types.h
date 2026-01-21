@@ -138,14 +138,13 @@ public:
     }                                                                         \
                                                                               \
     template<typename U>                                                      \
-    requires is_scalar_v<U> && is_host_swizzle_v<T>                           \
+    requires is_scalar_v<remove_device_t<U>>                                  \
     friend vec_type operator op(U lhs, Swizzle<T, N, Indices...> rhs) {       \
         return lhs op rhs.decay();                                            \
     }                                                                         \
                                                                               \
     template<typename Arg>                                                    \
-    requires(is_vector_v<vec_type, 0>)                                        \
-    Swizzle &operator op## = (Arg && arg) noexcept {                          \
+    Swizzle &operator op##=(Arg && arg) noexcept {                            \
         auto tmp = *this;                                                     \
         *this = tmp op OC_FORWARD(arg);                                       \
         return *this;                                                         \
@@ -291,54 +290,54 @@ struct Vector : public detail::VectorStorage<T, N> {
     OC_MAKE_UNARY_OP(!)
 #undef OC_MAKE_UNARY_OP
 
-#define OC_MAKE_VECTOR_BINARY_OPERATOR(op, ...)                                                        \
-    template<typename U>                                                                               \
-    requires __VA_ARGS__                                                                               \
-    [[nodiscard]] friend constexpr auto operator op(this_type lhs,                                     \
-                                                    Vector<U, N> rhs) noexcept {                       \
-        using ret_type = decltype(T {} op U{});                                                        \
-        return [&]<size_t... index>(std::index_sequence<index...>) {                                   \
-            return Vector<ret_type, N>{(lhs[index] op rhs[index])...};                                 \
-        }(std::make_index_sequence<N>());                                                              \
-    }                                                                                                  \
-    template<typename U, size_t M, size_t... Indices>                                                  \
-    requires __VA_ARGS__                                                                               \
-    [[nodiscard]] friend constexpr auto operator op(Swizzle<U, M, Indices...> lhs,                     \
-                                                    this_type rhs) noexcept {                          \
-        return lhs.decay() op rhs;                                                                     \
-    }                                                                                                  \
-    template<typename U, size_t M, size_t... Indices>                                                  \
-    requires __VA_ARGS__                                                                               \
-    [[nodiscard]] friend constexpr auto operator op(this_type lhs,                                     \
-                                                    Swizzle<U, M, Indices...> rhs) noexcept {          \
-        return lhs op rhs.decay();                                                                     \
-    }                                                                                                  \
-    template<typename U>                                                                               \
-    requires __VA_ARGS__                                                                               \
-    [[nodiscard]] friend constexpr auto operator op(this_type lhs, U rhs) noexcept {                   \
-        return lhs op Vector<U, N>{rhs};                                                               \
-    }                                                                                                  \
-    template<typename U>                                                                               \
-    requires __VA_ARGS__                                                                               \
-    [[nodiscard]] friend constexpr auto operator op(T lhs, Vector<U, N> rhs) noexcept {                \
-        return this_type{lhs} op rhs;                                                                  \
-    }                                                                                                  \
-    template<typename U>                                                                               \
-    requires __VA_ARGS__                                                                               \
-    constexpr friend auto &operator op## = (this_type & lhs, Vector<U, N> rhs) noexcept {              \
-        lhs = lhs op rhs;                                                                              \
-        return lhs;                                                                                    \
-    }                                                                                                  \
-    template<typename U, size_t M, size_t... Indices>                                                  \
-    requires __VA_ARGS__                                                                               \
-    constexpr friend auto &operator op## = (this_type & lhs, Swizzle<U, M, Indices...> rhs) noexcept { \
-        lhs = lhs op rhs;                                                                              \
-        return lhs;                                                                                    \
-    }                                                                                                  \
-    template<typename U>                                                                               \
-    requires __VA_ARGS__                                                                               \
-    constexpr friend decltype(auto) operator op## = (this_type & lhs, U rhs) noexcept {                \
-        return (lhs op## = Vector<U, N>{rhs});                                                         \
+#define OC_MAKE_VECTOR_BINARY_OPERATOR(op, ...)                                                      \
+    template<typename U>                                                                             \
+    requires __VA_ARGS__                                                                             \
+    [[nodiscard]] friend constexpr auto operator op(this_type lhs,                                   \
+                                                    Vector<U, N> rhs) noexcept {                     \
+        using ret_type = decltype(T {} op U{});                                                      \
+        return [&]<size_t... index>(std::index_sequence<index...>) {                                 \
+            return Vector<ret_type, N>{(lhs[index] op rhs[index])...};                               \
+        }(std::make_index_sequence<N>());                                                            \
+    }                                                                                                \
+    template<typename U, size_t M, size_t... Indices>                                                \
+    requires __VA_ARGS__                                                                             \
+    [[nodiscard]] friend constexpr auto operator op(Swizzle<U, M, Indices...> lhs,                   \
+                                                    this_type rhs) noexcept {                        \
+        return lhs.decay() op rhs;                                                                   \
+    }                                                                                                \
+    template<typename U, size_t M, size_t... Indices>                                                \
+    requires __VA_ARGS__                                                                             \
+    [[nodiscard]] friend constexpr auto operator op(this_type lhs,                                   \
+                                                    Swizzle<U, M, Indices...> rhs) noexcept {        \
+        return lhs op rhs.decay();                                                                   \
+    }                                                                                                \
+    template<typename U>                                                                             \
+    requires __VA_ARGS__                                                                             \
+    [[nodiscard]] friend constexpr auto operator op(this_type lhs, U rhs) noexcept {                 \
+        return lhs op Vector<U, N>{rhs};                                                             \
+    }                                                                                                \
+    template<typename U>                                                                             \
+    requires __VA_ARGS__                                                                             \
+    [[nodiscard]] friend constexpr auto operator op(T lhs, Vector<U, N> rhs) noexcept {              \
+        return this_type{lhs} op rhs;                                                                \
+    }                                                                                                \
+    template<typename U>                                                                             \
+    requires __VA_ARGS__                                                                             \
+    constexpr friend auto &operator op##=(this_type & lhs, Vector<U, N> rhs) noexcept {              \
+        lhs = lhs op rhs;                                                                            \
+        return lhs;                                                                                  \
+    }                                                                                                \
+    template<typename U, size_t M, size_t... Indices>                                                \
+    requires __VA_ARGS__                                                                             \
+    constexpr friend auto &operator op##=(this_type & lhs, Swizzle<U, M, Indices...> rhs) noexcept { \
+        lhs = lhs op rhs;                                                                            \
+        return lhs;                                                                                  \
+    }                                                                                                \
+    template<typename U>                                                                             \
+    requires __VA_ARGS__                                                                             \
+    constexpr friend decltype(auto) operator op##=(this_type &lhs, U rhs) noexcept {                 \
+        return (lhs op## = Vector<U, N>{rhs});                                                       \
     }
 
     OC_MAKE_VECTOR_BINARY_OPERATOR(+, ocarina::is_all_number_v<T, U>)

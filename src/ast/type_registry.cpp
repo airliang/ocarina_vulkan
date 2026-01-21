@@ -84,7 +84,7 @@ namespace detail {
         ret == "matrix"sv ||
         ret == "struct"sv ||
         ret == "buffer"sv ||
-        ret == "texture3d"sv ||
+        ret == "texture"sv ||
         ret == "array"sv) {
         auto [start, end] = bracket_matching_near(str);
         ret = str.substr(0, end + 1);
@@ -180,10 +180,8 @@ const Type *TypeRegistry::parse_type(ocarina::string_view desc) noexcept {
         parse_byte_buffer(type.get(), desc);
     } else if (desc.starts_with("buffer")) {
         parse_buffer(type.get(), desc);
-    } else if (desc.starts_with("texture3d")) {
-        parse_texture3d(type.get(), desc);
-    } else if (desc.starts_with("texture2d")) {
-        parse_texture2d(type.get(), desc);
+    } else if (desc.starts_with("texture")) {
+        parse_texture(type.get(), desc);
     } else if (desc.starts_with("accel")) {
         parse_accel(type.get(), desc);
     } else if (desc.starts_with("bindlessArray")) {
@@ -287,18 +285,11 @@ void TypeRegistry::parse_buffer(Type *type, ocarina::string_view desc) noexcept 
     type->size_ = sizeof(BufferDesc<>);
 }
 
-void TypeRegistry::parse_texture3d(Type *type, ocarina::string_view desc) noexcept {
-    type->tag_ = Type::Tag::TEXTURE3D;
+void TypeRegistry::parse_texture(Type *type, ocarina::string_view desc) noexcept {
+    type->tag_ = Type::Tag::TEXTURE;
     type->alignment_ = alignof(TextureDesc);
     type->size_ = sizeof(TextureDesc);
 }
-
-void TypeRegistry::parse_texture2d(Type *type, ocarina::string_view desc) noexcept {
-    type->tag_ = Type::Tag::TEXTURE2D;
-    type->alignment_ = alignof(TextureDesc);
-    type->size_ = sizeof(TextureDesc);
-}
-
 
 void TypeRegistry::parse_accel(Type *type, ocarina::string_view desc) noexcept {
     type->tag_ = Type::Tag::ACCEL;

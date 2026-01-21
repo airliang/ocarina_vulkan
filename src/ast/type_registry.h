@@ -52,7 +52,7 @@ template<typename T>
     } else if constexpr (is_scalar_v<T>) {
         return std::to_string(val);
     } else if constexpr (is_struct_v<T>) {
-        string ret = ocarina::format("{}[", struct_member_tuple<T>::struct_name);
+        string ret = "[";
         traverse_tuple(struct_member_tuple_t<T>{}, [&]<typename Elm>(const Elm &_, uint index) {
             constexpr auto offset_array = struct_member_tuple<T>::offset_array;
             auto head = reinterpret_cast<const std::byte *>(addressof(val));
@@ -142,8 +142,7 @@ private:
     void parse_matrix(Type *type, ocarina::string_view desc) noexcept;
     void parse_array(Type *type, ocarina::string_view desc) noexcept;
     void parse_buffer(Type *type, ocarina::string_view desc) noexcept;
-    void parse_texture3d(Type *type, ocarina::string_view desc) noexcept;
-    void parse_texture2d(Type *type, ocarina::string_view desc) noexcept;
+    void parse_texture(Type *type, ocarina::string_view desc) noexcept;
     void parse_accel(Type *type, ocarina::string_view desc) noexcept;
     void parse_byte_buffer(Type *type, ocarina::string_view desc) noexcept;
     void parse_struct(Type *type, ocarina::string_view desc) noexcept;

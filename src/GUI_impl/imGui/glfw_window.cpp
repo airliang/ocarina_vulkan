@@ -48,21 +48,20 @@ void GLWindow::init(const char *name, uint2 initial_size, bool resizable) noexce
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
     glfwWindowHint(GLFW_RESIZABLE, resizable);
 
-    monitor_ = glfwGetPrimaryMonitor();
-    const GLFWvidmode *mode = glfwGetVideoMode(monitor_);
+    monitor_ =glfwGetPrimaryMonitor();
+    const GLFWvidmode* mode = glfwGetVideoMode(monitor_);
     handle_ = glfwCreateWindow(
         static_cast<int>(mode->width),
         static_cast<int>(mode->height),
         name, nullptr, nullptr);
-
     if (handle_ == nullptr) {
         const char *error = nullptr;
         glfwGetError(&error);
         OC_ERROR_FORMAT("Failed to create GLFW window: {}.", error);
     }
-#ifdef _WIN32
+    #ifdef _WIN32
     window_handle_ = (uint64_t)glfwGetWin32Window(handle_);
-#endif
+    #endif
     glfwMakeContextCurrent(handle_);
     glfwSwapInterval(0);// disable vsync
 
@@ -75,9 +74,7 @@ void GLWindow::init(const char *name, uint2 initial_size, bool resizable) noexce
     ImGui::StyleColorsDark();
     ImGui_ImplGlfw_InitForOpenGL(handle_, true);
     ImGui_ImplOpenGL3_Init("#version 330");
-    uint2 res = size();
-    texture_ = ocarina::make_unique<GLTexture>();
-    texture_->update(res);
+
     glfwSetWindowUserPointer(handle_, this);
     glfwSetMouseButtonCallback(handle_, [](GLFWwindow *window, int button, int action, int mods) noexcept {
         if (ImGui::GetIO().WantCaptureMouse) {// ImGui is handling the mouse
@@ -98,13 +95,7 @@ void GLWindow::init(const char *name, uint2 initial_size, bool resizable) noexce
     });
     glfwSetWindowSizeCallback(handle_, [](GLFWwindow *window, int width, int height) noexcept {
         auto self = static_cast<GLWindow *>(glfwGetWindowUserPointer(window));
-        uint2 res = make_uint2(width, height);
-        if (width * height > 0) {
-            self->texture_->update(res);
-        }
-        if (auto &&cb = self->window_size_callback_) {
-            cb(res);
-        }
+        if (auto &&cb = self->window_size_callback_) { cb(make_uint2(width, height)); }
     });
     glfwSetKeyCallback(handle_, [](GLFWwindow *window, int key, int scancode, int action, int mods) noexcept {
         // ImGui is handling the keyboard
@@ -125,7 +116,6 @@ void GLWindow::init(const char *name, uint2 initial_size, bool resizable) noexce
         }
     });
     glfwSetCharCallback(handle_, ImGui_ImplGlfw_CharCallback);
-
 }
 
 GLWindow::GLWindow(const char *name, uint2 initial_size, bool resizable) noexcept
@@ -152,6 +142,8 @@ GLWindow::~GLWindow() noexcept {
 uint2 GLWindow::size() const noexcept {
     auto width = 0;
     auto height = 0;
+//    const GLFWvidmode* mode = glfwGetVideoMode(monitor_);
+//    return make_uint2(mode->width, mode->height);
     glfwGetWindowSize(handle_, &width, &height);
     return make_uint2(
         static_cast<uint>(width),
@@ -168,7 +160,7 @@ void GLWindow::full_screen() {
         lastF11Toggle = now;
         //static bool isFullscreen = false;
         if (isFullscreen) {
-            glfwSetWindowMonitor(handle_, nullptr, windowedX, windowedY, windowedWidth, windowedHeight, 0);
+            glfwSetWindowMonitor(handle_, NULL, windowedX, windowedY, windowedWidth, windowedHeight, 0);
         } else {
             const GLFWvidmode *mode = glfwGetVideoMode(monitor_);
             glfwGetWindowPos(handle_, &windowedX, &windowedY);
@@ -191,14 +183,15 @@ void GLWindow::swap_monitor() {
 }
 
 void GLWindow::set_background(const uchar4 *pixels, uint2 size) noexcept {
-    if (texture_ == nullptr) {
-        texture_ = ocarina::make_unique<GLTexture>();
-    }
+    if (texture_ == nullptr) { texture_ = ocarina::make_unique<GLTexture>(); }
     texture_->load(pixels, size);
 }
 
 void GLWindow::set_background(const float4 *pixels, uint2 size) noexcept {
-    texture_->upload(pixels);
+    if (texture_ == nullptr) {
+        texture_ = ocarina::make_unique<GLTexture>();
+    }
+    texture_->load(pixels, size);
 }
 
 void GLWindow::gen_buffer(ocarina::uint &handle, ocarina::uint size_in_byte) const noexcept {
@@ -247,11 +240,13 @@ void GLWindow::_end_frame() noexcept {
     if (!should_close()) {
         Window::_end_frame();
         // background
-        ImVec2 background_size{
-            static_cast<float>(texture_->size().x),
-            static_cast<float>(texture_->size().y)};
-        ImGui::GetBackgroundDrawList()->AddImage(
-                reinterpret_cast<ImTextureID>(static_cast<uint64_t>(texture_->tex_handle())), {}, background_size);
+        if (texture_ != nullptr) {
+            ImVec2 background_size{
+                static_cast<float>(texture_->size().x),
+                static_cast<float>(texture_->size().y)};
+            ImGui::GetBackgroundDrawList()->AddImage(
+                reinterpret_cast<ImTextureID>(static_cast<uint64_t>(texture_->handle())), {}, background_size);
+        }
         // rendering
         ImGui::Render();
         int display_w, display_h;
@@ -272,10 +267,22 @@ void GLWindow::set_size(uint2 size) noexcept {
     }
 }
 
-void GLWindow::show_window() noexcept {
+void GLWindow::show_window() noexcept
+{
+
 }
 
-void GLWindow::hide_window() noexcept {
+void GLWindow::hide_window() noexcept
+{
+
 }
 
 }// namespace ocarina
+
+//OC_EXPORT_API ocarina::GLWindow *create(const char *name, ocarina::uint2 initial_size, bool resizable) {
+//    return ocarina::new_with_allocator<ocarina::GLWindow>(name, initial_size, resizable);
+//}
+//
+//OC_EXPORT_API void destroy(ocarina::GLWindow *ptr) {
+//    ocarina::delete_with_allocator(ptr);
+//}

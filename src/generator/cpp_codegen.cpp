@@ -424,7 +424,7 @@ void CppCodegen::_emit_type_name(const Type *type) noexcept {
                 _emit_type_name(type->element());
                 current_scratch() << "*";
                 break;
-            case Type::Tag::TEXTURE3D: break;
+            case Type::Tag::TEXTURE: break;
             case Type::Tag::BINDLESS_ARRAY: break;
             case Type::Tag::ACCEL: break;
             case Type::Tag::NONE: break;

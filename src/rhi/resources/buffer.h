@@ -156,7 +156,7 @@ public:
     }
 
     void import_handle(uint64_t handle) override {
-        device_->import_handle(handle, size_in_byte());
+        device_->import_handle(handle, size_in_byte()); 
     };
 
     uint64_t export_handle() override {
@@ -183,6 +183,7 @@ public:
 
     // Move assignment
     Buffer &operator=(Buffer &&other) noexcept {
+        destroy();
         Super::operator=(std::move(other));
         this->size_ = other.size_;
         this->name_ = std::move(other.name_);
@@ -300,10 +301,11 @@ public:
 
     [[nodiscard]] CommandList reallocate(size_t size, bool async = true) {
         return {BufferReallocateCommand::create(this, size * element_size(), async),
-                HostFunctionCommand::create(async,
-                                            [this, size] {
-                                                this->size_ = size;
-                                            })};
+                HostFunctionCommand::create(
+                    [this, size] {
+                        this->size_ = size;
+                    },
+                    async)};
     }
 
     template<typename... Args>

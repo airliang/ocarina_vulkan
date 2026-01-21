@@ -5,7 +5,7 @@
 
 #include "core/stl.h"
 #include "dsl/dsl.h"
-//#include "util/context.h"
+//#include "util/file_manager.h"
 #include "rhi/common.h"
 #include "rhi/context.h"
 #include <windows.h>
@@ -30,19 +30,17 @@ struct GlobalUniformBuffer {
     math3d::Matrix4 view_matrix;
 };
 
-
 int main(int argc, char *argv[]) {
-
     fs::path path(argv[0]);
-    //FileManager &context = FileManager::instance();
-    RHIContext &context = RHIContext::instance();
+    //FileManager &file_manager = FileManager::instance();
+    RHIContext &file_manager = RHIContext::instance();
 
-    auto window = context.create_window("display", make_uint2(800, 600), WindowLibrary::SDL3);
+    auto window = file_manager.create_window("display", make_uint2(800, 600), WindowLibrary::SDL3);
 
     InstanceCreation instanceCreation = {};
     //instanceCreation.instanceExtentions =
     instanceCreation.windowHandle = window->get_window_handle();
-    Device device = context.create_device("vulkan", instanceCreation);
+    Device device = file_manager.create_device("vulkan", instanceCreation);
 
     //Shader
     std::set<string> options;
@@ -61,7 +59,8 @@ int main(int argc, char *argv[]) {
     TextureViewCreation texture_view = {};
     texture_view.mip_level_count = 0;
     texture_view.usage = TextureUsageFlags::ShaderReadOnly;
-    Texture3D texture = device.create_texture(&image, texture_view);
+    TextureSampler sampler{ TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT };
+    Texture texture = device.create_texture(&image, texture_view, sampler);
 
     auto setup_quad = [&](Primitive& quad) {
         quad.set_vertex_shader(vertex_shader);
@@ -88,6 +87,8 @@ int main(int argc, char *argv[]) {
 
         uint64_t name_id = hash64("albedo");
         quad.add_texture(name_id, &texture);
+        name_id = hash64("sampler_albedo");
+        quad.add_sampler(name_id, *texture.get_sampler_pointer());
         //opaques.push_back(triangle);
     };
 
@@ -110,8 +111,18 @@ int main(int argc, char *argv[]) {
         //item.descriptor_set_writer->update_push_constants(push_constant_name_id, (void *)&item.world_matrix, sizeof(item.world_matrix), item.pipeline_line);
     };
 
+    uint64_t model_matrix_name_id = hash64("modelMatrix");
+    auto update_push_constant = [&](Primitive &primitive) {
+        // Setup push constant data if needed
+        primitive.set_push_constant_variable(
+            model_matrix_name_id,
+            reinterpret_cast<const std::byte*>(primitive.get_world_matrix_ptr()),
+            sizeof(primitive.get_world_matrix()));
+    };
+
     quad.set_geometry_data_setup(&device, setup_quad);
     quad.set_draw_call_pre_render_function(pre_render_draw_item);
+    quad.set_update_push_constant_function(update_push_constant);
 
     Renderer renderer(&device);
 
@@ -128,15 +139,16 @@ int main(int argc, char *argv[]) {
         //rp->set_clear_color(make_float4(0.1f, 0.1f, 0.1f, 1.0f));
         GlobalUniformBuffer global_ubo_data = {camera.get_projection_matrix().transpose(), camera.get_view_matrix().transpose()};
         global_descriptor_set->update_buffer(hash64("global_ubo"), &global_ubo_data, sizeof(GlobalUniformBuffer));
-        //global_descriptor_set_writer->update_buffer(hash64("global_ubo"), &global_ubo_data, sizeof(GlobalUniformBuffer));
+        rp->clear_draw_call_items();
+        auto draw_item = quad.get_draw_call_item(&device, rp);
+        rp->add_draw_call(draw_item);
     });
 
 
-    auto draw_item = quad.get_draw_call_item(&device, render_pass);
-    render_pass->add_draw_call(draw_item);
+    
     renderer.add_render_pass(render_pass);
 
-    auto image_io = Image::pure_color(make_float4(1, 0, 0, 1), ColorSpace::LINEAR, make_uint2(500));
+    auto image_io = Image::pure_color(make_float4(1, 0, 0, 1), ColorSpace::LINEAR, make_uint2(4));
     window->set_background(image_io.pixel_ptr<float4>(), make_uint2(800, 600));
     window->run([&](double d) {
         while (!window->should_close())
