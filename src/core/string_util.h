@@ -12,7 +12,7 @@
 #include <codecvt>
 #include <regex>
 #include <filesystem>
-#include <fmt/format.h>
+#include <fmt/bundled/format.h>
 #include "math/basic_types.h"
 #include "stl.h"
 
@@ -172,14 +172,26 @@ inline std::string string_printf(const char *fmt, Args... args) {
     return ret;
 }
 
-template<typename FMT, typename... Args>
-[[nodiscard]] inline auto format(FMT &&f, Args &&...args) noexcept {
+template<typename... Args>
+[[nodiscard]] inline auto format(fmt::format_string<Args...> fmt_str, Args &&...args) noexcept {
     using memory_buffer = fmt::basic_memory_buffer<char, fmt::inline_buffer_size, ocarina::allocator<char>>;
     memory_buffer buffer;
+    std::string t;
     fmt::format_to(std::back_inserter(buffer),
-                   std::forward<FMT>(f),
+                   fmt_str,
                    std::forward<Args>(args)...);
     return ocarina::string{buffer.data(), buffer.size()};
+}
+
+template<typename... Args>
+[[nodiscard]] inline auto format(const std::string& str, Args &&...args) noexcept {
+    using memory_buffer = fmt::basic_memory_buffer<char, fmt::inline_buffer_size, ocarina::allocator<char>>;
+    memory_buffer buffer;
+    std::string t;
+    fmt::format_to(std::back_inserter(buffer),
+        fmt::runtime(str),
+        std::forward<Args>(args)...);
+    return ocarina::string{ buffer.data(), buffer.size() };
 }
 
 [[nodiscard]] inline auto string_split(ocarina::string_view str, char ch) {

@@ -4,7 +4,7 @@
 
 #include "hash.h"
 #include "stl.h"
-#include "fmt/core.h"
+#include "fmt/bundled/core.h"
 
 namespace ocarina {
 

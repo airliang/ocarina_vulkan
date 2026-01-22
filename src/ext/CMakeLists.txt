@@ -14,15 +14,15 @@ set_target_properties(xxhash PROPERTIES
         UNITY_BUILD OFF)
 
 set(FMT_OS OFF CACHE BOOL "" FORCE)
-add_subdirectory(fmt)
-target_compile_definitions(fmt-header-only INTERFACE
-        FMT_CONSTEVAL=constexpr
-        FMT_EXCEPTIONS=0
-        FMT_HEADER_ONLY=1
-        FMT_USE_NOEXCEPT=1)
-target_include_directories(fmt-header-only INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/fmt/include)
+#add_subdirectory(fmt)
+#target_compile_definitions(fmt-header-only INTERFACE
+#        FMT_CONSTEVAL=constexpr
+#        FMT_EXCEPTIONS=0
+#        FMT_HEADER_ONLY=1
+#        FMT_USE_NOEXCEPT=1)
+#target_include_directories(fmt-header-only INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/fmt/include)
 
-target_link_libraries(ocarina-ext PUBLIC fmt::fmt-header-only)
+#target_link_libraries(ocarina-ext PUBLIC fmt::fmt-header-only)
 
 add_subdirectory(EASTL)
 target_include_directories(EASTL PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/EASTL/include)
@@ -36,8 +36,9 @@ if(NOT TARGET spdlog)
 endif()
 set_target_properties(spdlog PROPERTIES
         UNITY_BUILD FALSE)
-target_link_libraries(spdlog PUBLIC fmt::fmt-header-only)
+#target_link_libraries(spdlog PUBLIC fmt::fmt-header-only)
 target_link_libraries(ocarina-ext PUBLIC spdlog)
+target_include_directories(ocarina-ext INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/spdlog/include/spdlog)
 
 add_subdirectory(glfw)
 add_subdirectory(imgui)

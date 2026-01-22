@@ -5,7 +5,7 @@
 #include "platform.h"
 #include "oc_windows.h"
 #include <dbghelp.h>
-#include "fmt/format.h"
+#include "fmt/bundled/format.h"
 #include "core/logging.h"
 #include "util.h"
 
