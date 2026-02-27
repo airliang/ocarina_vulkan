@@ -294,10 +294,11 @@ int main(int argc, char *argv[]) {
     auto image_io = Image::pure_color(make_float4(1, 0, 0, 1), ColorSpace::LINEAR, make_uint2(500));
     window->set_background(image_io.pixel_ptr<float4>(), make_uint2(800, 600));
     window->run([&](double d) {
-        while (!window->should_close())
+        //while (!window->should_close())
         {
-            Window::WindowLoop win_loop(window.get());
+            //Window::WindowLoop win_loop(window.get());
             renderer.render_frame();
+            renderer.present_frame();
         }
     });
 

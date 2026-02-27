@@ -56,6 +56,8 @@ class DescriptorSetLayout;
 struct RHIPipeline;
 class Image;
 class TextureSampler;
+struct ImguiCreation;
+struct ImguiFrameInfo;
 
 class OC_RHI_API Device : public concepts::Noncopyable {
 public:
@@ -94,6 +96,7 @@ public:
         virtual void init_rtx() noexcept = 0;
         [[nodiscard]] virtual CommandVisitor *command_visitor() noexcept = 0;
         virtual void submit_frame() noexcept = 0;
+        virtual void present_frame() noexcept {}
         virtual VertexBuffer *create_vertex_buffer() noexcept = 0;
         virtual IndexBuffer *create_index_buffer(const void *initial_data, uint32_t indices_count, bool bit16) noexcept = 0;
         virtual void begin_frame() noexcept = 0;
@@ -104,7 +107,6 @@ public:
         virtual void bind_pipeline(const handle_ty pipeline) noexcept = 0;
         virtual RHIPipeline *get_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass) noexcept = 0;
         virtual DescriptorSet *get_global_descriptor_set(const string &name) noexcept = 0;
-        //virtual void bind_descriptor_sets(DescriptorSet **descriptor_set, uint32_t descriptor_sets_num, RHIPipeline *pipeline) noexcept = 0;
 
         virtual void memory_allocate(handle_ty *handle, size_t size, bool exported = true) {}
         virtual void memory_free(handle_ty *handle) {}
@@ -115,6 +117,10 @@ public:
         virtual handle_ty import_handle(handle_ty handle, size_t size) { return 0; }
         virtual uint64_t export_handle(handle_ty handle_) { return 0; }
 #endif
+        virtual void get_imgui_creation(ImguiCreation& imgui_creation) noexcept { }
+        virtual handle_ty get_imgui_commandbuffer() const noexcept { return 0; }
+        virtual void get_imgui_frameinfo(ImguiFrameInfo& imgui_frame) const noexcept {
+        }
     };
 
     using Creator = Device::Impl *(RHIContext *);
@@ -231,6 +237,10 @@ public:
         impl_->submit_frame();
     }
 
+    void present_frame() {
+        impl_->present_frame();
+    }
+
     [[nodiscard]] RHIRenderPass *create_render_pass(const RenderPassCreation &render_pass_creation) {
         return impl_->create_render_pass(render_pass_creation);
     }
@@ -253,6 +263,18 @@ public:
 
     DescriptorSet *get_global_descriptor_set(const string &name) noexcept {
         return impl_->get_global_descriptor_set(name);
+    }
+
+    void get_imgui_creation(ImguiCreation& imgui_creation) {
+        return impl_->get_imgui_creation(imgui_creation);
+    }
+
+    handle_ty get_imgui_commandbuffer() noexcept {
+        return impl_->get_imgui_commandbuffer();
+    }
+
+    void get_imgui_frameinfo(ImguiFrameInfo& imgui_frame) noexcept {
+        impl_->get_imgui_frameinfo(imgui_frame);
     }
 
     //void bind_descriptor_sets(DescriptorSet **descriptor_sets, uint32_t descriptor_sets_num, RHIPipeline *pipeline) noexcept {

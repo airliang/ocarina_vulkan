@@ -12,6 +12,7 @@ namespace ocarina {
 
 class GLTexture;
 class GLFWContext;
+class Device;
 
 class GLWindow : public Window {
 private:
@@ -53,5 +54,7 @@ public:
     void set_size(uint2 size) noexcept override;
     void show_window() noexcept override;
     void hide_window() noexcept override;
+    void init_imgui(const ImguiCreation* imgui_creation) noexcept override {}
+    void cleanup_imgui() noexcept override {}
 };
 }// namespace ocarina

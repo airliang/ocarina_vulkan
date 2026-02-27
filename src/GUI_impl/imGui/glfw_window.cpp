@@ -4,7 +4,9 @@
 
 #include "glfw_window.h"
 #include "widgets.h"
-#include "ext/imgui/gizmo/ImGuizmo.h"
+#include "ext/imgui/backends/imgui_impl_opengl3.h"
+#include "ext/imgui/backends/imgui_impl_glfw.h"
+#include "ext/imgui/backends/imgui_impl_opengl3_loader.h"
 #include "core/logging.h"
 #include "rhi/common.h"
 #ifdef _WIN32
@@ -70,7 +72,8 @@ void GLWindow::init(const char *name, uint2 initial_size, bool resizable) noexce
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
     init_widgets();
-    ImGuizmo::SetImGuiContext(ImGui::CreateContext());
+    //ImGuizmo::SetImGuiContext(ImGui::CreateContext());
+    ImGui::CreateContext();
     ImGui::StyleColorsDark();
     ImGui_ImplGlfw_InitForOpenGL(handle_, true);
     ImGui_ImplOpenGL3_Init("#version 330");
@@ -231,7 +234,7 @@ void GLWindow::_begin_frame() noexcept {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-        ImGuizmo::BeginFrame();
+        //ImGuizmo::BeginFrame();
         Window::_begin_frame();
     }
 }
@@ -245,7 +248,7 @@ void GLWindow::_end_frame() noexcept {
                 static_cast<float>(texture_->size().x),
                 static_cast<float>(texture_->size().y)};
             ImGui::GetBackgroundDrawList()->AddImage(
-                reinterpret_cast<ImTextureID>(static_cast<uint64_t>(texture_->handle())), {}, background_size);
+                static_cast<ImTextureID>(static_cast<uint64_t>(texture_->handle())), {}, background_size);
         }
         // rendering
         ImGui::Render();

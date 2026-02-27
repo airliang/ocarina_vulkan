@@ -48,12 +48,25 @@ void Renderer::render_frame()
         {
             render_pass->begin_render_pass();
             render_pass->draw_items();
+            //render_pass->draw_gui();
+            if (render_pass->is_swapchain_renderpass())
+            {
+                if (render_gui_impl_)
+                {
+                    render_gui_impl_(render_pass->get_command_buffer());
+                }
+            }
             render_pass->end_render_pass();
         }
         
         device_->end_frame();
         device_->submit_frame();
     }
+}
+
+void Renderer::present_frame()
+{
+    device_->present_frame();
 }
 
 }// namespace ocarina

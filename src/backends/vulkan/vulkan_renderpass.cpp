@@ -45,6 +45,7 @@ VulkanRenderPass::~VulkanRenderPass() {
 }
 
 void VulkanRenderPass::begin_render_pass() {
+    clear_draw_call_items();
     if (begin_render_pass_callback_ != nullptr)
     {
         begin_render_pass_callback_(this);
@@ -53,7 +54,7 @@ void VulkanRenderPass::begin_render_pass() {
     // Implementation for beginning the render pass
     VulkanDriver& driver = VulkanDriver::instance();
     VkCommandBuffer current_buffer = driver.get_current_command_buffer();
-
+    command_buffer_ = reinterpret_cast<handle_ty>(current_buffer);
 
 
     VkRenderPassBeginInfo renderPassBeginInfo{};

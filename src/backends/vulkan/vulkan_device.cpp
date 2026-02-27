@@ -4,6 +4,7 @@
 
 #include "vulkan_device.h"
 #include "rhi/context.h"
+#include "rhi/imgui_creation.h"
 #include "util.h"
 #include "vulkan_shader.h"
 #include "vulkan_driver.h"
@@ -225,7 +226,7 @@ void VulkanDevice::init_vulkan()
 
     // Get list of supported extensions
     uint32_t extCount = 0;
-    vkEnumerateDeviceExtensionProperties(physicalDevice_, nullptr, &extCount, nullptr);
+    VK_CHECK_RESULT(vkEnumerateDeviceExtensionProperties(physicalDevice_, nullptr, &extCount, nullptr));
     if (extCount > 0) {
         std::vector<VkExtensionProperties> extensions(extCount);
         if (vkEnumerateDeviceExtensionProperties(physicalDevice_, nullptr, &extCount, &extensions.front()) == VK_SUCCESS) {
@@ -330,6 +331,10 @@ void VulkanDevice::shutdown()
 
 void VulkanDevice::submit_frame() noexcept {
     return VulkanDriver::instance().submit_frame();
+}
+
+void VulkanDevice::present_frame() noexcept {
+    return VulkanDriver::instance().present_frame();
 }
 
 VertexBuffer* VulkanDevice::create_vertex_buffer() noexcept
@@ -475,6 +480,38 @@ bool VulkanDevice::verify_bindless_support(VkPhysicalDevice physical_device) con
     }
 
     return true;
+}
+
+void VulkanDevice::get_imgui_creation(ImguiCreation& imgui_creation) noexcept
+{
+    imgui_creation.instance_ = reinterpret_cast<handle_ty>(m_instance.instance());
+    imgui_creation.physical_device_ = reinterpret_cast<handle_ty>(physicalDevice_);
+    imgui_creation.device_ = reinterpret_cast<handle_ty>(logicalDevice_);
+    imgui_creation.allocator_callback_ = nullptr;
+    imgui_creation.image_count_ = m_swapChain.backbuffer_size();
+    imgui_creation.queue_family_ = queueFamilyIndices_[uint32_t(QueueType::Graphics)];
+    imgui_creation.pipeline_cache_ = reinterpret_cast<handle_ty>(VK_NULL_HANDLE);
+    imgui_creation.queue_ = reinterpret_cast<handle_ty>(VulkanDriver::instance().get_graphics_queue());
+    imgui_creation.descriptor_pool_ = reinterpret_cast<handle_ty>(VulkanDriver::instance().get_imgui_descriptor_pool());
+    imgui_creation.swapchain_render_pass_ = reinterpret_cast<handle_ty>(VulkanDriver::instance().get_framebuffer_render_pass());
+    imgui_creation.surface_ = reinterpret_cast<handle_ty>(m_swapChain.get_surface());
+}
+
+handle_ty VulkanDevice::get_imgui_commandbuffer() const noexcept
+{
+    return reinterpret_cast<handle_ty>(VulkanDriver::instance().get_imgui_commandbuffer());
+}
+
+void VulkanDevice::get_imgui_frameinfo(ImguiFrameInfo& imgui_frame) const noexcept
+{
+    VulkanDriver& driver = VulkanDriver::instance();
+    imgui_frame.command_buffer_ = reinterpret_cast<handle_ty>(driver.get_imgui_commandbuffer());
+    imgui_frame.framebuffer_ = reinterpret_cast<handle_ty>(driver.get_frame_buffer(driver.current_buffer()));
+    imgui_frame.render_pass_ = reinterpret_cast<handle_ty>(driver.get_framebuffer_render_pass());
+    imgui_frame.framebuffer_size_ = m_swapChain.resolution();
+    imgui_frame.clear_color_ = make_float4(0.1f, 0.1f, 0.1f, 1.0f);
+    imgui_frame.clear_depth_ = 0;
+    imgui_frame.clear_stencil_ = 0;
 }
 
 }// namespace ocarina

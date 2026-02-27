@@ -84,6 +84,15 @@ public:
 
     void add_global_descriptor_set(const std::string &name, DescriptorSet *descriptor_set);
 
+    bool is_swapchain_renderpass() const
+    {
+        return render_target_count_ == 0;
+    }
+
+    handle_ty get_command_buffer() const
+    {
+        return command_buffer_;
+    }
 protected:
     bool is_use_swapchain_framebuffer() const {
         return render_target_count_ == 0;
@@ -107,6 +116,7 @@ protected:
     std::unordered_map<uint64_t, DescriptorSet*> global_descriptor_sets_;
     std::vector<DescriptorSet *> global_descriptor_sets_array_;
     GlobalUBO global_ubo_data_ = {};
+    handle_ty command_buffer_ = 0;
 };
 
 }// namespace ocarina

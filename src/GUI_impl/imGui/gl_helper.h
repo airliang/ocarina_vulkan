@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "ext/imgui/glad/glad.h"
+#include "glad/glad.h"
 #include "ext/glfw/include/GLFW/glfw3.h"
 #include "core/logging.h"
 

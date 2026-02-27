@@ -8,6 +8,10 @@
 #include "widgets.h"
 
 namespace ocarina {
+
+class Device;
+struct ImguiCreation;
+struct ImguiFrameInfo;
 class OC_GUI_API Window {
 public:
     using MouseButtonCallback = ocarina::function<void(int /* button */, int /* action */, float2 /* (x, y) */)>;
@@ -18,7 +22,7 @@ public:
     using UpdateCallback = ocarina::function<void(double)>;
     using BeginFrame = ocarina::function<void()>;
     using EndFrame = ocarina::function<void()>;
-
+    using ImguiFrameCallback = ocarina::function<void()>;
 protected:
     MouseButtonCallback mouse_button_callback_;
     CursorPositionCallback cursor_position_callback_;
@@ -27,6 +31,7 @@ protected:
     ScrollCallback scroll_callback_;
     BeginFrame begin_frame_callback_;
     EndFrame end_frame_callback_;
+    ImguiFrameCallback imgui_frame_callback_;
     float4 clear_color_{make_float4(0, 0, 0, 0)};
     bool resizable_{false};
     Clock clock_;
@@ -88,7 +93,13 @@ public:
     }
     virtual void show_window() noexcept = 0;
     virtual void hide_window() noexcept = 0;
-
+    virtual void init_imgui(const ImguiCreation* imgui_creation) noexcept = 0;
+    virtual void cleanup_imgui() noexcept = 0;
+    void set_imgui_frame_callback(ImguiFrameCallback cb) noexcept {
+        imgui_frame_callback_ = std::move(cb);
+    }
+    virtual void render_gui(const ImguiFrameInfo& imgui_frame) noexcept {}
+    virtual void render_gui(handle_ty command_buffer) noexcept {}
     class WindowLoop {
     public:
         WindowLoop(Window *window) : window_(window) {

@@ -7,20 +7,21 @@
 #include "GUI/window.h"
 #include "widgets.h"
 #include <SDL3/SDL.h>
+#include "rhi/imgui_creation.h"
 
 namespace ocarina {
-
 class SDLWindow : public Window {
 private:
     //ocarina::shared_ptr<GLFWContext> context_;
     SDL_Window *handle_{nullptr};
     //mutable ocarina::unique_ptr<GLTexture> texture_;
-
+    ImguiCreation imgui_creation_{};
 private:
     void _begin_frame() noexcept override;
     void _end_frame() noexcept override;
     bool should_close_ = false;
-
+    bool imgui_initialized_ = false;
+    //void setup_vulkan_window(const ImguiCreation* imgui_creation, ImGui_ImplVulkanH_Window* wd, VkSurfaceKHR surface, int width, int height) noexcept;
 public:
     SDLWindow(const char *name, uint2 initial_size, bool resizable = false) noexcept;
     void init(const char *name, uint2 initial_size, bool resizable) noexcept override;
@@ -45,5 +46,9 @@ public:
     void set_size(uint2 size) noexcept override;
     void show_window() noexcept override;
     void hide_window() noexcept override;
+    void init_imgui(const ImguiCreation* imgui_creation) noexcept override;
+    void cleanup_imgui() noexcept override;
+    void render_gui(const ImguiFrameInfo& imgui_frame) noexcept override;
+    void render_gui(handle_ty command_buffer) noexcept override;
 };
 }// namespace ocarina

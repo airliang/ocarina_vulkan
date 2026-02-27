@@ -26,6 +26,7 @@ public:
     using SetupCallback = ocarina::function<void()>;
     using ReleaseCallback = ocarina::function<void()>;
     using UpdateDescriptorPerObjectCallback = ocarina::function<void(Primitive&)>;
+    using RenderGUIImplCallback = ocarina::function<void(handle_ty cmd_buffer)>;
 
     void set_update_frame_callback(UpdateFrameCallBack cb)
     {
@@ -34,12 +35,17 @@ public:
     void set_render_callback(RenderCallback cb);
     void set_setup_callback(SetupCallback cb);
     void set_release_callback(ReleaseCallback cb);
+    void set_render_gui_impl_callback(RenderGUIImplCallback cb)
+    {
+        render_gui_impl_ = cb;
+    }
     void set_clear_color(const float4& color)
     {
         clear_color = color;
     }
 
     void render_frame();
+    void present_frame();
     void add_render_pass(RHIRenderPass *render_pass)
     {
         render_passes_.emplace_back(render_pass);
@@ -55,6 +61,7 @@ private:
     SetupCallback setup = nullptr;
     RenderCallback render = nullptr;
     ReleaseCallback release = nullptr;
+    RenderGUIImplCallback render_gui_impl_ = nullptr;
     float4 clear_color = {0, 0, 0, 1};
     
 protected:

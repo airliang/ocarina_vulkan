@@ -41,14 +41,14 @@ target_link_libraries(ocarina-ext PUBLIC spdlog)
 target_include_directories(ocarina-ext INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/spdlog/include/spdlog)
 
 add_subdirectory(glfw)
-add_subdirectory(imgui)
+#add_subdirectory(imgui)
 add_library(glfw_config INTERFACE)
 target_link_libraries(glfw_config INTERFACE glfw)
 
 add_subdirectory(stblib)
 
 add_library(ocarina-gui-ext INTERFACE)
-target_link_libraries(ocarina-gui-ext INTERFACE glfw_config ocarina-imgui)
+target_link_libraries(ocarina-gui-ext INTERFACE glfw_config)
 
 add_subdirectory(SDL)
 set_property(TARGET SDL_uclibc PROPERTY FOLDER "ocarina/ext/SDL3")

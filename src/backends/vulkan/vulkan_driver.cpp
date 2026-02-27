@@ -70,6 +70,10 @@ void VulkanDriver::terminate()
     //    vkDestroyDescriptorSetLayout(device(), empty_descriptorset_layout_, nullptr);
     //    empty_descriptorset_layout_ = VK_NULL_HANDLE;
     //}
+    if (imgui_descriptorpool_ != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(device(), imgui_descriptorpool_, nullptr);
+        imgui_descriptorpool_ = VK_NULL_HANDLE;
+    }
 }
 
 void VulkanDriver::submit_frame() {
@@ -82,8 +86,23 @@ void VulkanDriver::submit_frame() {
     // Submit to queue
     vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
 
-    vulkan_device_->get_swapchain()->queue_present(graphics_queue, current_buffer_, semaphores.renderComplete);
+    //vulkan_device_->get_swapchain()->queue_present(graphics_queue, current_buffer_, semaphores.renderComplete);
 
+    //VK_CHECK_RESULT(vkQueueWaitIdle(graphics_queue));
+}
+
+void VulkanDriver::submit_command_buffer(VkCommandBuffer cmd_buffer) {
+    VkSubmitInfo submit_info = {};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &cmd_buffer;
+    VK_CHECK_RESULT(vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE));
+    //VK_CHECK_RESULT(vkQueueWaitIdle(graphics_queue));
+}
+
+void VulkanDriver::present_frame()
+{
+    vulkan_device_->get_swapchain()->queue_present(graphics_queue, current_buffer_, semaphores.renderComplete);
     VK_CHECK_RESULT(vkQueueWaitIdle(graphics_queue));
 }
 
@@ -299,6 +318,11 @@ void VulkanDriver::release_command_pool()
 {
     vkDestroyCommandPool(device(), command_pool_, nullptr);
     command_pool_ = VK_NULL_HANDLE;
+
+    if (imgui_command_pool_ != VK_NULL_HANDLE) {
+        vkDestroyCommandPool(device(), imgui_command_pool_, nullptr);
+        imgui_command_pool_ = VK_NULL_HANDLE;
+    }
 }
 
 void VulkanDriver::create_command_buffers()
@@ -319,6 +343,11 @@ void VulkanDriver::create_command_buffers()
 void VulkanDriver::release_command_buffers() {
     vkFreeCommandBuffers(device(), command_pool_, static_cast<uint32_t>(draw_cmd_buffers_.size()), draw_cmd_buffers_.data());
     draw_cmd_buffers_.clear();
+
+    if (imgui_cmd_buffers_.size() > 0) {
+        vkFreeCommandBuffers(device(), imgui_command_pool_, static_cast<uint32_t>(imgui_cmd_buffers_.size()), imgui_cmd_buffers_.data());
+        imgui_cmd_buffers_.clear();
+    }
 }
 
 void VulkanDriver::initialize()
@@ -339,6 +368,7 @@ void VulkanDriver::initialize()
     submit_info.pSignalSemaphores = &semaphores.renderComplete;
 
     create_internal_textures();
+    create_imgui_cmd_buffers();
 }
 
 void VulkanDriver::window_resize()
@@ -565,20 +595,51 @@ void VulkanDriver::destroy_internal_textures()
     }
 }
 
-//VkDescriptorSetLayout VulkanDriver::get_empty_descriptor_set_layout()
-//{
-//    if (empty_descriptorset_layout_ == VK_NULL_HANDLE) {
-//        VkDescriptorSetLayoutCreateInfo layoutInfo{};
-//        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-//        layoutInfo.bindingCount = 0;   // <-- No bindings
-//        layoutInfo.pBindings = nullptr;// <-- No bindings array
-//
-//        VkDescriptorSetLayout emptySetLayout;
-//        VkResult result = vkCreateDescriptorSetLayout(vulkan_device_->logicalDevice(), &layoutInfo, nullptr, &empty_descriptorset_layout_);
-//    }
-//
-//    return empty_descriptorset_layout_;
-//}
+VkDescriptorPool VulkanDriver::get_imgui_descriptor_pool()
+{
+    if (imgui_descriptorpool_ != VK_NULL_HANDLE) {
+        return imgui_descriptorpool_;
+    }
+    VkDescriptorPoolSize pool_sizes[] =
+    {
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 8 },
+    };
+    VkDescriptorPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    pool_info.maxSets = 0;
+    for (VkDescriptorPoolSize& pool_size : pool_sizes)
+        pool_info.maxSets += pool_size.descriptorCount;
+    pool_info.poolSizeCount = 1;
+    pool_info.pPoolSizes = pool_sizes;
+    VK_CHECK_RESULT(vkCreateDescriptorPool(device(), &pool_info, nullptr, &imgui_descriptorpool_));
+
+    return imgui_descriptorpool_;
+}
+
+void VulkanDriver::create_imgui_cmd_buffers()
+{
+    VulkanSwapchain* swapchain = vulkan_device_->get_swapchain();
+    uint32_t graphic_queue_index = vulkan_device_->get_queue_family_index(QueueType::Graphics);
+
+    VkCommandPoolCreateInfo cmd_pool_info = {};
+    cmd_pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    cmd_pool_info.queueFamilyIndex = graphic_queue_index;
+    cmd_pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    VK_CHECK_RESULT(vkCreateCommandPool(device(), &cmd_pool_info, nullptr, &imgui_command_pool_));
+
+    imgui_cmd_buffers_.resize(swapchain->backbuffer_size());
+
+    VkCommandBufferAllocateInfo const allocateInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = imgui_command_pool_,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = (uint32_t)imgui_cmd_buffers_.size(),
+    };
+
+    VK_CHECK_RESULT(vkAllocateCommandBuffers(device(), &allocateInfo, imgui_cmd_buffers_.data()));
+}
+
 
 }// namespace ocarina
 

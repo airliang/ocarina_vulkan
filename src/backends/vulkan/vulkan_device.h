@@ -67,6 +67,7 @@ public:
     [[nodiscard]] CommandVisitor *command_visitor() noexcept override;
     void shutdown();
     void submit_frame() noexcept override;
+    void present_frame() noexcept override;
     VertexBuffer* create_vertex_buffer() noexcept override;
     IndexBuffer* create_index_buffer(const void *initial_data, uint32_t indices_count, bool bit16) noexcept override;
     VulkanBuffer *create_vulkan_buffer(VkBufferUsageFlags usage_flags, VkMemoryPropertyFlags memory_property_flags, VkDeviceSize size, const void *data = nullptr);
@@ -103,11 +104,15 @@ public:
     }
 
     VkInstance get_instance() const { return m_instance.instance(); }
+    void get_imgui_creation(ImguiCreation& imgui_creation) noexcept override;
+    handle_ty get_imgui_commandbuffer() const noexcept override;
+    void get_imgui_frameinfo(ImguiFrameInfo& imgui_frame) const noexcept override;
  private:
     void init_vulkan();
     void create_logical_device();
     void get_enable_features();
     void get_enable_extentions();
+    
 
     VulkanInstance m_instance;
     VulkanSwapchain m_swapChain;
@@ -119,6 +124,7 @@ public:
     uint32_t queueFamilyCount_ = 0;
     VkPhysicalDeviceDescriptorIndexingFeaturesEXT indexing_features_{};
     bool support_bindless_ = false;
+
     uint32_t getQueueFamilyIndex(uint32_t queueFlags) const;
 
     bool verify_bindless_support(VkPhysicalDevice physical_device) const;

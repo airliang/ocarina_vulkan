@@ -47,6 +47,8 @@ public:
     void bind_pipeline(const VulkanPipeline &pipeline);
     void terminate();
     void submit_frame();
+    void submit_command_buffer(VkCommandBuffer cmd_buffer);
+    void present_frame();
     inline VkDevice device() const;
     VulkanShader *create_shader(ShaderType shader_type,
                                 const std::string &filename,
@@ -116,8 +118,16 @@ public:
     }
 
     VkSampler get_vulkan_sampler(const TextureSampler& sampler);
-    //VkDescriptorSetLayout get_empty_descriptor_set_layout();
+    
+    VkQueue get_graphics_queue() const {
+        return graphics_queue;
+    }
 
+    VkDescriptorPool get_imgui_descriptor_pool();
+
+    VkCommandBuffer get_imgui_commandbuffer() const {
+        return imgui_cmd_buffers_[current_buffer_];
+    }
 private:
     void setup_frame_buffer();
     //void setup_depth_stencil(uint32_t width, uint32_t height);
@@ -128,8 +138,9 @@ private:
     void release_command_buffers();
     void initialize();
     void window_resize();
-    
-
+    void create_internal_textures();
+    void destroy_internal_textures();
+    void create_imgui_cmd_buffers();
 private:
     VulkanDriver();
     VulkanDevice *vulkan_device_;
@@ -172,10 +183,8 @@ private:
     std::unordered_map<uint64_t, VkSampler> samplers_;
 
     VulkanTexture *internal_textures_[INTERNAL_TEXTURE_COUNT] = {nullptr};
-
-    void create_internal_textures();
-    void destroy_internal_textures();
-
-    //VkDescriptorSetLayout empty_descriptorset_layout_ = VK_NULL_HANDLE;
+    VkDescriptorPool imgui_descriptorpool_ = VK_NULL_HANDLE;
+    std::vector<VkCommandBuffer> imgui_cmd_buffers_;
+    VkCommandPool imgui_command_pool_ = VK_NULL_HANDLE;
 };
 }// namespace ocarina

@@ -51,6 +51,11 @@ public:
     {
         return depth_stencil;
     }
+
+    VkSurfaceKHR get_surface() const
+    {
+        return surface_;
+    }
 private:
     void setup_backbuffers(const VkSwapchainCreateInfoKHR &swapChainCreateInfo);
     void setup_depth_stencil();

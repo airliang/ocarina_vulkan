@@ -5,11 +5,11 @@
 #pragma once
 
 #include "gl_helper.h"
-#include <ext/imgui/glad/glad.h>
+#include "glad/glad.h"
 #include <GLFW/glfw3.h>
 #include "GUI/widgets.h"
-#include "ext/imgui/imgui_impl_opengl3.h"
-#include <ext/imgui/imgui_impl_glfw.h>
+#include "ext/imgui/backends/imgui_impl_opengl3.h"
+#include <ext/imgui/backends/imgui_impl_glfw.h>
 #include "GUI/window.h"
 #include "core/image.h"
 
