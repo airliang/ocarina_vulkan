@@ -13,3 +13,6 @@
 [submodule "src/ext/SPIRV-Cross"]
 	path = src/ext/SPIRV-Cross
 	url = https://github.com/KhronosGroup/SPIRV-Cross.git
+[submodule "src/ext/imgui"]
+	path = src/ext/imgui
+	url = https://github.com/ocornut/imgui.git
