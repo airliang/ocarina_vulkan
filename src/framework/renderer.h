@@ -45,7 +45,6 @@ public:
     }
 
     void render_frame();
-    void present_frame();
     void add_render_pass(RHIRenderPass *render_pass)
     {
         render_passes_.emplace_back(render_pass);

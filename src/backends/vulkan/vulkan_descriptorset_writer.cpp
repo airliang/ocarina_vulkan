@@ -153,7 +153,7 @@ void VulkanDescriptorSetWriter::update_buffer(uint64_t name_id, void *data, uint
     }
 }
 
-void VulkanDescriptorSetWriter::update_push_constants(uint64_t name_id, void *data, uint32_t size, RHIPipeline *pipeline) {
+void VulkanDescriptorSetWriter::update_push_constants(const CommandBuffer& cmd_buffer, uint64_t name_id, void *data, uint32_t size, RHIPipeline *pipeline) {
     auto it = descriptors_.find(name_id);
     if (it != descriptors_.end()) {
         VulkanDescriptorPushConstants *push_constants_descriptor = static_cast<VulkanDescriptorPushConstants *>(it->second);
@@ -161,7 +161,8 @@ void VulkanDescriptorSetWriter::update_push_constants(uint64_t name_id, void *da
         // This is a placeholder for actual push constant update logic
         VulkanPipeline *vulkan_pipeline = static_cast<VulkanPipeline *>(pipeline);
         VkPipelineLayout layout = vulkan_pipeline->pipeline_layout_;
-        VulkanDriver::instance().push_constants(layout, data, size, 0);
+        VkCommandBuffer cmd = reinterpret_cast<VkCommandBuffer>(cmd_buffer.command_buffer);
+        VulkanDriver::instance().push_constants(cmd, layout, data, size, 0);
     }
 }
 

@@ -7,6 +7,7 @@
 #include "rhi/renderpass.h"
 #include "renderer.h"
 #include "rhi/device.h"
+#include "rhi/command_buffer.h"
 
 namespace ocarina {
 Renderer::~Renderer() {
@@ -44,11 +45,19 @@ void Renderer::render_frame()
     else
     {
         device_->begin_frame();
+        CommandBuffer cmd = device_->get_command_buffer();
+        device_->begin_command_buffer(cmd);
         for (auto& render_pass : render_passes_)
         {
-            render_pass->begin_render_pass();
-            render_pass->draw_items();
-            //render_pass->draw_gui();
+            if (render_pass->is_swapchain_renderpass())
+            {
+                // Update clear color for swapchain render pass
+                cmd.add_signal_semaphore(device_->get_render_complete_semaphore());
+                cmd.add_wait_semaphore(device_->get_present_complete_semaphore());
+            }
+            render_pass->begin_render_pass(cmd);
+            render_pass->draw_items(cmd);
+
             if (render_pass->is_swapchain_renderpass())
             {
                 if (render_gui_impl_)
@@ -56,17 +65,14 @@ void Renderer::render_frame()
                     render_gui_impl_(render_pass->get_command_buffer());
                 }
             }
-            render_pass->end_render_pass();
+            render_pass->end_render_pass(cmd);
         }
-        
+        device_->end_command_buffer(cmd);
+        device_->execute_command_buffers(&cmd, 1);
+        device_->release_command_buffer(cmd);
         device_->end_frame();
-        device_->submit_frame();
+        
     }
-}
-
-void Renderer::present_frame()
-{
-    device_->present_frame();
 }
 
 }// namespace ocarina

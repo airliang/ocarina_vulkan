@@ -374,6 +374,7 @@ struct TextureViewCreation {
 };
 
 #define MAX_DESCRIPTOR_SETS_PER_SHADER 8
+#define MAX_COMMAND_BUFFERS_PER_SUBMIT 8
 
 enum class DescriptorSetIndex : uint8_t {
     GLOBAL_SET = 0,
@@ -382,5 +383,16 @@ enum class DescriptorSetIndex : uint8_t {
     BINDLESS_SET = 3,
     MAX_DESCRIPTOR_SET = MAX_DESCRIPTOR_SETS_PER_SHADER
 };
+
+struct Semaphore {
+    handle_ty semaphore = InvalidUI64;
+    uint64_t timeline_value = 0;
+    //uint64_t stage_mask = 0;
+    bool is_timeline = false;
+    //QueueType wait_queue = QueueType::Graphics;
+    //QueueType signal_queue = QueueType::Graphics;
+};
+
+
 
 }// namespace ocarina

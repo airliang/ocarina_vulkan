@@ -155,7 +155,6 @@ int main(int argc, char *argv[]) {
         {
             //Window::WindowLoop win_loop(window.get());
             renderer.render_frame();
-            renderer.present_frame();
         }
     });
 

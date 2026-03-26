@@ -14,6 +14,7 @@ class RenderTarget;
 class DescriptorSetWriter;
 class DescriptorSet;
 struct RHIPipeline;
+class CommandBuffer;
 
 struct DescriptorSetsBinding
 {
@@ -72,9 +73,9 @@ public:
         render_target_[render_target_count_++] = render_target;
     }
 
-    virtual void begin_render_pass() = 0;
-    virtual void end_render_pass() = 0;
-    virtual void draw_items() = 0;
+    virtual void begin_render_pass(const CommandBuffer& cmd) = 0;
+    virtual void end_render_pass(const CommandBuffer& cmd) = 0;
+    virtual void draw_items(const CommandBuffer& cmd) = 0;
 
     using BeginRenderPassCallback = ocarina::function<void(RHIRenderPass *)>;
     void set_begin_renderpass_callback(BeginRenderPassCallback callback)
@@ -93,10 +94,17 @@ public:
     {
         return command_buffer_;
     }
-protected:
+
+    OC_MAKE_MEMBER_GETTER(size, )
+    OC_MAKE_MEMBER_GETTER(scissor, )
+    OC_MAKE_MEMBER_GETTER(viewport, )
+    OC_MAKE_MEMBER_GETTER(render_target_count, )
+
     bool is_use_swapchain_framebuffer() const {
         return render_target_count_ == 0;
     }
+protected:
+    
 
     //std::list<DrawCallItem> draw_call_items_;
     float4 viewport_ = {0, 0, 0, 0};

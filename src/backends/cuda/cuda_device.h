@@ -156,5 +156,9 @@ public:
     [[nodiscard]] handle_ty import_handle(handle_ty handle, size_t size) override;
     [[nodiscard]] uint64_t export_handle(handle_ty handle_) override;
 #endif
+    CommandBuffer get_command_buffer() override
+    {
+        return CommandBuffer{};
+    }
 };
 }// namespace ocarina

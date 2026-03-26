@@ -25,6 +25,7 @@ class DescriptorSetLayout;
 class VulkanDescriptorSet;
 class VulkanTexture;
 class TextureSampler;
+class VulkanCommandBuffer;
 
 class VulkanDriver : public concepts::Noncopyable {
 private:
@@ -44,11 +45,9 @@ public:
     }
     VulkanDevice *create_device(RHIContext *file_manager, const InstanceCreation &instance_creation);
     VulkanDevice *get_device() const { return vulkan_device_; }
-    void bind_pipeline(const VulkanPipeline &pipeline);
+    void bind_pipeline(VkCommandBuffer cmd_buffer, const VulkanPipeline &pipeline);
     void terminate();
-    void submit_frame();
     void submit_command_buffer(VkCommandBuffer cmd_buffer);
-    void present_frame();
     inline VkDevice device() const;
     VulkanShader *create_shader(ShaderType shader_type,
                                 const std::string &filename,
@@ -56,10 +55,10 @@ public:
                                 const std::string &entry_point);
     VulkanShader* get_shader(handle_ty shader) const;
     OC_MAKE_MEMBER_GETTER(current_buffer, )
-    VkCommandBuffer get_current_command_buffer() const
-    {
-        return draw_cmd_buffers_[current_buffer_];
-    }
+    //VkCommandBuffer get_current_command_buffer() const
+    //{
+    //    return draw_cmd_buffers_[current_buffer_];
+    //}
 
     VkCommandBuffer begin_one_time_command_buffer();
     void end_one_time_command_buffer(VkCommandBuffer cmd);
@@ -84,10 +83,10 @@ public:
     VkResult copy_buffer(VulkanBuffer *src, VkBuffer dst);
     VkResult copy_image(VulkanBuffer *src, VulkanTexture *dst);
 
-    void set_vertex_buffer(const VulkanVertexStreamBinding& vertex_stream);
-    void draw_triangles(VulkanIndexBuffer* index_buffer);
+    void set_vertex_buffer(VkCommandBuffer cmd, const VulkanVertexStreamBinding& vertex_stream);
+    void draw_triangles(VkCommandBuffer cmd, VulkanIndexBuffer* index_buffer);
 
-    void push_constants(VkPipelineLayout pipeline, void *data, uint32_t size, uint32_t offset, VkShaderStageFlags stage_flags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+    void push_constants(VkCommandBuffer cmd, VkPipelineLayout pipeline, void *data, uint32_t size, uint32_t offset, VkShaderStageFlags stage_flags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 
     void add_global_descriptor_set(uint64_t name_id, VulkanDescriptorSet *descriptor_set);
 
@@ -104,7 +103,7 @@ public:
         return get_global_descriptor_set(name_id);
     }
 
-    void bind_descriptor_sets(DescriptorSet **descriptor_sets, uint32_t first_set, uint32_t descriptor_sets_num, VkPipelineLayout pipeline_layout);
+    void bind_descriptor_sets(VkCommandBuffer cmd, DescriptorSet **descriptor_sets, uint32_t first_set, uint32_t descriptor_sets_num, VkPipelineLayout pipeline_layout);
 
     VkRenderPass get_framebuffer_render_pass() const {
         return renderpass_framebuffer;
@@ -127,6 +126,29 @@ public:
 
     VkCommandBuffer get_imgui_commandbuffer() const {
         return imgui_cmd_buffers_[current_buffer_];
+    }
+
+    VulkanCommandBuffer* get_command_buffer();
+    void release_command_buffer(VulkanCommandBuffer* cmd_buffer);
+
+    void queue_submit(VkQueue queue, const VkSubmitInfo2* submit_info, uint32_t submit_count, VkFence fence = VK_NULL_HANDLE);
+
+    void begin_command_buffer(VkCommandBuffer cmd_buffer);
+
+    void end_command_buffer(VkCommandBuffer cmd_buffer);
+
+    void execute_command_buffers(CommandBuffer* cmd_buffer, uint32_t counts, VkFence fence = VK_NULL_HANDLE);
+
+    Semaphore request_semaphore(VkSemaphoreType type, uint64_t timeline_value = 0);
+
+    void recycle_semaphore(const Semaphore& semaphore);
+
+    VkSemaphore get_present_complete_semaphore() const {
+        return semaphores.presentComplete;
+    }
+
+    VkSemaphore get_render_complete_semaphore() const {
+        return semaphores.renderComplete;
     }
 private:
     void setup_frame_buffer();
@@ -151,12 +173,14 @@ private:
     VkQueue graphics_queue{VK_NULL_HANDLE};
     VkQueue present_queue{VK_NULL_HANDLE};
     // Contains command buffers and semaphores to be presented to the queue
-    VkSubmitInfo submit_info;
+    VkSubmitInfo submit_info_;
 
     /** @brief Default command pool for the graphics queue family index */
     VkCommandPool command_pool_ = VK_NULL_HANDLE;
     // Command buffers used for rendering
-    std::vector<VkCommandBuffer> draw_cmd_buffers_;
+    //std::vector<VkCommandBuffer> draw_cmd_buffers_;
+
+    std::vector<std::queue<VulkanCommandBuffer*>> command_buffer_pools_;
     // Active frame buffer index
     uint32_t current_buffer_ = 0;
 
@@ -186,5 +210,8 @@ private:
     VkDescriptorPool imgui_descriptorpool_ = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer> imgui_cmd_buffers_;
     VkCommandPool imgui_command_pool_ = VK_NULL_HANDLE;
+
+    std::list<VkSemaphore> timeline_semaphore_pool_;
+    std::list<VkSemaphore> binary_semaphore_pool_;
 };
 }// namespace ocarina

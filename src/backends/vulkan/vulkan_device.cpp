@@ -15,6 +15,8 @@
 #include "vulkan_descriptorset.h"
 #include "vulkan_descriptorset_writer.h"
 #include "vulkan_texture.h"
+#include "rhi/command_buffer.h"
+#include "vulkan_command_buffer.h"
 
 namespace ocarina {
 
@@ -241,7 +243,6 @@ void VulkanDevice::init_vulkan()
     {
         if (std::find(m_supportedExtensions.begin(), m_supportedExtensions.end(), VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME) == m_supportedExtensions.end()) {
             m_supportedExtensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
-            
         }
     }
 
@@ -287,7 +288,22 @@ void VulkanDevice::create_logical_device()
         queues[i].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
         queues[i].pQueuePriorities = &defaultQueuePriority;
     }
+
+    void* next = nullptr;
     
+    VkPhysicalDeviceVulkan13Features features13{};
+    features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    
+    if (m_deviceProperties.apiVersion > VK_API_VERSION_1_2) {
+        //OC_LOG_FORMAT("Vulkan API version {}.{}.{}", VK_VERSION_MAJOR(m_deviceProperties.apiVersion), VK_VERSION_MINOR(m_deviceProperties.apiVersion), VK_VERSION_PATCH(m_deviceProperties.apiVersion));
+        features13.synchronization2 = VK_TRUE;
+        features13.pNext = &indexing_features_;
+        next = &features13;
+    }
+    else
+    {
+        next = support_bindless_ ? &indexing_features_ : nullptr;
+    }
 
     VkDeviceCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -298,7 +314,7 @@ void VulkanDevice::create_logical_device()
     info.enabledExtensionCount = m_enableExtensions.size();
     info.ppEnabledExtensionNames = m_enableExtensions.data();
     info.pEnabledFeatures = &m_enabledFeatures;
-    info.pNext = support_bindless_ ? &indexing_features_ : nullptr;
+    info.pNext = next;//support_bindless_ ? &indexing_features_ : nullptr;
 
     VkResult result = vkCreateDevice(physicalDevice_, &info, nullptr, &logicalDevice_);
     
@@ -327,14 +343,6 @@ void VulkanDevice::shutdown()
 {
     m_swapChain.release();
     vkDestroyDevice(logicalDevice_, nullptr);
-}
-
-void VulkanDevice::submit_frame() noexcept {
-    return VulkanDriver::instance().submit_frame();
-}
-
-void VulkanDevice::present_frame() noexcept {
-    return VulkanDriver::instance().present_frame();
 }
 
 VertexBuffer* VulkanDevice::create_vertex_buffer() noexcept
@@ -379,9 +387,10 @@ std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> VulkanDevice::c
 //    return ocarina::new_with_allocator<VulkanDescriptorSetWriter>(this, vulkan_shaders, shaders_count, vulkan_descriptor_set);
 //}
 
-void VulkanDevice::bind_pipeline(const handle_ty pipeline) noexcept {
+void VulkanDevice::bind_pipeline(const CommandBuffer& cmd_buffer, const handle_ty pipeline) noexcept {
     VulkanPipeline *vulkan_pipeline = reinterpret_cast<VulkanPipeline *>(pipeline);
-    VulkanDriver::instance().bind_pipeline(*vulkan_pipeline);
+    VkCommandBuffer cmd = reinterpret_cast<VkCommandBuffer>(cmd_buffer.command_buffer);
+    VulkanDriver::instance().bind_pipeline(cmd, *vulkan_pipeline);
 }
 
 RHIPipeline *VulkanDevice::get_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass) noexcept {
@@ -512,6 +521,45 @@ void VulkanDevice::get_imgui_frameinfo(ImguiFrameInfo& imgui_frame) const noexce
     imgui_frame.clear_color_ = make_float4(0.1f, 0.1f, 0.1f, 1.0f);
     imgui_frame.clear_depth_ = 0;
     imgui_frame.clear_stencil_ = 0;
+}
+
+CommandBuffer VulkanDevice::get_command_buffer() noexcept
+{
+    VulkanCommandBuffer* vk_cmd_buffer = VulkanDriver::instance().get_command_buffer();
+    CommandBuffer cmd_buffer(vk_cmd_buffer);
+    cmd_buffer.command_buffer = reinterpret_cast<handle_ty>(vk_cmd_buffer->vulkan_command_buffer());
+    return cmd_buffer;
+}
+
+void VulkanDevice::release_command_buffer(const CommandBuffer& cmd_buffer) noexcept
+{
+    cmd_buffer.reset();
+    VulkanDriver::instance().release_command_buffer(static_cast<VulkanCommandBuffer*>(cmd_buffer.impl()));
+}
+
+void VulkanDevice::begin_command_buffer(const CommandBuffer& cmd_buffer) noexcept
+{
+    VulkanDriver::instance().begin_command_buffer(reinterpret_cast<VkCommandBuffer>(cmd_buffer.command_buffer));
+}
+
+void VulkanDevice::end_command_buffer(const CommandBuffer& cmd_buffer) noexcept
+{
+    VulkanDriver::instance().end_command_buffer(reinterpret_cast<VkCommandBuffer>(cmd_buffer.command_buffer));
+}
+
+void VulkanDevice::execute_command_buffers(CommandBuffer* command_buffers, uint32_t counts) noexcept
+{
+    VulkanDriver::instance().execute_command_buffers(command_buffers, counts);
+}
+
+Semaphore VulkanDevice::get_present_complete_semaphore() noexcept
+{
+    return Semaphore{ reinterpret_cast<handle_ty>(VulkanDriver::instance().get_present_complete_semaphore()) };
+}
+
+Semaphore VulkanDevice::get_render_complete_semaphore() noexcept
+{
+    return Semaphore{ reinterpret_cast<handle_ty>(VulkanDriver::instance().get_render_complete_semaphore()) };
 }
 
 }// namespace ocarina

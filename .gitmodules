@@ -16,3 +16,6 @@
 [submodule "src/ext/imgui"]
 	path = src/ext/imgui
 	url = https://github.com/ocornut/imgui.git
+[submodule "src/ext/enkiTS"]
+	path = src/ext/enkiTS
+	url = https://github.com/dougbinks/enkiTS.git

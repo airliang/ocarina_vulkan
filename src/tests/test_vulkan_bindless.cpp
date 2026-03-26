@@ -189,7 +189,6 @@ int main(int argc, char *argv[]) {
     window->run([&](double d) {
         {
             renderer.render_frame();
-            renderer.present_frame();
         }
     });
     window->cleanup_imgui();

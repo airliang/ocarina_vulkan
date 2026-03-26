@@ -11,6 +11,7 @@
 #include "vulkan_index_buffer.h"
 #include "vulkan_texture.h"
 #include "rhi/resources/texture_sampler.h"
+#include "vulkan_command_buffer.h"
 
 namespace ocarina {
 
@@ -36,10 +37,10 @@ VulkanDevice* VulkanDriver::create_device(RHIContext* file_manager, const Instan
     return vulkan_device_;
 }
 
-void VulkanDriver::bind_pipeline(const VulkanPipeline &pipeline) {
-    VkCommandBuffer current_buffer = get_current_command_buffer();
+void VulkanDriver::bind_pipeline(VkCommandBuffer cmd_buffer, const VulkanPipeline &pipeline) {
+    //VkCommandBuffer current_buffer = get_current_command_buffer();
 
-    vkCmdBindPipeline(current_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline_);
+    vkCmdBindPipeline(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline_);
 }
 
 void VulkanDriver::terminate()
@@ -76,21 +77,6 @@ void VulkanDriver::terminate()
     }
 }
 
-void VulkanDriver::submit_frame() {
-    //prepare_frame();
-    VkPipelineStageFlags wait_stages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-    submit_info.pWaitDstStageMask = wait_stages;
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &draw_cmd_buffers_[current_buffer_];
-
-    // Submit to queue
-    vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
-
-    //vulkan_device_->get_swapchain()->queue_present(graphics_queue, current_buffer_, semaphores.renderComplete);
-
-    //VK_CHECK_RESULT(vkQueueWaitIdle(graphics_queue));
-}
-
 void VulkanDriver::submit_command_buffer(VkCommandBuffer cmd_buffer) {
     VkSubmitInfo submit_info = {};
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -98,12 +84,6 @@ void VulkanDriver::submit_command_buffer(VkCommandBuffer cmd_buffer) {
     submit_info.pCommandBuffers = &cmd_buffer;
     VK_CHECK_RESULT(vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE));
     //VK_CHECK_RESULT(vkQueueWaitIdle(graphics_queue));
-}
-
-void VulkanDriver::present_frame()
-{
-    vulkan_device_->get_swapchain()->queue_present(graphics_queue, current_buffer_, semaphores.renderComplete);
-    VK_CHECK_RESULT(vkQueueWaitIdle(graphics_queue));
 }
 
 inline VkDevice VulkanDriver::device() const {
@@ -327,9 +307,12 @@ void VulkanDriver::release_command_pool()
 
 void VulkanDriver::create_command_buffers()
 {
+    
     VulkanSwapchain *swapchain = vulkan_device_->get_swapchain();
-    draw_cmd_buffers_.resize(swapchain->backbuffer_size());
-
+    
+    command_buffer_pools_.resize(swapchain->backbuffer_size());
+    /*
+    * draw_cmd_buffers_.resize(swapchain->backbuffer_size());
     VkCommandBufferAllocateInfo const allocateInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool = command_pool_,
@@ -338,11 +321,24 @@ void VulkanDriver::create_command_buffers()
     };
 
     VK_CHECK_RESULT(vkAllocateCommandBuffers(device(), &allocateInfo, draw_cmd_buffers_.data()));
+    */
 }
 
 void VulkanDriver::release_command_buffers() {
-    vkFreeCommandBuffers(device(), command_pool_, static_cast<uint32_t>(draw_cmd_buffers_.size()), draw_cmd_buffers_.data());
-    draw_cmd_buffers_.clear();
+    //vkFreeCommandBuffers(device(), command_pool_, static_cast<uint32_t>(draw_cmd_buffers_.size()), draw_cmd_buffers_.data());
+    //draw_cmd_buffers_.clear();
+
+    for (auto& pool : command_buffer_pools_) {
+        if (!pool.empty()) {
+            while (!pool.empty()) {
+                auto cmd_buffer = pool.front();
+                ocarina::delete_with_allocator<VulkanCommandBuffer>(cmd_buffer);
+                //vkFreeCommandBuffers(device(), command_pool_, 1, &cmd_buffer);
+                pool.pop();
+            }
+        }
+    }
+    command_buffer_pools_.clear();
 
     if (imgui_cmd_buffers_.size() > 0) {
         vkFreeCommandBuffers(device(), imgui_command_pool_, static_cast<uint32_t>(imgui_cmd_buffers_.size()), imgui_cmd_buffers_.data());
@@ -361,11 +357,11 @@ void VulkanDriver::initialize()
     create_command_pool();
     create_command_buffers();
 
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit_info.waitSemaphoreCount = 1;
-    submit_info.pWaitSemaphores = &semaphores.presentComplete;
-    submit_info.signalSemaphoreCount = 1;
-    submit_info.pSignalSemaphores = &semaphores.renderComplete;
+    submit_info_.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info_.waitSemaphoreCount = 1;
+    submit_info_.pWaitSemaphores = &semaphores.presentComplete;
+    submit_info_.signalSemaphoreCount = 1;
+    submit_info_.pSignalSemaphores = &semaphores.renderComplete;
 
     create_internal_textures();
     create_imgui_cmd_buffers();
@@ -435,15 +431,17 @@ void VulkanDriver::begin_frame()
     VulkanSwapchain *swapchain = vulkan_device_->get_swapchain();
     VkResult result = swapchain->aquire_next_image(semaphores.presentComplete, &current_buffer_);
 
-    VkCommandBufferBeginInfo infoCmd{};
-    infoCmd.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    //VkCommandBufferBeginInfo infoCmd{};
+    //infoCmd.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
-    VK_CHECK_RESULT(vkBeginCommandBuffer(draw_cmd_buffers_[current_buffer_], &infoCmd));
+    //VK_CHECK_RESULT(vkBeginCommandBuffer(draw_cmd_buffers_[current_buffer_], &infoCmd));
 }
 
 void VulkanDriver::end_frame()
 {
-    vkEndCommandBuffer(draw_cmd_buffers_[current_buffer_]);
+    //vkEndCommandBuffer(draw_cmd_buffers_[current_buffer_]);
+    vulkan_device_->get_swapchain()->queue_present(graphics_queue, current_buffer_, semaphores.renderComplete);
+    VK_CHECK_RESULT(vkQueueWaitIdle(graphics_queue));
 }
 
 VulkanRenderPass* VulkanDriver::create_render_pass(const RenderPassCreation& render_pass_creation) {
@@ -522,20 +520,20 @@ VkResult VulkanDriver::copy_image(VulkanBuffer* src, VulkanTexture* dst)
     return VK_SUCCESS;
 }
 
-void VulkanDriver::set_vertex_buffer(const VulkanVertexStreamBinding& vertex_stream) {
-    VkCommandBuffer current_buffer = get_current_command_buffer();
-    vkCmdBindVertexBuffers(current_buffer, 0, vertex_stream.buffers_.size(), vertex_stream.buffers_.data(), vertex_stream.offsets_.data());
+void VulkanDriver::set_vertex_buffer(VkCommandBuffer cmd, const VulkanVertexStreamBinding& vertex_stream) {
+    //VkCommandBuffer current_buffer = get_current_command_buffer();
+    vkCmdBindVertexBuffers(cmd, 0, vertex_stream.buffers_.size(), vertex_stream.buffers_.data(), vertex_stream.offsets_.data());
 }
 
-void VulkanDriver::draw_triangles(VulkanIndexBuffer* index_buffer) {
-    VkCommandBuffer current_buffer = get_current_command_buffer();
-    vkCmdBindIndexBuffer(current_buffer, index_buffer->buffer_handle(), 0, index_buffer->is_16_bit() ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
-    vkCmdDrawIndexed(current_buffer, index_buffer->get_index_count(), 1, 0, 0, 0);
+void VulkanDriver::draw_triangles(VkCommandBuffer cmd, VulkanIndexBuffer* index_buffer) {
+    //VkCommandBuffer current_buffer = get_current_command_buffer();
+    vkCmdBindIndexBuffer(cmd, index_buffer->buffer_handle(), 0, index_buffer->is_16_bit() ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
+    vkCmdDrawIndexed(cmd, index_buffer->get_index_count(), 1, 0, 0, 0);
 }
 
-void VulkanDriver::push_constants(VkPipelineLayout pipeline_layout, void *data, uint32_t size, uint32_t offset, VkShaderStageFlags stage_flags) {
-    VkCommandBuffer current_buffer = get_current_command_buffer();
-    vkCmdPushConstants(current_buffer, pipeline_layout, stage_flags, offset, size, data);
+void VulkanDriver::push_constants(VkCommandBuffer cmd, VkPipelineLayout pipeline_layout, void *data, uint32_t size, uint32_t offset, VkShaderStageFlags stage_flags) {
+    //VkCommandBuffer current_buffer = get_current_command_buffer();
+    vkCmdPushConstants(cmd, pipeline_layout, stage_flags, offset, size, data);
 }
 
 void VulkanDriver::add_global_descriptor_set(uint64_t name_id, VulkanDescriptorSet *descriptor_set) {
@@ -550,8 +548,8 @@ void VulkanDriver::add_global_descriptor_set(uint64_t name_id, VulkanDescriptorS
     global_descriptor_sets[name_id] = descriptor_set;
 }
 
-void VulkanDriver::bind_descriptor_sets(DescriptorSet **descriptor_sets, uint32_t first_set, uint32_t descriptor_sets_num, VkPipelineLayout pipeline_layout) {
-    VkCommandBuffer current_buffer = get_current_command_buffer();
+void VulkanDriver::bind_descriptor_sets(VkCommandBuffer cmd, DescriptorSet **descriptor_sets, uint32_t first_set, uint32_t descriptor_sets_num, VkPipelineLayout pipeline_layout) {
+    //VkCommandBuffer current_buffer = get_current_command_buffer();
     std::array<VkDescriptorSet, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_handles = {VK_NULL_HANDLE};
     //uint32_t first_set = -1;
     for (uint32_t i = 0; i < descriptor_sets_num; ++i) {
@@ -563,7 +561,7 @@ void VulkanDriver::bind_descriptor_sets(DescriptorSet **descriptor_sets, uint32_
         //}
         descriptor_set_handles[i] = static_cast<VulkanDescriptorSet*>(descriptor_sets[i])->descriptor_set();
     }
-    vkCmdBindDescriptorSets(current_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, first_set, descriptor_sets_num, descriptor_set_handles.data(), 0, nullptr);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, first_set, descriptor_sets_num, descriptor_set_handles.data(), 0, nullptr);
 }
 
 std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> VulkanDriver::create_descriptor_set_layout(VulkanShader *shaders[], uint32_t shaders_count) {
@@ -640,6 +638,178 @@ void VulkanDriver::create_imgui_cmd_buffers()
     VK_CHECK_RESULT(vkAllocateCommandBuffers(device(), &allocateInfo, imgui_cmd_buffers_.data()));
 }
 
+VulkanCommandBuffer* VulkanDriver::get_command_buffer() {
+    if (command_buffer_pools_[current_buffer_].empty()) {
+        VkCommandBufferAllocateInfo const allocateInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = command_pool_,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+        };
+        VkCommandBuffer cmd_buffer = VK_NULL_HANDLE;
+        VK_CHECK_RESULT(vkAllocateCommandBuffers(device(), &allocateInfo, &cmd_buffer));
+        return ocarina::new_with_allocator<ocarina::VulkanCommandBuffer>(vulkan_device_, command_pool_, cmd_buffer);
+    }
+    else {
+        VulkanCommandBuffer* cmd_buffer = command_buffer_pools_[current_buffer_].front();
+        command_buffer_pools_[current_buffer_].pop();
+        return cmd_buffer;
+    }
+}
+
+void VulkanDriver::release_command_buffer(VulkanCommandBuffer* cmd_buffer)
+{
+    command_buffer_pools_[current_buffer_].push(cmd_buffer);
+}
+
+void VulkanDriver::queue_submit(VkQueue queue, const VkSubmitInfo2* submit_info, uint32_t submit_count, VkFence fence)
+{
+    VK_CHECK_RESULT(vkQueueSubmit2(queue, submit_count, submit_info, fence));
+}
+
+void VulkanDriver::begin_command_buffer(VkCommandBuffer cmd_buffer)
+{
+    VkCommandBufferBeginInfo infoCmd{};
+    infoCmd.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    VK_CHECK_RESULT(vkBeginCommandBuffer(cmd_buffer, &infoCmd));
+}
+
+void VulkanDriver::end_command_buffer(VkCommandBuffer cmd_buffer)
+{
+    VK_CHECK_RESULT(vkEndCommandBuffer(cmd_buffer));
+}
+
+void VulkanDriver::execute_command_buffers(CommandBuffer* cmd_buffers, uint32_t counts, VkFence fence)
+{
+    std::array<VkCommandBufferSubmitInfo, MAX_COMMAND_BUFFERS_PER_SUBMIT> cmd_buffers_submit{};
+    std::array<VkPipelineStageFlags, MAX_COMMAND_BUFFERS_PER_SUBMIT> wait_stages;
+    std::array<uint64_t, MAX_COMMAND_BUFFERS_PER_SUBMIT> signal_values;
+    std::array<uint64_t, MAX_COMMAND_BUFFERS_PER_SUBMIT> wait_values;
+    std::array<VkSemaphoreSubmitInfo, MAX_COMMAND_BUFFERS_PER_SUBMIT> signals{};
+    std::array<VkSemaphoreSubmitInfo, MAX_COMMAND_BUFFERS_PER_SUBMIT> waits{};
+    VkTimelineSemaphoreSubmitInfo timeline_info{};
+    
+    for (uint32_t i = 0; i < counts; ++i) {
+        cmd_buffers_submit[i].sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+        cmd_buffers_submit[i].commandBuffer = reinterpret_cast<VkCommandBuffer>(cmd_buffers[i].command_buffer);
+        signals[i].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        waits[i].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    }
+    std::array < VkSubmitInfo2, MAX_COMMAND_BUFFERS_PER_SUBMIT> submits{};
+    for (uint32_t i = 0; i < counts; ++i) {
+        bool need_timeline_semaphore = false;
+        VulkanCommandBuffer* vulkan_cmd_buffer = static_cast<VulkanCommandBuffer*>(cmd_buffers[i].impl());
+        submits[i].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+        submits[i].commandBufferInfoCount = 1;
+        submits[i].pCommandBufferInfos = &cmd_buffers_submit[i];
+        submits[i].waitSemaphoreInfoCount = cmd_buffers[i].wait_semaphore_count();
+        //submits[i].pWaitSemaphoreInfos = cmd_buffers[i].wait_count > 0 ? waits.data() : nullptr;
+        submits[i].signalSemaphoreInfoCount = cmd_buffers[i].signal_semaphore_count();
+        
+        if (submits[i].waitSemaphoreInfoCount > 0)
+        {
+            for (uint32_t j = 0; j < cmd_buffers[i].wait_semaphore_count(); ++j)
+            {
+                Semaphore* semaphore = cmd_buffers[i].get_wait_semaphore(j);
+                waits[j].semaphore = reinterpret_cast<VkSemaphore>(semaphore->semaphore);
+                waits[j].value = semaphore->timeline_value;
+                waits[j].stageMask = vulkan_cmd_buffer->pipeline_stage_flags(); //TODO: support specifying stage mask
+            }
+            submits[i].pWaitSemaphoreInfos = waits.data();
+        }
+        else
+        {
+            submits[i].pWaitSemaphoreInfos = nullptr;
+        }
+
+        if (submits[i].signalSemaphoreInfoCount > 0)
+        {
+            for (uint32_t j = 0; j < cmd_buffers[i].signal_semaphore_count(); ++j)
+            {
+                Semaphore* semaphore = cmd_buffers[i].get_signal_semaphore(j);
+                signals[j].semaphore = reinterpret_cast<VkSemaphore>(semaphore->semaphore);
+                signals[j].stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;//vulkan_cmd_buffer->pipeline_stage_flags();// VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; //TODO: support specifying stage mask
+                signals[j].value = semaphore->timeline_value;
+            }
+            submits[i].pSignalSemaphoreInfos = signals.data();
+        }
+
+        //submits[i].pWaitSemaphoreInfos = &semaphores.presentComplete; //TODO: support multiple wait semaphores
+        //submits[i].pSignalSemaphoreInfos = &semaphores.renderComplete; //TODO: support multiple signal semaphores
+        //VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+        //submits[i].flags = wait_stages;
+        need_timeline_semaphore = false;//cmd_buffers[i].wait_count > 0 || cmd_buffers[i].signal_count > 0;
+        
+        if (need_timeline_semaphore)
+        {
+            timeline_info.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+            timeline_info.pWaitSemaphoreValues = wait_values.data();
+            timeline_info.waitSemaphoreValueCount = cmd_buffers[i].wait_semaphore_count();
+            timeline_info.pSignalSemaphoreValues = signal_values.data();
+            timeline_info.signalSemaphoreValueCount = cmd_buffers[i].signal_semaphore_count();
+
+            submits[i].pNext = &timeline_info;
+        }
+        queue_submit(graphics_queue, &submits[i], 1, fence);
+    }
+
+    //queue_submit(graphics_queue, submits.data(), counts, fence);
+}
+
+Semaphore VulkanDriver::request_semaphore(VkSemaphoreType type, uint64_t timeline_value)
+{
+    Semaphore semaphore{};
+    if (type == VK_SEMAPHORE_TYPE_BINARY) {
+        VkSemaphore vk_semaphore;
+        if (binary_semaphore_pool_.empty()) {
+            VkSemaphoreCreateInfo semaphore_info{};
+            semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+            vkCreateSemaphore(device(), &semaphore_info, nullptr, &vk_semaphore);
+        }
+        else
+        {
+            vk_semaphore = binary_semaphore_pool_.front();
+            binary_semaphore_pool_.erase(binary_semaphore_pool_.begin());
+        }
+        semaphore.semaphore = reinterpret_cast<handle_ty>(vk_semaphore);
+        semaphore.timeline_value = 0;
+        return semaphore;
+    }
+    else if (type == VK_SEMAPHORE_TYPE_TIMELINE) {
+        
+        VkSemaphore vk_semaphore;
+        semaphore.is_timeline = true;
+        if (timeline_semaphore_pool_.empty()) {
+            VkSemaphoreTypeCreateInfo timeline_info{};
+            timeline_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
+            timeline_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+            timeline_info.initialValue = 0;
+
+            VkSemaphoreCreateInfo sem_info{};
+            sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+            sem_info.pNext = &timeline_info;
+
+            vkCreateSemaphore(device(), &sem_info, nullptr, &vk_semaphore);
+        }
+        else
+        {
+            vk_semaphore = timeline_semaphore_pool_.front();
+            timeline_semaphore_pool_.erase(timeline_semaphore_pool_.begin());
+        }
+        semaphore.semaphore = reinterpret_cast<handle_ty>(vk_semaphore);
+    }
+    return semaphore;
+}
+
+void VulkanDriver::recycle_semaphore(const Semaphore& semaphore)
+{
+    if (semaphore.is_timeline) {
+        timeline_semaphore_pool_.push_back(reinterpret_cast<VkSemaphore>(semaphore.semaphore));
+    }
+    else {
+        binary_semaphore_pool_.push_back(reinterpret_cast<VkSemaphore>(semaphore.semaphore));
+    }
+}
 
 }// namespace ocarina
 

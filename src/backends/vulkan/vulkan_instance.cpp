@@ -16,7 +16,7 @@ VulkanInstance::VulkanInstance(const InstanceCreation& instanceCreation) {
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pApplicationName = instanceCreation.applicationName;
     appInfo.pEngineName = instanceCreation.applicationName;
-    appInfo.apiVersion = VK_API_VERSION_1_1;
+    appInfo.apiVersion = std::min(get_supported_vulkan_version(), VK_API_VERSION_1_3);//VK_API_VERSION_1_1;
     validation_ = instanceCreation.validation;
 
     std::vector<const char *> instanceExtensions = {VK_KHR_SURFACE_EXTENSION_NAME};
@@ -122,6 +122,13 @@ VulkanInstance::~VulkanInstance()
         free_debug_callback(instance_);
     }
     vkDestroyInstance(instance_, nullptr);
+}
+
+uint32_t VulkanInstance::get_supported_vulkan_version() const
+{
+    uint32_t api_version = 0;
+    vkEnumerateInstanceVersion(&api_version);
+    return api_version;
 }
 
 }// namespace ocarina

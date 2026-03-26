@@ -12,6 +12,7 @@ namespace ocarina {
 struct RHIPipeline;
 class Texture;
 class TextureSampler;
+class CommandBuffer;
 
 class DescriptorSet : concepts::Noncopyable {
 public:
@@ -63,7 +64,7 @@ public:
     //virtual void bind_buffer(uint64_t name_id, handle_ty buffer) = 0;
     //virtual void bind_texture(uint64_t name_id, handle_ty texture) = 0;
     virtual void update_buffer(uint64_t name_id, void *data, uint32_t size) = 0;
-    virtual void update_push_constants(uint64_t name_id, void *data, uint32_t size, RHIPipeline* pipeline) = 0;
+    virtual void update_push_constants(const CommandBuffer& cmd_buffer, uint64_t name_id, void *data, uint32_t size, RHIPipeline* pipeline) = 0;
     virtual void update_texture(uint64_t name_id, Texture* texture) = 0;
 
 protected:

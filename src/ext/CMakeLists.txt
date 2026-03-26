@@ -68,21 +68,18 @@ if (${OCARINA_PY})
             ${PYTHON_INCLUDE_DIRS})
 endif ()
 
-if(VISION_BUILD_VULKAN)
-    if(NOT TARGET spirv-cross-core)
-        add_subdirectory(SPIRV-Cross)
-    endif()
-    set_property(TARGET spirv-cross PROPERTY FOLDER "ocarina/ext/spirv")
-    set_property(TARGET spirv-cross-c PROPERTY FOLDER "ocarina/ext/spirv")
-    set_property(TARGET spirv-cross-core PROPERTY FOLDER "ocarina/ext/spirv")
-    set_property(TARGET spirv-cross-glsl PROPERTY FOLDER "ocarina/ext/spirv")
-    set_property(TARGET spirv-cross-hlsl PROPERTY FOLDER "ocarina/ext/spirv")
-    set_property(TARGET spirv-cross-msl PROPERTY FOLDER "ocarina/ext/spirv")
-    set_property(TARGET spirv-cross-cpp PROPERTY FOLDER "ocarina/ext/spirv")
-    set_property(TARGET spirv-cross-reflect PROPERTY FOLDER "ocarina/ext/spirv")
-    set_property(TARGET spirv-cross-util PROPERTY FOLDER "ocarina/ext/spirv")
-endif()
-#list(APPEND SPIRV_LIBS "spirv-cross-core" "spirv-cross-hlsl" )
+
+
+add_subdirectory(SPIRV-Cross)
+set_property(TARGET spirv-cross PROPERTY FOLDER "ocarina/ext/spirv")
+set_property(TARGET spirv-cross-c PROPERTY FOLDER "ocarina/ext/spirv")
+set_property(TARGET spirv-cross-core PROPERTY FOLDER "ocarina/ext/spirv")
+set_property(TARGET spirv-cross-glsl PROPERTY FOLDER "ocarina/ext/spirv")
+set_property(TARGET spirv-cross-hlsl PROPERTY FOLDER "ocarina/ext/spirv")
+set_property(TARGET spirv-cross-msl PROPERTY FOLDER "ocarina/ext/spirv")
+set_property(TARGET spirv-cross-cpp PROPERTY FOLDER "ocarina/ext/spirv")
+set_property(TARGET spirv-cross-reflect PROPERTY FOLDER "ocarina/ext/spirv")
+set_property(TARGET spirv-cross-util PROPERTY FOLDER "ocarina/ext/spirv")
 
 target_link_libraries(ocarina-ext
         PUBLIC

@@ -26,7 +26,7 @@ public:
     void build(VulkanDevice* device);
 
     void update_buffer(uint64_t name_id, void *data, uint32_t size) override;
-    void update_push_constants(uint64_t name_id, void *data, uint32_t size, RHIPipeline *pipeline) override;
+    void update_push_constants(const CommandBuffer& cmd_buffer, uint64_t name_id, void *data, uint32_t size, RHIPipeline *pipeline) override;
     void update_texture(uint64_t name_id, Texture *texture) override;
     void update_sampler(uint64_t name_id, VkSampler sampler);
     uint32_t update_bindless_texture(uint64_t name_id, Texture *texture);
