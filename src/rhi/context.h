@@ -31,7 +31,7 @@ private:
         Impl() = default;
     };
     ocarina::unique_ptr<Impl> impl_;
-
+    std::string current_backend_;
 public:
     RHIContext &init(const fs::path &path, string_view cache_dir = ".cache");
     virtual ~RHIContext() noexcept;
@@ -51,6 +51,7 @@ public:
     [[nodiscard]] Device create_device(const string &backend_name) noexcept;
     [[nodiscard]] WindowWrapper create_window(const char *name, uint2 initial_size, WindowLibrary library, const char *type = "imgui", bool resizable = false);
     [[nodiscard]] WindowWrapper create_window(const char *name, uint2 initial_size, const char *type = "gl", bool resizable = false);
+    [[nodiscard]] const std::string& current_backend() const noexcept { return current_backend_; }
 };
 
 }// namespace ocarina

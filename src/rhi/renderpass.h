@@ -75,7 +75,7 @@ public:
 
     virtual void begin_render_pass(const CommandBuffer& cmd) = 0;
     virtual void end_render_pass(const CommandBuffer& cmd) = 0;
-    virtual void draw_items(const CommandBuffer& cmd) = 0;
+    virtual void draw_items(CommandBuffer& cmd) = 0;
 
     using BeginRenderPassCallback = ocarina::function<void(RHIRenderPass *)>;
     void set_begin_renderpass_callback(BeginRenderPassCallback callback)
@@ -102,6 +102,12 @@ public:
 
     bool is_use_swapchain_framebuffer() const {
         return render_target_count_ == 0;
+    }
+
+    void execute_begin_render_pass_callback() {
+        if (begin_render_pass_callback_) {
+            begin_render_pass_callback_(this);
+        }
     }
 protected:
     

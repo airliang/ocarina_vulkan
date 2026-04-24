@@ -165,18 +165,11 @@ VulkanPipeline* VulkanPipelineManager::get_or_create_pipeline(const PipelineStat
         }
 
         pipeline_key_cache_.pipeline_layout = create_pipeline_layout(device, shaders, vk_descriptor_set_layouts,
-            layouts_count/* + empty_descriptor_sets_num*/, push_constant_ranges.data(), push_constant_num);
+            layouts_count, push_constant_ranges.data(), push_constant_num);
 
         pipeline_entry = ocarina::new_with_allocator<VulkanPipeline>();
         pipeline_entry->push_constant_size = push_constant_size;
         pipeline_entry->push_constant_shader_stages_ = push_constant_shader_stages;
-        //push_constant_size = 0;
-        //for (uint32_t i = 0; i < push_constant_num; ++i) {
-        //    PushConstantRange pc_range{ /*push_constant_ranges[i].offset*/push_constant_size, push_constant_ranges[i].size,  push_constant_ranges[i].stageFlags };
-        //    pipeline_entry->push_constant_ranges_.push_back(pc_range);
-        //    push_constant_size += push_constant_ranges[i].size;
-        //}
-
 
         uint32_t push_constant_offset = 0;
         for (auto& pc : push_constant_merges) {
@@ -302,6 +295,7 @@ VulkanPipeline* VulkanPipelineManager::get_or_create_pipeline(const PipelineStat
     VK_CHECK_RESULT(vkCreateGraphicsPipelines(device->logicalDevice(), VK_NULL_HANDLE, 1, &pipelineCreateInfo,
                                                nullptr, &pipeline_entry->pipeline_));
     pipeline_entry->pipeline_layout_ = pipeline_key_cache_.pipeline_layout;
+    std::lock_guard<std::mutex> l{ mutex_ };
     vulkan_pipelines_.insert(std::make_pair(pipeline_key_cache_, pipeline_entry));
     
     return pipeline_entry;
@@ -313,6 +307,7 @@ void VulkanPipelineManager::clear(VulkanDevice *device) {
         vkDestroyPipeline(device->logicalDevice(), iter.second->pipeline_, nullptr);
         ocarina::delete_with_allocator(iter.second);
     }
+    std::lock_guard<std::mutex> l{ mutex_ };
     vulkan_pipelines_.clear();
 }
 
@@ -348,6 +343,7 @@ VkPipelineLayout VulkanPipelineManager::create_pipeline_layout(VulkanDevice* dev
     PipelineLayoutKey pipeline_layout_key;
     pipeline_layout_key.shaders[0] = shaders[0]->shader_module();
     pipeline_layout_key.shaders[1] = shaders[1]->shader_module();
+    std::lock_guard<std::mutex> l{ mutex_ };
     pipeline_layouts_.insert(std::make_pair(pipeline_layout_key, pipeline_layout));
     return pipeline_layout;
 }

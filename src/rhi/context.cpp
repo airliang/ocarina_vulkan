@@ -160,8 +160,8 @@ Device RHIContext::create_device(const string &backend_name, const ocarina::Inst
     //auto destroy_func = reinterpret_cast<Device::Deleter *>(d->function_ptr("destroy"));
     //return Device{Device::Handle{create_device(this), destroy_func}};
 
-    std::string full_backend_name = detail::backend_full_name(backend_name);
-    auto d = obtain_module(dynamic_module_name(full_backend_name));
+    current_backend_ = detail::backend_full_name(backend_name);
+    auto d = obtain_module(dynamic_module_name(current_backend_));
     using Constructor = Device::Impl *(RHIContext *, const InstanceCreation &instance_creation);
     auto create_device = reinterpret_cast<Constructor *>(d->function_ptr("create_device"));
     auto destroy_func = reinterpret_cast<Device::Deleter *>(d->function_ptr("destroy"));
@@ -174,8 +174,8 @@ Device RHIContext::create_device(const string &backend_name) noexcept {
     //auto destroy_func = reinterpret_cast<Device::Deleter *>(d->function_ptr("destroy"));
     //return Device{Device::Handle{create_device(this), destroy_func}};
 
-    std::string full_backend_name = detail::backend_full_name(backend_name);
-    auto d = obtain_module(dynamic_module_name(full_backend_name));
+    current_backend_ = detail::backend_full_name(backend_name);
+    auto d = obtain_module(dynamic_module_name(current_backend_));
     using Constructor = Device::Impl *(RHIContext *);
     auto create_device = reinterpret_cast<Constructor *>(d->function_ptr("create_device"));
     if (!create_device) {

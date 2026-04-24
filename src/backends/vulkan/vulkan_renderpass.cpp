@@ -104,25 +104,29 @@ void VulkanRenderPass::end_render_pass(const CommandBuffer& cmd) {
     vkCmdEndRenderPass(cmd_buffer);
 }
 
-void VulkanRenderPass::draw_items(const CommandBuffer& cmd) {
+void VulkanRenderPass::draw_items(CommandBuffer& cmd) {
     VulkanDriver& driver = VulkanDriver::instance();
     VkCommandBuffer cmd_buffer = reinterpret_cast<VkCommandBuffer>(cmd.command_buffer);
     for (const auto& queue : pipeline_render_queues_) {
         VulkanPipeline *vulkan_pipeline = static_cast<VulkanPipeline *>(queue.first);
-        driver.bind_descriptor_sets(cmd_buffer, global_descriptor_sets_array_.data(), (uint32_t)DescriptorSetIndex::GLOBAL_SET, global_descriptor_sets_array_.size(), vulkan_pipeline->pipeline_layout_);
-        driver.bind_pipeline(cmd_buffer , *vulkan_pipeline);
+        cmd.bind_descriptor_sets(global_descriptor_sets_array_.data(), (uint32_t)DescriptorSetIndex::GLOBAL_SET, global_descriptor_sets_array_.size(), queue.first);
+        //driver.bind_descriptor_sets(cmd_buffer, global_descriptor_sets_array_.data(), (uint32_t)DescriptorSetIndex::GLOBAL_SET, global_descriptor_sets_array_.size(), vulkan_pipeline->pipeline_layout_);
+        //driver.bind_pipeline(cmd_buffer, *vulkan_pipeline);
+        cmd.bind_pipeline(queue.first);
 
         for (auto &item : queue.second->draw_call_items) {
             if (item.pre_render_function) {
                 item.pre_render_function(item);
             }
             if (item.push_constant_data) {
-                driver.push_constants(cmd_buffer, vulkan_pipeline->pipeline_layout_, item.push_constant_data, item.push_constant_size, 0, vulkan_pipeline->push_constant_shader_stages_);
+                //driver.push_constants(cmd_buffer, vulkan_pipeline->pipeline_layout_, item.push_constant_data, item.push_constant_size, 0, vulkan_pipeline->push_constant_shader_stages_);
+                cmd.push_constants(item.push_constant_data, 0, item.push_constant_size);
             }
             
             if (!item.descriptor_sets.empty())
             {
-                driver.bind_descriptor_sets(cmd_buffer, item.descriptor_sets.data(), item.first_set, item.descriptor_sets.size(), vulkan_pipeline->pipeline_layout_);
+                cmd.bind_descriptor_sets(item.descriptor_sets.data(), item.first_set, item.descriptor_sets.size(), queue.first);
+                //driver.bind_descriptor_sets(cmd_buffer, item.descriptor_sets.data(), item.first_set, item.descriptor_sets.size(), vulkan_pipeline->pipeline_layout_);
             }
             //for (uint32_t i = 0; i < item.descriptor_set_count; ++i)
             //{
@@ -133,8 +137,10 @@ void VulkanRenderPass::draw_items(const CommandBuffer& cmd) {
 
             VulkanVertexBuffer *vertex_buffer = static_cast<VulkanVertexBuffer *>(item.pipeline_state->vertex_buffer);
             VulkanShader *vertex_shader = reinterpret_cast<VulkanShader *>(item.pipeline_state->shaders[0]);//driver.get_shader(item.pipeline_state->shaders[0]);
-            driver.set_vertex_buffer(cmd_buffer, *(vertex_buffer->get_or_create_vertex_binding(vertex_shader)));
-            driver.draw_triangles(cmd_buffer, static_cast<VulkanIndexBuffer *>(item.index_buffer));
+            //driver.set_vertex_buffer(cmd_buffer, *(vertex_buffer->get_or_create_vertex_binding(vertex_shader)));
+            cmd.set_vertex_buffer(vertex_buffer, item.pipeline_state->shaders[0]);
+            cmd.draw_indexed(item.index_buffer, 1, 0, 0, 0);
+            //driver.draw_triangles(cmd_buffer, static_cast<VulkanIndexBuffer *>(item.index_buffer));
         }
     }
 }

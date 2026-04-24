@@ -15,7 +15,7 @@ namespace ocarina {
 class Primitive;
 class RHIRenderPass;
 class Device;
-
+class CommandBuffer;
 class Renderer : public concepts::Noncopyable {
 public:
     Renderer(Device *device) : device_(device) {}
@@ -26,7 +26,7 @@ public:
     using SetupCallback = ocarina::function<void()>;
     using ReleaseCallback = ocarina::function<void()>;
     using UpdateDescriptorPerObjectCallback = ocarina::function<void(Primitive&)>;
-    using RenderGUIImplCallback = ocarina::function<void(handle_ty cmd_buffer)>;
+    using RenderGUIImplCallback = ocarina::function<void(const CommandBuffer& cmd_buffer)>;
 
     void set_update_frame_callback(UpdateFrameCallBack cb)
     {

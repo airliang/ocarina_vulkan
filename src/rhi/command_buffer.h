@@ -10,6 +10,8 @@ namespace ocarina {
 class RHIRenderPass;
 class DescriptorSet;
 struct RHIPipeline;
+class VertexBuffer;
+class IndexBuffer;
 //This command buffer class is designed to be a holder for the actual command buffer implementation, which can be VulkanCommandBuffer, D3D12CommandBuffer, etc. 
 //It also holds the synchronization primitives (semaphores) that are needed for submitting the command buffer to the GPU. 
 // The actual command buffer implementation is hidden behind the Impl class, which is a pure virtual interface. 
@@ -22,8 +24,13 @@ public:
         virtual ~Impl() {}
         virtual void begin_render_pass(RHIRenderPass* render_pass) = 0;
         virtual void end_render_pass() = 0;
-        virtual void bind_pipeline(handle_ty pipeline) = 0;
-        virtual void bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t descriptor_set_count, RHIPipeline* pipeline) = 0;
+        virtual void bind_pipeline(const RHIPipeline* pipeline) = 0;
+        virtual void bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t first_set, uint32_t descriptor_set_count, RHIPipeline* pipeline) = 0;
+        virtual void draw_indexed(IndexBuffer* index_buffer, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance) = 0;
+        virtual void push_constants(const void* data, uint32_t offset, uint32_t size) = 0;
+        virtual void draw_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) = 0;
+        virtual void draw_indexed_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) = 0;
+        virtual void set_vertex_buffer(VertexBuffer* vertex_buffer, handle_ty vertex_shader) = 0;
 
         SmallVector<Semaphore, MAX_COMMAND_BUFFERS_PER_SUBMIT> wait_semaphores;
         SmallVector<Semaphore, MAX_COMMAND_BUFFERS_PER_SUBMIT> signal_semaphores;
@@ -50,13 +57,13 @@ public:
     {
         impl_->end_render_pass();
     }
-    void bind_pipeline(handle_ty pipeline)
+    void bind_pipeline(const RHIPipeline* pipeline)
     {
         impl_->bind_pipeline(pipeline);
     }
-    void bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t descriptor_set_count, RHIPipeline* pipeline)
+    void bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t first_set, uint32_t descriptor_set_count, RHIPipeline* pipeline)
     {
-        impl_->bind_descriptor_sets(descriptor_sets, descriptor_set_count, pipeline);
+        impl_->bind_descriptor_sets(descriptor_sets, first_set, descriptor_set_count, pipeline);
     }
     void add_wait_semaphore(const Semaphore& semaphore)
     {
@@ -94,19 +101,27 @@ public:
         return impl_;
     }
 
-    void draw_indexed(uint32_t index_count, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance)
+    void draw_indexed(IndexBuffer* index_buffer, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance)
     {
-        //impl_->draw_indexed(index_count, instance_count, first_index, vertex_offset, first_instance);
+        impl_->draw_indexed(index_buffer, instance_count, first_index, vertex_offset, first_instance);
     }
 
     void draw_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride)
     {
         //impl_->draw_indirect(indirect_buffer, draw_count, stride);
     }
-     void draw_indexed_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride)
+    void draw_indexed_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride)
     {
         //impl_->draw_indexed_indirect(indirect_buffer, draw_count, stride);
-     }
+    }
+    void set_vertex_buffer(VertexBuffer* vertex_buffer, handle_ty vertex_shader)
+    {
+        impl_->set_vertex_buffer(vertex_buffer, vertex_shader);
+    }
+    void push_constants(const void* data, uint32_t offset, uint32_t size)
+    {
+        impl_->push_constants(data, offset, size);
+    }
 private:
     Impl* impl_ = nullptr;
 };

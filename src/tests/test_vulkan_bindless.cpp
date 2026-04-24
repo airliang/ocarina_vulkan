@@ -181,7 +181,7 @@ int main(int argc, char *argv[]) {
         });
 
     ImguiFrameInfo imgui_frame_info{};
-    renderer.set_render_gui_impl_callback([&](handle_ty cmd_buffer) {
+    renderer.set_render_gui_impl_callback([&](const CommandBuffer& cmd_buffer) {
         //device.get_imgui_frameinfo(imgui_frame_info);
         window->render_gui(cmd_buffer);
         });

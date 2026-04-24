@@ -192,6 +192,7 @@ public:
 
 private:
     VkPipelineLayout get_pipeline_layout(VulkanShader** shaders);
+    std::mutex mutex_;
     std::unordered_map<PipelineKey, VulkanPipeline*, HashPipelineKeyFunction> vulkan_pipelines_;
     PipelineKey pipeline_key_cache_;
 

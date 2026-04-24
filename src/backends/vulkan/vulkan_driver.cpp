@@ -659,6 +659,7 @@ VulkanCommandBuffer* VulkanDriver::get_command_buffer() {
 
 void VulkanDriver::release_command_buffer(VulkanCommandBuffer* cmd_buffer)
 {
+    cmd_buffer->reset();
     command_buffer_pools_[current_buffer_].push(cmd_buffer);
 }
 

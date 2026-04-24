@@ -23,7 +23,7 @@ public:
     OC_MAKE_MEMBER_GETTER(render_pass, )
     OC_MAKE_MEMBER_GETTER(clear_values, )
     OC_MAKE_MEMBER_GETTER(vulkan_frame_buffer, )
-    void draw_items(const CommandBuffer& cmd) override;
+    void draw_items(CommandBuffer& cmd) override;
 
 private:
     void setup_render_pass();

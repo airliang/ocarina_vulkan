@@ -12,6 +12,7 @@ namespace ocarina {
 class Device;
 struct ImguiCreation;
 struct ImguiFrameInfo;
+class CommandBuffer;
 class OC_GUI_API Window {
 public:
     using MouseButtonCallback = ocarina::function<void(int /* button */, int /* action */, float2 /* (x, y) */)>;
@@ -99,7 +100,7 @@ public:
         imgui_frame_callback_ = std::move(cb);
     }
     virtual void render_gui(const ImguiFrameInfo& imgui_frame) noexcept {}
-    virtual void render_gui(handle_ty command_buffer) noexcept {}
+    virtual void render_gui(const CommandBuffer& command_buffer) noexcept {}
     class WindowLoop {
     public:
         WindowLoop(Window *window) : window_(window) {

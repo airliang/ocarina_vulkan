@@ -278,14 +278,14 @@ void SDLWindow::render_gui(const ImguiFrameInfo& imgui_frame) noexcept
     }
 }
 
-void SDLWindow::render_gui(handle_ty command_buffer) noexcept
+void SDLWindow::render_gui(const CommandBuffer& command_buffer) noexcept
 {
     if (imgui_frame_callback_ != nullptr)
     {
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
-        VkCommandBuffer vk_command_buffer = reinterpret_cast<VkCommandBuffer>(command_buffer);
+        VkCommandBuffer vk_command_buffer = reinterpret_cast<VkCommandBuffer>(command_buffer.command_buffer);
 
         imgui_frame_callback_();
         bool show_demo_window = true;

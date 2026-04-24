@@ -55,17 +55,19 @@ void Renderer::render_frame()
                 cmd.add_signal_semaphore(device_->get_render_complete_semaphore());
                 cmd.add_wait_semaphore(device_->get_present_complete_semaphore());
             }
-            render_pass->begin_render_pass(cmd);
+            //render_pass->begin_render_pass(cmd);
+            cmd.begin_render_pass(render_pass);
             render_pass->draw_items(cmd);
 
             if (render_pass->is_swapchain_renderpass())
             {
                 if (render_gui_impl_)
                 {
-                    render_gui_impl_(render_pass->get_command_buffer());
+                    render_gui_impl_(cmd);
                 }
             }
-            render_pass->end_render_pass(cmd);
+            //render_pass->end_render_pass(cmd);
+            cmd.end_render_pass();
         }
         device_->end_command_buffer(cmd);
         device_->execute_command_buffers(&cmd, 1);

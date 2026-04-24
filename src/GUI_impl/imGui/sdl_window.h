@@ -49,6 +49,6 @@ public:
     void init_imgui(const ImguiCreation* imgui_creation) noexcept override;
     void cleanup_imgui() noexcept override;
     void render_gui(const ImguiFrameInfo& imgui_frame) noexcept override;
-    void render_gui(handle_ty command_buffer) noexcept override;
+    void render_gui(const CommandBuffer& command_buffer) noexcept override;
 };
 }// namespace ocarina
