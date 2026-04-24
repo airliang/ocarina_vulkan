@@ -19,3 +19,6 @@
 [submodule "src/ext/enkiTS"]
 	path = src/ext/enkiTS
 	url = https://github.com/dougbinks/enkiTS.git
+[submodule "src/ext/tinygltf"]
+	path = src/ext/tinygltf
+	url = https://github.com/syoyo/tinygltf.git
