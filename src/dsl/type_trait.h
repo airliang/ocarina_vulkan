@@ -21,7 +21,7 @@ struct Expr;
 template<typename T>
 class DynamicArray;
 
-template<typename T, int... Dims>
+template<typename T>
 class Buffer;
 
 class ByteBuffer;
@@ -424,10 +424,10 @@ template<typename T>
 using is_dsl_basic = std::disjunction<is_dsl_scalar<T>, is_vector<T>, is_matrix<T>>;
 OC_DEFINE_TEMPLATE_VALUE(is_dsl_basic)
 
-template<typename T, int... dims>
+template<typename T>
 class Buffer;
 
-template<typename T, int... dims>
+template<typename T>
 class BufferView;
 
 class ByteBuffer;

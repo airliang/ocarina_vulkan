@@ -21,7 +21,7 @@ namespace ocarina {
 
 class RHIContext;
 
-template<typename T, int... Dims>
+template<typename T>
 class Buffer;
 
 class ByteBuffer;
@@ -88,12 +88,6 @@ public:
         virtual void destroy_mesh(handle_ty handle) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_bindless_array() noexcept = 0;
         virtual void destroy_bindless_array(handle_ty handle) noexcept = 0;
-        virtual void register_shared_buffer(void *&shared_handle, uint &gl_handle) noexcept = 0;
-        virtual void register_shared_tex(void *&shared_handle, uint &gl_handle) noexcept = 0;
-        virtual void mapping_shared_buffer(void *&shared_handle, handle_ty &handle) noexcept = 0;
-        virtual void mapping_shared_tex(void *&shared_handle, handle_ty &handle) noexcept = 0;
-        virtual void unmapping_shared(void *&shared_handle) noexcept = 0;
-        virtual void unregister_shared(void *&shared_handle) noexcept = 0;
         [[nodiscard]] RHIContext *context() noexcept { return context_; }
         virtual void init_rtx() noexcept = 0;
         [[nodiscard]] virtual CommandVisitor *command_visitor() noexcept = 0;
@@ -143,14 +137,9 @@ public:
     [[nodiscard]] auto create(Args &&...args) const noexcept {
         return T(this->impl_.get(), std::forward<Args>(args)...);
     }
-    template<typename T = std::byte, int... Dims>
-    [[nodiscard]] Buffer<T, Dims...> create_buffer(size_t size, const string &name = "") const noexcept {
-        return Buffer<T, Dims...>(impl_.get(), size, name);
-    }
-
-    template<typename T = std::byte, int... Dims>
-    [[nodiscard]] Buffer<T, Dims...> create_buffer(size_t size, handle_ty handle) const noexcept {
-        return Buffer<T, Dims...>(impl_.get(), size, handle);
+    template<typename T = std::byte>
+    [[nodiscard]] Buffer<T> create_buffer(size_t size, const string &name = "") const noexcept {
+        return Buffer<T>(impl_.get(), size, name);
     }
 
     [[nodiscard]] ByteBuffer create_byte_buffer(size_t size, const string &name = "") const noexcept;
@@ -161,11 +150,6 @@ public:
     template<typename T, AccessMode mode = AOS>
     [[nodiscard]] ManagedList<T, mode> create_managed_list(size_t size, const string &name = "") const noexcept {
         return ManagedList<T, mode>(create_list<T, mode>(size, name));
-    }
-
-    template<typename T = std::byte, int... Dims>
-    [[nodiscard]] Buffer<T, Dims...> create_buffer(size_t size, handle_ty stream) noexcept {
-        return Buffer<T, Dims...>(impl_.get(), size, stream);
     }
 
     void destroy_buffer(handle_ty handle) noexcept {
@@ -187,11 +171,6 @@ public:
     template<typename T = std::byte>
     [[nodiscard]] Managed<T> create_managed(size_t size) noexcept {
         return Managed<T>(impl_.get(), size);
-    }
-
-    template<typename T = std::byte>
-    [[nodiscard]] Managed<T> create_managed(size_t size, handle_ty stream) noexcept {
-        return Managed<T>(impl_.get(), size, stream);
     }
 
     template<typename VBuffer, typename TBuffer>

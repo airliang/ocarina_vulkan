@@ -11,10 +11,10 @@
 
 namespace ocarina {
 
-template<typename T, int... Dims>
+template<typename T>
 class Buffer;
 
-template<typename T, int... Dims>
+template<typename T>
 class BufferView {
 private:
     handle_ty handle_{};
@@ -26,7 +26,7 @@ private:
 
 public:
     BufferView() = default;
-    BufferView(const Buffer<T, Dims...> &buffer);
+    BufferView(const Buffer<T> &buffer);
     [[nodiscard]] handle_ty handle() const { return handle_; }
     [[nodiscard]] size_t size() const { return size_; }
     [[nodiscard]] static constexpr size_t element_size() noexcept { return sizeof(T); }
@@ -110,21 +110,17 @@ public:
     }
 };
 
-template<typename T = std::byte, int... Dims>
+template<typename T = std::byte>
 class Buffer : public ExportableResource {
     static_assert(is_valid_buffer_element_v<T>);
-    static constexpr bool use_for_dsl = is_dsl_basic_v<T>;
 
 public:
     using element_type = T;
-    static constexpr ocarina::array<int, sizeof...(Dims)> dims = {Dims...};
-    static constexpr bool has_multi_dim() noexcept { return !dims.empty(); }
     using Super = ExportableResource;
 
 protected:
     size_t size_{};
     mutable BufferDesc<T> descriptor_{};
-    string name_;
 
 public:
     Buffer() = default;
@@ -133,20 +129,7 @@ public:
 
     Buffer(Device::Impl *device, size_t size, const string &desc = "", bool exported = false)
         : Super(device, Tag::BUFFER, device->create_buffer(size * element_size(), desc, exported), exported),
-          size_(size), name_(desc) {
-        descriptor_ptr();
-    }
-
-    OC_MAKE_MEMBER_GETTER_SETTER(name, )
-
-    Buffer(BufferView<T, Dims...> buffer_view)
-        : Super(nullptr, Tag::BUFFER, buffer_view.handle()),
-          size_(buffer_view.size()) {
-        descriptor_ptr();
-    }
-
-    Buffer(Device::Impl *device, size_t size, handle_ty handle)
-        : Super(device, Tag::BUFFER, handle), size_(size) {
+          size_(size) {
         descriptor_ptr();
     }
 
@@ -154,14 +137,6 @@ public:
         _destroy();
         size_ = 0;
     }
-
-    void import_handle(uint64_t handle) override {
-        device_->import_handle(handle, size_in_byte()); 
-    };
-
-    uint64_t export_handle() override {
-        return device_->export_handle(handle());
-    };
 
     [[nodiscard]] BufferView<T> view(size_t offset = 0, size_t size = 0) const noexcept {
         size = size == 0 ? size_ - offset : size;
@@ -177,7 +152,6 @@ public:
     Buffer(Buffer &&other) noexcept
         : Super(std::move(other)) {
         this->size_ = other.size_;
-        this->name_ = std::move(other.name_);
         this->descriptor_ = other.descriptor_;
     }
 
@@ -186,7 +160,6 @@ public:
         destroy();
         Super::operator=(std::move(other));
         this->size_ = other.size_;
-        this->name_ = std::move(other.name_);
         this->descriptor_ = other.descriptor_;
         return *this;
     }
@@ -230,11 +203,6 @@ public:
         } else {
             return reinterpret_cast<U>(handle());
         }
-    }
-
-    template<typename U = void *>
-    [[nodiscard]] auto address(size_t offset) const noexcept {
-        return (U)(handle() + offset * element_size());
     }
 
     void set_size(size_t size) noexcept { size_ = size; }
@@ -364,8 +332,8 @@ public:
     }
 };
 
-template<typename T, int... dims>
-BufferView<T, dims...>::BufferView(const Buffer<T, dims...> &buffer)
+template<typename T>
+BufferView<T>::BufferView(const Buffer<T> &buffer)
     : BufferView(buffer.handle(), buffer.size()) {}
 
 }// namespace ocarina

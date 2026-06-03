@@ -7,13 +7,13 @@
 #include "core/string_util.h"
 
 namespace ocarina {
-template<typename T, int... dims>
+template<typename T>
 class Buffer;
 
 template<typename T>
 class BufferDesc;
 
-template<typename T, int... dims>
+template<typename T>
 class BufferView;
 
 class Texture;
@@ -113,15 +113,12 @@ struct TypeDesc<ocarina::array<T, N>> {
     }
 };
 
-template<typename T, int... Dims>
-struct TypeDesc<Buffer<T, Dims...>> {
+template<typename T>
+struct TypeDesc<Buffer<T>> {
     static_assert(alignof(T) >= 4u);
     static ocarina::string &description() noexcept {
         static thread_local string str = []() -> string {
-            auto ret = ocarina::format("buffer<{}", TypeDesc<T>::description());
-            (ret.append(",").append(to_string(Dims)), ...);
-            ret.append(">");
-            return ret;
+            return ocarina::format("buffer<{}>", TypeDesc<T>::description());
         }();
         return str;
     }
