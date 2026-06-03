@@ -4,7 +4,9 @@
 
 namespace ocarina {
 
-void AsyncLoader::Execute() {
+void AsyncLoader::ExecuteRange(enki::TaskSetPartition range, uint32_t threadnum) {
+    (void)range;
+    (void)threadnum;
     if (task_) {
         try {
             task_(device_);

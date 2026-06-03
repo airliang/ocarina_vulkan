@@ -145,7 +145,7 @@ int main(int argc, char *argv[]) {
     quad.set_update_push_constant_function(update_push_constant);
 
     Renderer renderer(&device);
-    renderer.set_async_loader(static_cast<enki::IPinnedTask*>(&async_loader), nullptr, [&]() {
+    renderer.set_async_loader(&async_loader, nullptr, [&]() {
         quad.set_geometry_data_setup(&device, setup_quad);
     });
 

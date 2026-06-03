@@ -12,7 +12,7 @@
 #include "rhi/graphics_descriptions.h"
 #include "ext/enkiTS/src/TaskScheduler.h"
 
-namespace enki { class TaskScheduler; struct IPinnedTask; }
+namespace enki { class TaskScheduler; struct ITaskSet; }
 
 namespace ocarina {
 class Primitive;
@@ -50,10 +50,9 @@ public:
         clear_color = color;
     }
 
-    // Set an async loader pinned task + a wait callback supplied by the application.
-    // The wait callback should wait for completion of this particular pinned task
-    // (for example by calling task_scheduler->WaitforTask(&task) or another mechanism).
-    void set_async_loader(enki::IPinnedTask* task, ocarina::function<void()> wait_fn, AsyncLoaderCompleteCallback complete_fn = nullptr)
+    // Set an async loader task set + a wait callback supplied by the application.
+    // The task runs on an enkiTS worker thread (ITaskSet), not the main thread.
+    void set_async_loader(enki::ITaskSet* task, ocarina::function<void()> wait_fn, AsyncLoaderCompleteCallback complete_fn = nullptr)
     {
         async_loader_task_ = task;
         async_wait_fn_ = std::move(wait_fn);
@@ -86,8 +85,8 @@ protected:
     // enki scheduler pointer (app owns lifetime)
     enki::TaskScheduler task_scheduler_;
 
-    // optional pinned task + wait function (app supplies wait function)
-    enki::IPinnedTask* async_loader_task_ = nullptr;
+    // optional loader task set + wait function (app supplies wait function)
+    enki::ITaskSet* async_loader_task_ = nullptr;
     ocarina::function<void()> async_wait_fn_ = nullptr;
     AsyncLoaderCompleteCallback async_complete_fn_ = nullptr;
     

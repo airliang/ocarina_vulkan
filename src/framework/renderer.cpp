@@ -43,10 +43,10 @@ void Renderer::set_release_callback(ReleaseCallback cb) {
 
 void Renderer::render_frame(double dt)
 {
-    // execute loading: if an async pinned task is set, schedule it (via enki) and wait for it
+    // execute loading: if an async task set is set, schedule it on a worker thread and wait for it
     if (async_loader_task_) {
 
-        task_scheduler_.AddPinnedTask(async_loader_task_);
+        task_scheduler_.AddTaskSetToPipe(async_loader_task_);
 
         if (async_wait_fn_) {
             // application-provided wait function should wait only for this loader task
