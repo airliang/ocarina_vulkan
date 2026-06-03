@@ -2,6 +2,9 @@
 
 #pragma once
 
+// Set numbers must match what each shader declares (SPIR-V set = Vulkan firstSet).
+// PER_OBJECT_SET / BINDLESS_SET are conventions only; omit unused sets in shaders
+// (e.g. bindless-only frag uses set 2, not DescriptorSetIndex::BINDLESS_SET).
 #define GLOBAL_SET 0
 #define MATERIAL_SET 1
 #define PER_OBJECT_SET 2

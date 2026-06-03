@@ -29,6 +29,17 @@ struct RasterState {
         state.depth_clamp = false;
         return state;
     }
+
+    bool operator==(const RasterState &other) const {
+        return cull_mode == other.cull_mode &&
+            front_face == other.front_face &&
+            depth_bias == other.depth_bias &&
+            depth_clamp == other.depth_clamp;
+    }
+
+    bool operator!=(const RasterState &other) const {
+        return !(*this == other);
+    }
 };
 
 struct BlendState {
@@ -66,6 +77,21 @@ struct BlendState {
         state.blend_enable = true;
         return state;
     }
+
+    bool operator==(const BlendState &other) const {
+            return srccolorblend_factor == other.srccolorblend_factor &&
+                dstcolorblend_factor == other.dstcolorblend_factor &&
+                srcalphablend_factor == other.srcalphablend_factor &&
+                dstalphablend_factor == other.dstalphablend_factor &&
+                colorBlendOp == other.colorBlendOp &&
+                alphaBlendOp == other.alphaBlendOp &&
+                color_mask == other.color_mask &&
+                blend_enable == other.blend_enable;
+    }
+
+    bool operator!=(const BlendState &other) const {
+        return !(*this == other);
+    }
 };
 
 struct DepthStencilState {
@@ -85,6 +111,18 @@ struct DepthStencilState {
         state.stencil_test_enable = false;
         return state;
     }
+
+    bool operator==(const DepthStencilState &other) const {
+        return depth_test_enable == other.depth_test_enable &&
+            depth_write_enable == other.depth_write_enable &&
+            depth_compare_op == other.depth_compare_op &&
+            depth_bounds_test_enable == other.depth_bounds_test_enable &&
+            stencil_test_enable == other.stencil_test_enable;
+    }
+
+    bool operator!=(const DepthStencilState &other) const {
+        return !(*this == other);
+    }
 };
 
 struct MultiSampleState {
@@ -99,10 +137,10 @@ struct MultiSampleState {
 };
 
 struct PipelineState {
-    static constexpr uint16_t MAX_SHADER_STAGE = 3;
-    handle_ty shaders[MAX_SHADER_STAGE];
+static constexpr uint16_t MAX_SHADER_STAGE = 2;
+handle_ty shaders[MAX_SHADER_STAGE];
     handle_ty descriptorset_layout = InvalidUI64;        
-    VertexBuffer *vertex_buffer = nullptr;             
+    //VertexBuffer *vertex_buffer = nullptr;             
     RasterState raster_state;//  4
     BlendState blend_state;
     DepthStencilState depth_stencil_state;  
@@ -114,9 +152,8 @@ struct PipelineState {
     bool operator!=(const PipelineState &other) const {
         return shaders[0] != other.shaders[0] ||
             shaders[1] != other.shaders[1] ||
-            shaders[2] != other.shaders[2] ||
             descriptorset_layout != other.descriptorset_layout ||
-            vertex_buffer != other.vertex_buffer ||
+            //vertex_buffer != other.vertex_buffer ||
             raster_state.cull_mode != other.raster_state.cull_mode ||
             raster_state.front_face != other.raster_state.front_face ||
             raster_state.depth_bias != other.raster_state.depth_bias ||
@@ -153,6 +190,7 @@ struct PushConstantVariable {
 
 struct RHIPipeline
 {
+    handle_ty pipeline_layout = InvalidUI64;
     uint32_t push_constant_size = 0;
     std::unordered_map<uint64_t, PushConstantVariable> push_constant_variables_;
 };

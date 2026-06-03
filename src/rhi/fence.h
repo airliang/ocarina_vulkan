@@ -18,13 +18,28 @@ public:
         virtual ~Impl() {}
         virtual void reset() = 0;
         virtual bool is_finished() const = 0;
+        virtual handle_ty native_handle() const = 0;
+        virtual void wait(uint64_t timeout_ns = std::numeric_limits<uint64_t>::max()) const = 0;
     };
 
 public:
-    Fence(std::unique_ptr<Impl> impl)
-    {
-        impl_ = std::move(impl);
-    }
+    struct ImplDeleter {
+        void operator()(Impl* ptr) const noexcept {
+            if (ptr) {
+                ocarina::delete_with_allocator(ptr);
+            }
+        }
+    };
+    using UniqueImplPtr = std::unique_ptr<Impl, ImplDeleter>;
+
+    Fence() = default;
+    explicit Fence(UniqueImplPtr impl) : impl_(std::move(impl)) {}
+    Fence(Fence&&) noexcept = default;
+    Fence& operator=(Fence&&) noexcept = default;
+    Fence(const Fence&) = delete;
+    Fence& operator=(const Fence&) = delete;
+    ~Fence() = default;
+
     void reset() const
     {
         if (impl_) {
@@ -40,11 +55,19 @@ public:
         return true;
     }
 
+    handle_ty native_handle() const
+    {
+        return impl_ ? impl_->native_handle() : handle_ty{};
+    }
 
-
-    [[nodiscard]] static Fence create_fence();
+    void wait(uint64_t timeout_ns = std::numeric_limits<uint64_t>::max()) const
+    {
+        if (impl_) {
+            impl_->wait(timeout_ns);
+        }
+    }
 private:
-    std::unique_ptr<Impl> impl_;
+    UniqueImplPtr impl_;
 };
 
 }// namespace ocarina

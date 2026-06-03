@@ -4,13 +4,19 @@
 #include "vulkan_driver.h"
 #include "vulkan_vertex_buffer.h"
 #include "vulkan_pipeline.h"
+#include "vulkan_shader.h"
 #include "vulkan_descriptorset.h"
 #include "vulkan_index_buffer.h"
+#include "vulkan_fence.h"
+#include "vulkan_buffer.h"
+#include "vulkan_texture.h"
+#include "util.h"
+#include <stdexcept>
 
 namespace ocarina {
 
-VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevice *device, VkCommandPool cmd_pool, VkCommandBuffer cmd_buffer)
-    : device_(device), command_pool_(cmd_pool), vulkan_command_buffer_(cmd_buffer) {
+VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevice *device, VkCommandPool cmd_pool, VkCommandBuffer cmd_buffer, QueueType queue_type)
+    : device_(device), command_pool_(cmd_pool), vulkan_command_buffer_(cmd_buffer), queue_type_(queue_type) {
 }
 
 VulkanCommandBuffer::~VulkanCommandBuffer() {
@@ -23,8 +29,6 @@ VulkanCommandBuffer::~VulkanCommandBuffer() {
 }
 
 void VulkanCommandBuffer::begin_render_pass(RHIRenderPass* render_pass) {
-    render_pass->clear_draw_call_items();
-    render_pass->execute_begin_render_pass_callback();
     if (render_pass->is_swapchain_renderpass()) {
         // Begin swapchain render pass
         pipeline_stage_flags_ = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -84,8 +88,8 @@ void VulkanCommandBuffer::bind_pipeline(const RHIPipeline* pipeline) {
     }
     
 }
-void VulkanCommandBuffer::bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t first_set, uint32_t descriptor_set_count, RHIPipeline* pipeline) {
-    VulkanPipeline* vulkan_pipeline = static_cast<VulkanPipeline*>(pipeline);
+void VulkanCommandBuffer::bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t first_set, uint32_t descriptor_set_count, handle_ty pipeline_layout_handle) {
+    VkPipelineLayout pipeline_layout = reinterpret_cast<VkPipelineLayout>(pipeline_layout_handle);
     std::array<VkDescriptorSet, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_handles = { VK_NULL_HANDLE };
     for (uint32_t i = 0; i < descriptor_set_count; ++i) {
         descriptor_set_handles[i] = static_cast<VulkanDescriptorSet*>(descriptor_sets[i])->descriptor_set();
@@ -98,8 +102,10 @@ void VulkanCommandBuffer::bind_descriptor_sets(DescriptorSet** descriptor_sets, 
 
         // Only mark as dirty if the handle has actually changed
         if (set_index < MAX_DESCRIPTOR_SETS_PER_SHADER) {
-            if (state_.bound_sets[set_index] != descriptor_set_handles[i]) {
+            if (state_.bound_sets[set_index] != descriptor_set_handles[i] ||
+                state_.bound_set_layouts[set_index] != pipeline_layout) {
                 state_.bound_sets[set_index] = descriptor_set_handles[i];
+                state_.bound_set_layouts[set_index] = pipeline_layout;
                 state_.dirty_mask |= (1 << set_index);
             }
         }
@@ -109,7 +115,7 @@ void VulkanCommandBuffer::bind_descriptor_sets(DescriptorSet** descriptor_sets, 
         for (uint32_t i = 0; i < MAX_DESCRIPTOR_SETS_PER_SHADER; ++i) {
             if (state_.dirty_mask & (1 << i)) {
                 // Option A: Bind single set
-                vkCmdBindDescriptorSets(vulkan_command_buffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, vulkan_pipeline->pipeline_layout_, i, 1, &state_.bound_sets[i], 0, nullptr);
+                vkCmdBindDescriptorSets(vulkan_command_buffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, state_.bound_set_layouts[i], i, 1, &state_.bound_sets[i], 0, nullptr);
 
                 // Option B: For optimization, you could group contiguous bits 
                 // into a single vkCmdBindDescriptorSets call.
@@ -135,17 +141,146 @@ void VulkanCommandBuffer::draw_indirect(handle_ty indirect_buffer, uint32_t draw
 void VulkanCommandBuffer::draw_indexed_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) {
 }
 
-void VulkanCommandBuffer::set_vertex_buffer(VertexBuffer* vertex_buffer, handle_ty vertex_shader) {
+void VulkanCommandBuffer::set_vertex_buffer(VertexBuffer* vertex_buffer) {
+    OC_ASSERT(current_pipeline_ != nullptr);
+    const VulkanVertexStreamBinding* vertex_stream_binding = current_pipeline_->vertex_stream_binding();
+    if (vertex_stream_binding == nullptr || vertex_stream_binding->attribute_descriptions_.empty()) {
+        return;
+    }
     VulkanVertexBuffer* vk_vertex_buffer = static_cast<VulkanVertexBuffer*>(vertex_buffer);
-    VulkanShader* vk_vertex_shader = reinterpret_cast<VulkanShader*>(vertex_shader);
-    VulkanVertexStreamBinding* vertex_stream = vk_vertex_buffer->get_or_create_vertex_binding(vk_vertex_shader);
-    vkCmdBindVertexBuffers(vulkan_command_buffer_, 0, vertex_stream->buffers_.size(), vertex_stream->buffers_.data(), vertex_stream->offsets_.data());
+    for (size_t i = 0; i < vertex_stream_binding->attribute_descriptions_.size(); ++i) {
+        VertexAttributeType::Enum attribute_type = vertex_stream_binding->attribute_types_[i];
+        VertexStream* vertex_stream = vk_vertex_buffer->get_vertex_stream(attribute_type);
+        if (vertex_stream == nullptr || vertex_stream->buffer == 0) {
+            continue;
+        }
+        VkDeviceSize offset = vertex_stream_binding->offsets_[i];
+        VulkanBuffer* vk_buffer = reinterpret_cast<VulkanBuffer*>(vertex_stream->buffer);
+        VkBuffer buffer_handle = vk_buffer->buffer_handle();
+        vkCmdBindVertexBuffers(vulkan_command_buffer_, static_cast<uint32_t>(i), 1, &buffer_handle, &offset);
+    }
+}
+
+void VulkanCommandBuffer::submit_to_queue(QueueType queue_type, Fence* fence) {
+    // Submission logic will depend on how you manage command buffers and queues in your application.
+    // Typically, you would end the command buffer recording here and submit it to the appropriate Vulkan queue.
+
+    // Submit to the queue
+    VkSubmitInfo submit_info = {};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &vulkan_command_buffer_;
+    VkQueue queue = VulkanDriver::instance().get_queue(queue_type);
+    VkFence vk_fence = fence ? reinterpret_cast<VkFence>(fence->native_handle()) : VK_NULL_HANDLE;
+    VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submit_info, vk_fence));
+
+    if (fence) {
+        // Optionally, you can wait for the fence here or let the caller handle it.
+        vkWaitForFences(device_->logicalDevice(), 1, &vk_fence, VK_TRUE, std::numeric_limits<uint64_t>::max());
+    }
+    // Wait for the fence to signal that command buffer has finished executing
+    // 
+    //VK_CHECK_RESULT(vkWaitForFences(device_->logicalDevice(), 1, &fence, VK_TRUE, std::numeric_limits<uint64_t>::max()));
+    //vkDestroyFence(device_->logicalDevice(), fence, nullptr);
+}
+
+void VulkanCommandBuffer::begin() {
+    VkCommandBufferBeginInfo begin_info{};
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT; // Adjust as needed
+    begin_info.pInheritanceInfo = nullptr; // Only relevant for secondary command buffers
+    VK_CHECK_RESULT(vkBeginCommandBuffer(vulkan_command_buffer_, &begin_info));
+}
+
+void VulkanCommandBuffer::end() {
+    VK_CHECK_RESULT(vkEndCommandBuffer(vulkan_command_buffer_));
 }
 
 void VulkanCommandBuffer::reset() {
     current_pipeline_ = nullptr;
     state_.dirty_mask = 0;
     std::fill(std::begin(state_.bound_sets), std::end(state_.bound_sets), VK_NULL_HANDLE);
+    std::fill(std::begin(state_.bound_set_layouts), std::end(state_.bound_set_layouts), VK_NULL_HANDLE);
+}
+
+void VulkanCommandBuffer::copy_buffer(VulkanBuffer* src, VulkanBuffer* dst)
+{
+    VkBufferCopy buffer_copy{};
+
+    buffer_copy.size = src->size();
+
+    vkCmdCopyBuffer(vulkan_command_buffer_, src->buffer_handle(), dst->buffer_handle(), 1, &buffer_copy);
+}
+
+void VulkanCommandBuffer::copy_image(VulkanBuffer* src, VulkanTexture* dst)
+{
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+
+    region.imageOffset = {0, 0, 0};
+    region.imageExtent = {dst->resolution().x, dst->resolution().y, 1};
+
+    VkImage image = reinterpret_cast<VkImage>(dst->tex_handle());
+
+    vkCmdCopyBufferToImage(
+        vulkan_command_buffer_,
+        src->buffer_handle(),
+        image,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1,
+        &region);
+}
+
+void VulkanCommandBuffer::image_layout_barrier(VulkanTexture* texture, VkImageLayout old_layout, VkImageLayout new_layout)
+{
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = old_layout;
+    barrier.newLayout = new_layout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = reinterpret_cast<VkImage>(texture->tex_handle());
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = texture->mip_levels();
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+
+    VkPipelineStageFlags source_stage{};
+    VkPipelineStageFlags destination_stage{};
+
+    if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destination_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    } else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else {
+        throw std::runtime_error("VulkanCommandBuffer::image_layout_barrier: unsupported layout transition");
+    }
+
+    vkCmdPipelineBarrier(
+        vulkan_command_buffer_,
+        source_stage,
+        destination_stage,
+        0,
+        0,
+        nullptr,
+        0,
+        nullptr,
+        1,
+        &barrier);
 }
 
 }// namespace ocarina

@@ -17,6 +17,12 @@ public:
         return vulkan_fence_;
     }
 
+    handle_ty native_handle() const override
+    {
+        return reinterpret_cast<handle_ty>(vulkan_fence_);
+    }
+
+    void wait(uint64_t timeout = std::numeric_limits<uint64_t>::max()) const override;
 private:
     VkFence vulkan_fence_ = VK_NULL_HANDLE;
     VulkanDevice* device_ = nullptr;

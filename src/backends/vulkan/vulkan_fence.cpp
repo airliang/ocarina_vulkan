@@ -3,6 +3,7 @@
 #include "vulkan_device.h"
 #include "vulkan_driver.h"
 #include <vulkan/vulkan.h>
+#include "util.h"
 namespace ocarina {
 
 VulkanFence::VulkanFence(VulkanDevice* device) {
@@ -23,7 +24,7 @@ VulkanFence::~VulkanFence() {
 
 void VulkanFence::reset() {
     if (vulkan_fence_ != VK_NULL_HANDLE) {
-        vkResetFences(device_->logicalDevice(), 1, &vulkan_fence_);
+        VK_CHECK_RESULT(vkResetFences(device_->logicalDevice(), 1, &vulkan_fence_));
     }
 }
 
@@ -35,8 +36,11 @@ bool VulkanFence::is_finished() const {
     return true; // If the fence handle is null, we consider it as finished
 }
 
-
-
+void VulkanFence::wait(uint64_t timeout) const {
+    if (vulkan_fence_ != VK_NULL_HANDLE) {
+        VK_CHECK_RESULT(vkWaitForFences(device_->logicalDevice(), 1, &vulkan_fence_, VK_TRUE, timeout));
+    }
+}
 }// namespace ocarina
 
 OC_EXPORT_API ocarina::Fence::Impl* create_fence() {

@@ -3,6 +3,8 @@
 #include "vulkan_device.h"
 #include "vulkan_driver.h"
 #include "vulkan_buffer.h"
+#include "vulkan_command_buffer.h"
+#include "rhi/fence.h"
 namespace ocarina {
 
 VulkanIndexBuffer::VulkanIndexBuffer(VulkanDevice *device, const void* initial_data, uint32_t indices_count, bool bit16) : device_(device)
@@ -38,8 +40,16 @@ void VulkanIndexBuffer::load_from_cpu(const void* cpu_data, uint32_t byte_offset
         num_bytes, nullptr);
 
     VulkanBuffer staging_buffer(device_, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, num_bytes, cpu_data);
-    //vulkan_buffer_->load_from_cpu(cpuData, byteOffset, numBytes);
-    VulkanDriver::instance().copy_buffer(&staging_buffer, vulkan_buffer_);
+    //VulkanDriver::instance().copy_buffer(&staging_buffer, vulkan_buffer_);
+
+    CommandBuffer cmd = static_cast<VulkanDevice*>(device_)->get_command_buffer(QueueType::Copy);
+    cmd.begin();
+    VulkanCommandBuffer* vulkan_cmd = static_cast<VulkanCommandBuffer*>(cmd.impl());
+    vulkan_cmd->copy_buffer(&staging_buffer, vulkan_buffer_);
+    cmd.end();
+    Fence fence = device_->create_fence();
+    cmd.submit_to_queue(QueueType::Copy, &fence);
+    fence.wait();
 }
 
 }// namespace ocarina

@@ -77,7 +77,7 @@ public:
     //DescriptorSetWriter *create_descriptor_set_writer(DescriptorSet *descriptor_set, void** shaders, uint32_t shaders_count) noexcept override;
     void bind_pipeline(const CommandBuffer& cmd_buffer, const handle_ty pipeline) noexcept override;
     RHIPipeline *get_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass) noexcept override;
-    DescriptorSet *get_global_descriptor_set(const string &name) noexcept override;
+    //DescriptorSet *get_global_descriptor_set(const string &name) noexcept override;
     //void bind_descriptor_sets(DescriptorSet **descriptor_set, uint32_t descriptor_sets_num, RHIPipeline* pipeline) noexcept override;
 
     OC_MAKE_MEMBER_GETTER(logicalDevice, );
@@ -106,12 +106,12 @@ public:
     handle_ty get_imgui_commandbuffer() const noexcept override;
     void get_imgui_frameinfo(ImguiFrameInfo& imgui_frame) const noexcept override;
     CommandBuffer get_command_buffer() noexcept override;
+    CommandBuffer get_command_buffer(QueueType queue_type) noexcept;
     void release_command_buffer(const CommandBuffer& cmd_buffer) noexcept override;
-    void begin_command_buffer(const CommandBuffer& cmd_buffer) noexcept override;
-    void end_command_buffer(const CommandBuffer& cmd_buffer) noexcept override;
     void execute_command_buffers(CommandBuffer* command_buffers, uint32_t counts) noexcept override;
     Semaphore get_present_complete_semaphore() noexcept override;
     Semaphore get_render_complete_semaphore() noexcept override;
+    Fence create_fence() noexcept override;
  private:
     void init_vulkan();
     void create_logical_device();

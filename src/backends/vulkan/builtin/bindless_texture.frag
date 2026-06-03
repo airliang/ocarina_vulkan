@@ -3,6 +3,7 @@
 #include "push_constant.hlsl"
 
 [[vk::binding(0, MATERIAL_SET)]]SamplerState sampler_albedo;
+// No PER_OBJECT_SET in this shader: bindless is set 2 (GLOBAL=0, MATERIAL=1).
 [[vk::binding(0, 2)]]Texture2D g_textures[];
 
 [[vk::push_constant]]

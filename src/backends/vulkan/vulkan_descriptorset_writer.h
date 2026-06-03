@@ -30,6 +30,7 @@ public:
     void update_texture(uint64_t name_id, Texture *texture) override;
     void update_sampler(uint64_t name_id, VkSampler sampler);
     uint32_t update_bindless_texture(uint64_t name_id, Texture *texture);
+    void update_bindless_texture_at_index(uint32_t index, Texture *texture);
 
 private:
     std::unordered_map<uint64_t, VulkanDescriptor*> descriptors_;

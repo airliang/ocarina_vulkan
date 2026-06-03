@@ -243,4 +243,35 @@ uint32_t VulkanDescriptorSetWriter::update_bindless_texture(uint64_t name_id, Te
     return InvalidUI32;
 }
 
+void VulkanDescriptorSetWriter::update_bindless_texture_at_index(uint32_t index, Texture *texture) {
+    if (!bindless_textures_descriptor_ || texture == nullptr || index == InvalidUI32) {
+        return;
+    }
+
+    if (index >= MAX_BINDLESS_TEXTURE_ARRAY_SIZE) {
+        return;
+    }
+
+    if (bindless_textures_.size() <= index) {
+        bindless_textures_.resize(index + 1, nullptr);
+    }
+    bindless_textures_[index] = texture;
+    bindless_textures_indices_[texture] = index;
+
+    VulkanTexture* vulkan_texture = static_cast<VulkanTexture*>(texture->impl());
+    VkDescriptorImageInfo descriptor_info = vulkan_texture->get_descriptor_info();
+
+    VkWriteDescriptorSet update{};
+    update.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    update.dstSet = descriptor_set_->descriptor_set();
+    update.dstBinding = bindless_textures_descriptor_->binding;
+    update.dstArrayElement = index;
+    update.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    update.descriptorCount = 1;
+    update.pImageInfo = &descriptor_info;
+
+    VulkanDevice* device = VulkanDriver::instance().get_device();
+    vkUpdateDescriptorSets(device->logicalDevice(), 1, &update, 0, nullptr);
+}
+
 }// namespace ocarina

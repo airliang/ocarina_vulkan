@@ -83,8 +83,11 @@ public:
     DescriptorSet* allocate_descriptor_set() override;
     void free_descriptor_set(VkDescriptorSet descriptor_set);
     VulkanShaderVariableBinding* get_binding(uint64_t index);
-    size_t get_bindings_count() const {
+    size_t get_bindings_count() const override {
         return bindings_.size();
+    }
+    uint64_t get_binding_name_id(size_t index) const override {
+        return index < bindings_.size() ? hash64(bindings_[index].name) : uint64_t(-1);
     }
 
     bool free_descriptor_set() const {
@@ -95,9 +98,13 @@ public:
         free_descriptor_set_ = free_set;
     }
 
-    uint8_t get_descriptor_set_index() const {
+    uint32_t get_descriptor_set_index() const override {
         return descriptor_set_index_;
     }
+
+    bool has_bindless_binding() const override { return has_bindless_; }
+
+    bool has_uniform_buffer_binding() const override;
 
     VulkanShaderVariableBinding* get_binding_by_nameid(uint64_t name_id);
 
@@ -158,6 +165,7 @@ public:
     void update_texture(uint64_t name_id, Texture *texture) override;
     void update_sampler(uint64_t name_id, const TextureSampler& sampler) override;
     uint32_t update_bindless_texture(uint64_t name_id, Texture *texture) override;
+    void update_bindless_texture_at_index(uint32_t index, Texture *texture) override;
     VulkanDescriptorSetLayout *get_layout() const {
         return layout_;
     }

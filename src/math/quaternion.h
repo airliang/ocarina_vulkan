@@ -19,6 +19,7 @@ public:
     oc_quaternion() = default;
     explicit oc_quaternion(oc_float4<p> val) : vw_(val) {}
     explicit oc_quaternion(oc_float3<p> v, oc_float<p> w) : vw_(make_float4(v, w)) {}
+    explicit oc_quaternion(oc_float<p> x, oc_float<p> y, oc_float<p> z, oc_float<p> w) : vw_(make_float4(x, y, z, w)) {}
 
     static oc_quaternion<p> from_axis_angle(oc_float3<p> axis, oc_float<p> theta) {
         oc_float<p> half_theta = theta * 0.5f;

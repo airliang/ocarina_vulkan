@@ -17,13 +17,9 @@ public:
     VulkanRenderPass(VulkanDevice *device, const RenderPassCreation &render_pass_creation);
     ~VulkanRenderPass() override;
 
-    void begin_render_pass(const CommandBuffer& cmd) override;
-
-    void end_render_pass(const CommandBuffer& cmd) override;
     OC_MAKE_MEMBER_GETTER(render_pass, )
     OC_MAKE_MEMBER_GETTER(clear_values, )
     OC_MAKE_MEMBER_GETTER(vulkan_frame_buffer, )
-    void draw_items(CommandBuffer& cmd) override;
 
 private:
     void setup_render_pass();

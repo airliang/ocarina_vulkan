@@ -62,6 +62,8 @@ public:
 
     VkCommandBuffer begin_one_time_command_buffer();
     void end_one_time_command_buffer(VkCommandBuffer cmd);
+    VkCommandBuffer begin_one_time_command_buffer(QueueType queue_type);
+    void end_one_time_command_buffer(VkCommandBuffer cmd, QueueType queue_type);
 
     VulkanPipeline* get_pipeline(const PipelineState &pipeline_state, VkRenderPass render_pass);
 
@@ -81,27 +83,10 @@ public:
 
     VkResult copy_buffer(VulkanBuffer* src, VulkanBuffer* dst);
     VkResult copy_buffer(VulkanBuffer *src, VkBuffer dst);
-    VkResult copy_image(VulkanBuffer *src, VulkanTexture *dst);
 
-    void set_vertex_buffer(VkCommandBuffer cmd, const VulkanVertexStreamBinding& vertex_stream);
     void draw_triangles(VkCommandBuffer cmd, VulkanIndexBuffer* index_buffer);
 
     void push_constants(VkCommandBuffer cmd, VkPipelineLayout pipeline, void *data, uint32_t size, uint32_t offset, VkShaderStageFlags stage_flags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
-
-    void add_global_descriptor_set(uint64_t name_id, VulkanDescriptorSet *descriptor_set);
-
-    VulkanDescriptorSet *get_global_descriptor_set(uint64_t name_id) {
-        auto it = global_descriptor_sets.find(name_id);
-        if (it != global_descriptor_sets.end()) {
-            return it->second;
-        }
-        return nullptr;
-    }
-
-    VulkanDescriptorSet *get_global_descriptor_set(const std::string &name) {
-        uint64_t name_id = hash64(name);
-        return get_global_descriptor_set(name_id);
-    }
 
     void bind_descriptor_sets(VkCommandBuffer cmd, DescriptorSet **descriptor_sets, uint32_t first_set, uint32_t descriptor_sets_num, VkPipelineLayout pipeline_layout);
 
@@ -122,20 +107,24 @@ public:
         return graphics_queue;
     }
 
+    VkQueue get_compute_queue() const {
+        return compute_queue;
+    }
+
+    VkQueue get_copy_queue() const {
+        return copy_queue;
+    }
+
     VkDescriptorPool get_imgui_descriptor_pool();
 
     VkCommandBuffer get_imgui_commandbuffer() const {
         return imgui_cmd_buffers_[current_buffer_];
     }
 
-    VulkanCommandBuffer* get_command_buffer();
+    VulkanCommandBuffer* get_command_buffer(QueueType queue_type = QueueType::Graphics);
     void release_command_buffer(VulkanCommandBuffer* cmd_buffer);
 
     void queue_submit(VkQueue queue, const VkSubmitInfo2* submit_info, uint32_t submit_count, VkFence fence = VK_NULL_HANDLE);
-
-    void begin_command_buffer(VkCommandBuffer cmd_buffer);
-
-    void end_command_buffer(VkCommandBuffer cmd_buffer);
 
     void execute_command_buffers(CommandBuffer* cmd_buffer, uint32_t counts, VkFence fence = VK_NULL_HANDLE);
 
@@ -149,6 +138,17 @@ public:
 
     VkSemaphore get_render_complete_semaphore() const {
         return semaphores.renderComplete;
+    }
+
+    VkQueue get_queue(QueueType queue_type) const {
+        if (queue_type == QueueType::Graphics) {
+            return graphics_queue;
+        } else if (queue_type == QueueType::Compute) {
+            return compute_queue;
+        } else if (queue_type == QueueType::Copy) {
+            return copy_queue;
+        }
+        return VK_NULL_HANDLE;
     }
 private:
     void setup_frame_buffer();
@@ -171,16 +171,18 @@ private:
     std::unique_ptr<VulkanDescriptorManager> vulkan_descriptor_manager;
 
     VkQueue graphics_queue{VK_NULL_HANDLE};
-    VkQueue present_queue{VK_NULL_HANDLE};
+    VkQueue compute_queue{VK_NULL_HANDLE};
+    VkQueue copy_queue{ VK_NULL_HANDLE };
     // Contains command buffers and semaphores to be presented to the queue
     VkSubmitInfo submit_info_;
 
-    /** @brief Default command pool for the graphics queue family index */
-    VkCommandPool command_pool_ = VK_NULL_HANDLE;
+    /** @brief Command pools per queue family */
+    std::array<VkCommandPool, (size_t)QueueType::NumQueueType> command_pools_ = {};
     // Command buffers used for rendering
     //std::vector<VkCommandBuffer> draw_cmd_buffers_;
 
-    std::vector<std::queue<VulkanCommandBuffer*>> command_buffer_pools_;
+    using CommandBufferPoolPerQueue = std::array<std::queue<VulkanCommandBuffer*>, (size_t)QueueType::NumQueueType>;
+    std::vector<CommandBufferPoolPerQueue> command_buffer_pools_;
     // Active frame buffer index
     uint32_t current_buffer_ = 0;
 
@@ -202,7 +204,6 @@ private:
     //VkFormat depth_stencil_format;
     std::vector<VkFramebuffer> frame_buffers;
 
-    std::unordered_map<uint64_t, VulkanDescriptorSet *> global_descriptor_sets;
     std::vector<VulkanRenderPass *> render_passes_;
     std::unordered_map<uint64_t, VkSampler> samplers_;
 

@@ -468,4 +468,37 @@ static uint32_t get_vulkan_bindless_resource_max_count(VkDescriptorType descript
     }
 }
 
+static uint32_t get_vulkan_format_size(VkFormat format) {
+    switch (format) {
+    case VK_FORMAT_R8_SRGB:
+    case VK_FORMAT_A8_UNORM_KHR:
+        return 1;
+    case VK_FORMAT_R8G8_SRGB:
+    case VK_FORMAT_R8G8_UNORM:
+        return 2;
+    case VK_FORMAT_R8G8B8A8_SRGB:
+    case VK_FORMAT_R8G8B8A8_UNORM:
+        return 4;
+    case VK_FORMAT_R32_UINT:
+        return 4;
+    case VK_FORMAT_R32G32_UINT:
+        return 8;
+    case VK_FORMAT_R32G32B32A32_UINT:
+        return 16;
+    case VK_FORMAT_R32_SFLOAT:
+        return 4;
+    case VK_FORMAT_R32G32_SFLOAT:
+        return 8;
+    case VK_FORMAT_R32G32B32_SFLOAT:
+        return 12;
+    case VK_FORMAT_R32G32B32A32_SFLOAT:
+        return 16;
+    case VK_FORMAT_R32G32B32_SINT:
+    case VK_FORMAT_R32G32B32_UINT:
+        return 12;
+    default:
+        return 0;
+    }
+}
+
 }// namespace ocarina 

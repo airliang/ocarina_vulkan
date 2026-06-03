@@ -9,6 +9,7 @@
 #include "rhi/resources/shader.h"
 #include <vulkan/vulkan.h>
 #include "shader_reflection.h"
+#include <vector>
 namespace ocarina {
 
 class VulkanDevice;
@@ -77,6 +78,18 @@ struct PushConstant
     }
 };
 
+struct VulkanVertexStreamBinding
+{
+    //std::vector<VkBuffer> buffers_;
+    std::vector<VertexAttributeType::Enum> attribute_types_;
+    std::vector<VkDeviceSize> offsets_;
+    std::vector<VkVertexInputBindingDescription> binding_descriptions_;
+    std::vector<VkVertexInputAttributeDescription> attribute_descriptions_;
+    //VulkanShader* vertex_shader_ = nullptr;
+    //static void create_from_vertex_shader(VulkanShader* vertex_shader, VulkanVertexBuffer* vertex_buffer, VulkanVertexStreamBinding& binding);
+};
+
+
 class VulkanShader : public Shader<>::Impl {
 public:
 private:
@@ -90,6 +103,9 @@ private:
     static bool HLSLToSPRIV(std::span<char> hlsl, VkShaderStageFlagBits stage, const std::string_view &entryPoint, bool outputSymbols, std::vector<uint32_t> &outSpriv, std::string &errorLog);
     void get_shader_variables(const ShaderReflection &reflection);
     void get_vertex_attributes(const ShaderReflection &reflection);
+    VulkanVertexStreamBinding vertex_stream_binding_;
+
+    void create_vertex_stream_binding();
 public:
     VulkanShader(VulkanDevice *device, std::span<uint32_t> shaderCode, const std::string_view &entryPoint, VkShaderStageFlagBits stage);
     ~VulkanShader() override;
@@ -158,6 +174,11 @@ public:
     const VulkanShaderVariableBinding& get_shader_variable(size_t index)
     {
         return variables_[index];
+    }
+
+    const VulkanVertexStreamBinding& get_vertex_stream_binding() const
+    {
+        return vertex_stream_binding_;
     }
 };
 

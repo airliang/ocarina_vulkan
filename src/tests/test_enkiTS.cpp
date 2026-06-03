@@ -27,7 +27,12 @@ class TestPinnedTask : public enki::IPinnedTask
 public:
     void Execute() override
     {
-        printf("Hello from pinned task on thread %u\n", threadNum);
+        int count = 0;
+        for (int i = 0; i < 1000000; ++i) {
+            // Simulate some work
+            count++;
+        }
+        printf("Hello from pinned task on thread %u, counter=%d\n", threadNum, count);
     }
 };
 
@@ -40,6 +45,7 @@ int main(int argc, char *argv[]) {
     test_task_set.m_MinRange = 100;
     TestPinnedTask test_pinned_task;
     task_scheduler.AddTaskSetToPipe(&test_task_set);
+    task_scheduler.WaitforTaskSet(&test_task_set);
     task_scheduler.AddPinnedTask(&test_pinned_task);
 
     task_scheduler.WaitforAllAndShutdown();

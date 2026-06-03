@@ -91,6 +91,8 @@ public:
         }
     }
 
+    std::string name() const { return path_.filename().string(); }
+
     void save(const fs::path &fn) const;
     void convert_to_8bit_image();
     void convert_to_32bit_image();

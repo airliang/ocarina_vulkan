@@ -23,6 +23,7 @@ public:
     virtual void update_texture(uint64_t name_id, Texture *texture) = 0;
     virtual void update_sampler(uint64_t name_id, const TextureSampler& sampler) = 0;
     virtual uint32_t update_bindless_texture(uint64_t name_id, Texture *texture) = 0;
+    virtual void update_bindless_texture_at_index(uint32_t index, Texture *texture) = 0;
 
 private:
 };
@@ -33,6 +34,13 @@ public:
     virtual ~DescriptorSetLayout() {}
 
     virtual DescriptorSet* allocate_descriptor_set() = 0;
+    virtual size_t get_bindings_count() const { return 0; }
+    virtual uint64_t get_binding_name_id(size_t index) const { return uint64_t(-1); }
+
+    /// Vulkan descriptor set index from shader reflection (may be non-contiguous).
+    virtual uint32_t get_descriptor_set_index() const { return 0; }
+    virtual bool has_bindless_binding() const { return false; }
+    virtual bool has_uniform_buffer_binding() const { return false; }
 
     const std::string get_name() const { return name_; }
     void set_name(const std::string &name) {

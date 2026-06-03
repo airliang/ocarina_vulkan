@@ -15,6 +15,7 @@
 #include "graphics_descriptions.h"
 #include "pipeline_state.h"
 #include "command_buffer.h"
+#include "fence.h"
 
 namespace ocarina {
 
@@ -105,7 +106,7 @@ public:
         virtual std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) noexcept = 0;
         virtual void bind_pipeline(const CommandBuffer& cmd_buffer, const handle_ty pipeline) noexcept = 0;
         virtual RHIPipeline *get_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass) noexcept = 0;
-        virtual DescriptorSet *get_global_descriptor_set(const string &name) noexcept = 0;
+        //virtual DescriptorSet *get_global_descriptor_set(const string &name) noexcept = 0;
 
         virtual void memory_allocate(handle_ty *handle, size_t size, bool exported = true) {}
         virtual void memory_free(handle_ty *handle) {}
@@ -122,11 +123,10 @@ public:
         }
         virtual CommandBuffer get_command_buffer() = 0;
         virtual void release_command_buffer(const CommandBuffer& cmd_buffer) = 0;
-        virtual void begin_command_buffer(const CommandBuffer& cmd_buffer) noexcept {}
-        virtual void end_command_buffer(const CommandBuffer& cmd_buffer) noexcept {}
         virtual void execute_command_buffers(CommandBuffer* cmd_buffer, uint32_t count) noexcept {}
         virtual Semaphore get_present_complete_semaphore() noexcept = 0;
         virtual Semaphore get_render_complete_semaphore() noexcept = 0;
+        virtual Fence create_fence() noexcept = 0;
     };
 
     using Creator = Device::Impl *(RHIContext *);
@@ -259,9 +259,9 @@ public:
         return impl_->get_pipeline(pipeline_state, render_pass);
     }
 
-    DescriptorSet *get_global_descriptor_set(const string &name) noexcept {
-        return impl_->get_global_descriptor_set(name);
-    }
+    //DescriptorSet *get_global_descriptor_set(const string &name) noexcept {
+    //    return impl_->get_global_descriptor_set(name);
+    //}
 
     void get_imgui_creation(ImguiCreation& imgui_creation) {
         return impl_->get_imgui_creation(imgui_creation);
@@ -283,14 +283,6 @@ public:
         impl_->release_command_buffer(cmd_buffer);
     }
 
-    void begin_command_buffer(const CommandBuffer& cmd_buffer) noexcept {
-        impl_->begin_command_buffer(cmd_buffer);
-    }   
-
-    void end_command_buffer(const CommandBuffer& cmd_buffer) noexcept {
-        impl_->end_command_buffer(cmd_buffer);
-    }
-
     void execute_command_buffers(CommandBuffer* cmd_buffer, uint32_t count) noexcept {
         impl_->execute_command_buffers(cmd_buffer, count);
     }
@@ -303,6 +295,11 @@ public:
         return impl_->get_render_complete_semaphore();
     }
 
+    Fence create_fence() const noexcept {
+        return impl_->create_fence();
+    }
+
+    Device::Impl* impl() noexcept { return impl_.get(); }
     //void bind_descriptor_sets(DescriptorSet **descriptor_sets, uint32_t descriptor_sets_num, RHIPipeline *pipeline) noexcept {
     //    impl_->bind_descriptor_sets(descriptor_sets, descriptor_sets_num, pipeline);
     //}

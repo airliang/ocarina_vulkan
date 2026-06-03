@@ -39,7 +39,6 @@ public:
     void generate_mipmaps();
     void create_image_view(const TextureViewCreation &texture_view);
     void create_sampler(const TextureSampler& sampler_creation);
-    void transition_image_layout(VkImageLayout old_layout, VkImageLayout new_layout);
     [[nodiscard]] uint3 resolution() const noexcept override { return res_; }
     [[nodiscard]] handle_ty array_handle() const noexcept override {
         return reinterpret_cast<handle_ty>(image_);

@@ -17,6 +17,7 @@
 #include "vulkan_texture.h"
 #include "rhi/command_buffer.h"
 #include "vulkan_command_buffer.h"
+#include "vulkan_fence.h"
 
 namespace ocarina {
 
@@ -400,9 +401,9 @@ RHIPipeline *VulkanDevice::get_pipeline(const PipelineState &pipeline_state, RHI
     return pipeline;
 }
 
-DescriptorSet* VulkanDevice::get_global_descriptor_set(const string& name) noexcept {
-    return VulkanDriver::instance().get_global_descriptor_set(name);
-}
+//DescriptorSet* VulkanDevice::get_global_descriptor_set(const string& name) noexcept {
+//    return VulkanDriver::instance().get_global_descriptor_set(name);
+//}
 
 VulkanBuffer *VulkanDevice::create_vulkan_buffer(VkBufferUsageFlags usage_flags, VkMemoryPropertyFlags memory_property_flags, VkDeviceSize size, const void *data) {
     //return VulkanBufferManager::instance()->create_vulkan_buffer(this, usage_flags, memory_property_flags, size, data);
@@ -525,7 +526,15 @@ void VulkanDevice::get_imgui_frameinfo(ImguiFrameInfo& imgui_frame) const noexce
 
 CommandBuffer VulkanDevice::get_command_buffer() noexcept
 {
-    VulkanCommandBuffer* vk_cmd_buffer = VulkanDriver::instance().get_command_buffer();
+    VulkanCommandBuffer* vk_cmd_buffer = VulkanDriver::instance().get_command_buffer(QueueType::Graphics);
+    CommandBuffer cmd_buffer(vk_cmd_buffer);
+    cmd_buffer.command_buffer = reinterpret_cast<handle_ty>(vk_cmd_buffer->vulkan_command_buffer());
+    return cmd_buffer;
+}
+
+CommandBuffer VulkanDevice::get_command_buffer(QueueType queue_type) noexcept
+{
+    VulkanCommandBuffer* vk_cmd_buffer = VulkanDriver::instance().get_command_buffer(queue_type);
     CommandBuffer cmd_buffer(vk_cmd_buffer);
     cmd_buffer.command_buffer = reinterpret_cast<handle_ty>(vk_cmd_buffer->vulkan_command_buffer());
     return cmd_buffer;
@@ -535,16 +544,6 @@ void VulkanDevice::release_command_buffer(const CommandBuffer& cmd_buffer) noexc
 {
     cmd_buffer.reset();
     VulkanDriver::instance().release_command_buffer(static_cast<VulkanCommandBuffer*>(cmd_buffer.impl()));
-}
-
-void VulkanDevice::begin_command_buffer(const CommandBuffer& cmd_buffer) noexcept
-{
-    VulkanDriver::instance().begin_command_buffer(reinterpret_cast<VkCommandBuffer>(cmd_buffer.command_buffer));
-}
-
-void VulkanDevice::end_command_buffer(const CommandBuffer& cmd_buffer) noexcept
-{
-    VulkanDriver::instance().end_command_buffer(reinterpret_cast<VkCommandBuffer>(cmd_buffer.command_buffer));
 }
 
 void VulkanDevice::execute_command_buffers(CommandBuffer* command_buffers, uint32_t counts) noexcept
@@ -562,6 +561,11 @@ Semaphore VulkanDevice::get_render_complete_semaphore() noexcept
     return Semaphore{ reinterpret_cast<handle_ty>(VulkanDriver::instance().get_render_complete_semaphore()) };
 }
 
+Fence VulkanDevice::create_fence() noexcept
+{
+    Fence::UniqueImplPtr impl(ocarina::new_with_allocator<ocarina::VulkanFence>(this));
+    return Fence(std::move(impl));
+}
 }// namespace ocarina
 
 OC_EXPORT_API ocarina::VulkanDevice *create_device(ocarina::RHIContext *file_manager, const ocarina::InstanceCreation& instance_creation) {

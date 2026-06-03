@@ -6,10 +6,25 @@
 #include "util.h"
 #include "vulkan_device.h"
 #include "vulkan_driver.h"
+#include "vulkan_command_buffer.h"
 #include "core/image.h"
 #include "vulkan_buffer.h"
+#include "rhi/fence.h"
 
 namespace ocarina {
+
+void submit_texture_staging_upload(VulkanDevice* device, VulkanBuffer* staging_buffer, VulkanTexture* texture)
+{
+    CommandBuffer cmd = device->get_command_buffer(QueueType::Copy);
+    cmd.begin();
+    VulkanCommandBuffer* vk_cmd = static_cast<VulkanCommandBuffer*>(cmd.impl());
+    vk_cmd->image_layout_barrier(texture, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    vk_cmd->copy_image(staging_buffer, texture);
+    cmd.end();
+    Fence fence = device->create_fence();
+    cmd.submit_to_queue(QueueType::Copy, &fence);
+    fence.wait();
+}
 
 VulkanTexture::VulkanTexture(VulkanDevice *device, Image *image, const TextureViewCreation &texture_view, const TextureSampler& sampler)
     : device_(device) {
@@ -66,9 +81,7 @@ VulkanTexture::VulkanTexture(VulkanDevice *device, uint32_t width, uint32_t heig
     VkDeviceSize image_size = pixels.size() * sizeof(uint4);
     VulkanBuffer staging_buffer(device_, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                                 image_size, pixels.data());
-    transition_image_layout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    VulkanDriver::instance().copy_image(&staging_buffer, this);
-
+    submit_texture_staging_upload(device_, &staging_buffer, this);
 
     if (mip_levels_ > 1) {
         generate_mipmaps();
@@ -133,47 +146,7 @@ void VulkanTexture::init(Image *image, const TextureViewCreation &texture_view) 
 void VulkanTexture::load_cpu_data(Image *image) {
     VulkanBuffer staging_buffer(device_, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                                 image->size_in_bytes(), image->pixel_ptr());
-    transition_image_layout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    VulkanDriver::instance().copy_image(&staging_buffer, this);
-}
-
-void VulkanTexture::transition_image_layout(VkImageLayout old_layout, VkImageLayout new_layout) {
-    VkCommandBuffer cmd = VulkanDriver::instance().begin_one_time_command_buffer();
-
-    VkImageMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.oldLayout = old_layout;
-    barrier.newLayout = new_layout;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = image_;
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    barrier.subresourceRange.baseMipLevel = 0;
-    barrier.subresourceRange.levelCount = mip_levels_;
-    barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
-
-    VkPipelineStageFlags sourceStage;
-    VkPipelineStageFlags destinationStage;
-
-    if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-        barrier.srcAccessMask = 0;
-        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-
-        sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    } else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-        sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-    } else {
-        throw std::runtime_error("unsupported layout transition!");
-    }
-
-    vkCmdPipelineBarrier(cmd, sourceStage, destinationStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
-    VulkanDriver::instance().end_one_time_command_buffer(cmd);
+    submit_texture_staging_upload(device_, &staging_buffer, this);
 }
 
 void VulkanTexture::generate_mipmaps() {

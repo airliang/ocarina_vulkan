@@ -9,6 +9,8 @@
 
 namespace ocarina {
 struct PipelineState;
+class Material;
+class VertexBuffer;
 class IndexBuffer;
 class RenderTarget;
 class DescriptorSetWriter;
@@ -24,12 +26,10 @@ struct DescriptorSetsBinding
 };
 
 struct DrawCallItem {
-    PipelineState* pipeline_state = nullptr;
+    //Material* material = nullptr;
+    VertexBuffer* vertex_buffer = nullptr;
     IndexBuffer* index_buffer = nullptr;
-    //float4x4 world_matrix;
-    //DescriptorSetWriter *descriptor_set_writer = nullptr;
-    //std::array<DescriptorSet *, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_sets = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-    //std::array<DescriptorSetsBinding, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_sets_binding_group = {};
+    
     std::vector<DescriptorSet*> descriptor_sets;
     //uint32_t descriptor_set_count = 0;
     uint32_t first_set = 0;
@@ -73,17 +73,7 @@ public:
         render_target_[render_target_count_++] = render_target;
     }
 
-    virtual void begin_render_pass(const CommandBuffer& cmd) = 0;
-    virtual void end_render_pass(const CommandBuffer& cmd) = 0;
-    virtual void draw_items(CommandBuffer& cmd) = 0;
-
-    using BeginRenderPassCallback = ocarina::function<void(RHIRenderPass *)>;
-    void set_begin_renderpass_callback(BeginRenderPassCallback callback)
-    {
-        begin_render_pass_callback_ = callback;
-    }
-
-    void add_global_descriptor_set(const std::string &name, DescriptorSet *descriptor_set);
+    void draw_items(CommandBuffer& cmd);
 
     bool is_swapchain_renderpass() const
     {
@@ -104,10 +94,8 @@ public:
         return render_target_count_ == 0;
     }
 
-    void execute_begin_render_pass_callback() {
-        if (begin_render_pass_callback_) {
-            begin_render_pass_callback_(this);
-        }
+    const std::unordered_map<RHIPipeline*, PipelineRenderQueue*>& pipeline_render_queues() const {
+        return pipeline_render_queues_;
     }
 protected:
     
@@ -124,11 +112,8 @@ protected:
     constexpr static const int kMaxRenderTargets = 8;
     RenderTarget *render_target_[kMaxRenderTargets] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
     RenderTarget* depth_stencil_target_ = nullptr;
-    BeginRenderPassCallback begin_render_pass_callback_ = nullptr;
 
     std::unordered_map<RHIPipeline *, PipelineRenderQueue *> pipeline_render_queues_;
-    std::unordered_map<uint64_t, DescriptorSet*> global_descriptor_sets_;
-    std::vector<DescriptorSet *> global_descriptor_sets_array_;
     GlobalUBO global_ubo_data_ = {};
     handle_ty command_buffer_ = 0;
 };

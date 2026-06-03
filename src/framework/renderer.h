@@ -10,15 +10,20 @@
 #include "core/thread_pool.h"
 #include "rhi/params.h"
 #include "rhi/graphics_descriptions.h"
+#include "ext/enkiTS/src/TaskScheduler.h"
+
+namespace enki { class TaskScheduler; struct IPinnedTask; }
 
 namespace ocarina {
 class Primitive;
 class RHIRenderPass;
 class Device;
 class CommandBuffer;
+
+
 class Renderer : public concepts::Noncopyable {
 public:
-    Renderer(Device *device) : device_(device) {}
+    Renderer(Device *device) : device_(device) { task_scheduler_.Initialize(); }
     ~Renderer();
 
     using UpdateFrameCallBack = ocarina::function<void(double)>;
@@ -27,6 +32,7 @@ public:
     using ReleaseCallback = ocarina::function<void()>;
     using UpdateDescriptorPerObjectCallback = ocarina::function<void(Primitive&)>;
     using RenderGUIImplCallback = ocarina::function<void(const CommandBuffer& cmd_buffer)>;
+    using AsyncLoaderCompleteCallback = ocarina::function<void()>;
 
     void set_update_frame_callback(UpdateFrameCallBack cb)
     {
@@ -44,7 +50,17 @@ public:
         clear_color = color;
     }
 
-    void render_frame();
+    // Set an async loader pinned task + a wait callback supplied by the application.
+    // The wait callback should wait for completion of this particular pinned task
+    // (for example by calling task_scheduler->WaitforTask(&task) or another mechanism).
+    void set_async_loader(enki::IPinnedTask* task, ocarina::function<void()> wait_fn, AsyncLoaderCompleteCallback complete_fn = nullptr)
+    {
+        async_loader_task_ = task;
+        async_wait_fn_ = std::move(wait_fn);
+        async_complete_fn_ = std::move(complete_fn);
+    }
+
+    void render_frame(double dt);
     void add_render_pass(RHIRenderPass *render_pass)
     {
         render_passes_.emplace_back(render_pass);
@@ -67,6 +83,13 @@ protected:
     std::list<RHIRenderPass *> render_passes_;
     Device* device_ = nullptr;
 
+    // enki scheduler pointer (app owns lifetime)
+    enki::TaskScheduler task_scheduler_;
+
+    // optional pinned task + wait function (app supplies wait function)
+    enki::IPinnedTask* async_loader_task_ = nullptr;
+    ocarina::function<void()> async_wait_fn_ = nullptr;
+    AsyncLoaderCompleteCallback async_complete_fn_ = nullptr;
     
 };
 

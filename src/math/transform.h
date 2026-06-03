@@ -101,6 +101,34 @@ template<EPort p = D>
 }
 
 template<EPort p = D>
+[[nodiscard]] oc_float4x4<p> TRS(const oc_float3<p> &t, const oc_quaternion<p> &r,
+                                 const oc_float3<p> &s) noexcept {
+    oc_float<p> x = r.v().x;
+    oc_float<p> y = r.v().y;
+    oc_float<p> z = r.v().z;
+    oc_float<p> w = r.w();
+    oc_float<p> xx = x * x;
+    oc_float<p> yy = y * y;
+    oc_float<p> zz = z * z;
+    oc_float<p> xy = x * y;
+    oc_float<p> xz = x * z;
+    oc_float<p> yz = y * z;
+    oc_float<p> xw = x * w;
+    oc_float<p> yw = y * w;
+    oc_float<p> zw = z * w;
+
+    oc_float4x4<p> R = make_float4x4(
+        1.f - 2.f * (yy + zz), 2.f * (xy + zw), 2.f * (xz - yw), 0.f,
+        2.f * (xy - zw), 1.f - 2.f * (xx + zz), 2.f * (yz + xw), 0.f,
+        2.f * (xz + yw), 2.f * (yz - xw), 1.f - 2.f * (xx + yy), 0.f,
+        0.f, 0.f, 0.f, 1.f);
+
+    oc_float4x4<p> T = translation(t);
+    oc_float4x4<p> S = scale(s);
+    return T * R * S;
+}
+
+template<EPort p = D>
 [[nodiscard]] oc_float4x4<p> look_at(const oc_float3<p> &eye, const oc_float3<p> &target_pos,
                                      oc_float3<p> up) noexcept {
     oc_float3<p> fwd = normalize(target_pos - eye);
@@ -201,8 +229,19 @@ private:
     TMat _mat;
     static constexpr auto port = port_v<TMat>;
 
+    [[nodiscard]] static oc_float3<port> extract_translation(const TMat &mat) noexcept {
+        return make_float3(mat[3][0], mat[3][1], mat[3][2]);
+    }
+
+    [[nodiscard]] static oc_float3<port> extract_scale(const TMat &mat) noexcept {
+        oc_float3<port> x = make_float3(mat[0][0], mat[0][1], mat[0][2]);
+        oc_float3<port> y = make_float3(mat[1][0], mat[1][1], mat[1][2]);
+        oc_float3<port> z = make_float3(mat[2][0], mat[2][1], mat[2][2]);
+        return make_float3(length(x), length(y), length(z));
+    }
+
 public:
-    Transform() = default;
+    Transform() noexcept : _mat(1) {}
     explicit Transform(const TMat &mat) : _mat(mat) {}
     [[nodiscard]] TMat mat4x4() const noexcept { return _mat; }
     [[nodiscard]] TMat inv_mat4x4() const noexcept { return inverse(_mat); }
@@ -218,6 +257,57 @@ public:
     [[nodiscard]] auto apply_normal(const T &normal) noexcept { return transform_normal<port_v<TMat, T>>(_mat, normal); }
     template<typename T>
     [[nodiscard]] auto apply_ray(T &&ray) noexcept { return transform_ray<port_v<TMat, T>>(_mat, OC_FORWARD(ray)); }
+
+    [[nodiscard]] auto position() const noexcept {
+        return extract_translation(_mat);
+    }
+
+    [[nodiscard]] auto scale() const noexcept {
+        oc_float3<port> x = make_float3(_mat[0][0], _mat[0][1], _mat[0][2]);
+        oc_float3<port> y = make_float3(_mat[1][0], _mat[1][1], _mat[1][2]);
+        oc_float3<port> z = make_float3(_mat[2][0], _mat[2][1], _mat[2][2]);
+        return make_float3(length(x), length(y), length(z));
+    }
+
+    [[nodiscard]] oc_float4<port> rotation() const noexcept {
+        oc_float3<port> s = scale();
+        TMat R = _mat;
+        if (s.x != 0.f) {
+            R[0][0] /= s.x;
+            R[0][1] /= s.x;
+            R[0][2] /= s.x;
+        }
+        if (s.y != 0.f) {
+            R[1][0] /= s.y;
+            R[1][1] /= s.y;
+            R[1][2] /= s.y;
+        }
+        if (s.z != 0.f) {
+            R[2][0] /= s.z;
+            R[2][1] /= s.z;
+            R[2][2] /= s.z;
+        }
+        auto quat = oc_quaternion<port>::from_float4x4(R);
+        return make_float4(quat.v(), quat.w());
+    }
+
+    void set_position(const oc_float3<port>& position) noexcept {
+        _mat[3][0] = position.x;
+        _mat[3][1] = position.y;
+        _mat[3][2] = position.z;
+    }
+
+    void set_rotation(const oc_quaternion<port>& rotation) noexcept {
+        _mat = TRS<port>(position(), rotation, scale());
+    }
+
+    void set_scale(const oc_float3<port>& scale) noexcept {
+        _mat = TRS<port>(position(), rotation(), scale);
+    }
+
+    void set_TRS(const oc_float3<port> &translation, const oc_quaternion<port> &rotation, const oc_float3<port> &scale) noexcept {
+        _mat = TRS<port>(translation, rotation, scale);
+    }
 };
 
 }// namespace ocarina

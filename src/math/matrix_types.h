@@ -53,6 +53,11 @@ public:
           }(std::make_index_sequence<N>())) {
     }
 
+    constexpr void set_identity() noexcept {
+        static_assert(N == M, "set_identity only works for square matrices");
+        *this = Matrix(1);
+    }
+
     [[nodiscard]] constexpr vector_type &operator[](size_t i) noexcept { return cols_[i]; }
     [[nodiscard]] constexpr const vector_type &operator[](size_t i) const noexcept { return cols_[i]; }
 };

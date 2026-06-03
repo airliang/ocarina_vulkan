@@ -5,6 +5,8 @@
 #include "vulkan_shader.h"
 #include "util.h"
 #include "vulkan_device.h"
+#include <algorithm>
+#include <numeric>
 #ifdef _WIN32
 #define NOMINMAX
 #include <Windows.h>
@@ -85,7 +87,10 @@ VulkanShader *VulkanShader::create_from_HLSL(Device::Impl *device, ShaderType sh
             vulkan_shader = create(device, shader_type, compile_result.spriv_codes, entry_point);
             vulkan_shader->get_shader_variables(reflection);
             if (shader_type == ShaderType::VertexShader)
+            {
                 vulkan_shader->get_vertex_attributes(reflection);
+                vulkan_shader->create_vertex_stream_binding();
+            }
         }
 
     } 
@@ -237,6 +242,37 @@ bool VulkanShader::HLSLToSPRIV(std::span<char> hlsl, VkShaderStageFlagBits stage
     }
 
     return true;
+}
+
+void VulkanShader::create_vertex_stream_binding() {
+    size_t attr_count = get_vertex_attribute_count();
+
+    vertex_stream_binding_.attribute_descriptions_.resize(attr_count);
+    vertex_stream_binding_.binding_descriptions_.resize(attr_count);
+    //vertex_stream_binding_.buffers_.resize(attr_count);
+    vertex_stream_binding_.offsets_.resize(attr_count);
+    vertex_stream_binding_.attribute_types_.resize(attr_count);
+
+    std::vector<size_t> attribute_order(attr_count);
+    std::iota(attribute_order.begin(), attribute_order.end(), size_t{0});
+    std::sort(attribute_order.begin(), attribute_order.end(), [this](size_t lhs, size_t rhs) {
+        return get_vertex_attribute(lhs).location < get_vertex_attribute(rhs).location;
+    });
+
+    for (size_t i = 0; i < attr_count; ++i)
+    {
+        auto attr = get_vertex_attribute(attribute_order[i]);
+        vertex_stream_binding_.attribute_descriptions_[i].binding = static_cast<uint32_t>(i);
+        vertex_stream_binding_.attribute_descriptions_[i].location = attr.location;
+        vertex_stream_binding_.attribute_descriptions_[i].format = static_cast<VkFormat>(attr.format);
+        vertex_stream_binding_.attribute_descriptions_[i].offset = 0;
+        vertex_stream_binding_.attribute_types_[i] = (VertexAttributeType::Enum)attr.type;
+        vertex_stream_binding_.offsets_[i] = 0;
+
+        vertex_stream_binding_.binding_descriptions_[i].binding = i;
+        vertex_stream_binding_.binding_descriptions_[i].stride = get_vulkan_format_size(static_cast<VkFormat>(attr.format));
+        vertex_stream_binding_.binding_descriptions_[i].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    }
 }
 
 VulkanShader* VulkanShaderManager::get_or_create_from_HLSL(VulkanDevice *device,

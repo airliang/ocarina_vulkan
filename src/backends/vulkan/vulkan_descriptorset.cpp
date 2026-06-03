@@ -72,6 +72,19 @@ uint32_t VulkanDescriptorSet::update_bindless_texture(uint64_t name_id, Texture 
     return InvalidUI32;
 }
 
+void VulkanDescriptorSet::update_bindless_texture_at_index(uint32_t index, Texture *texture) {
+    size_t binding_count = layout_->get_bindings_count();
+    for (size_t i = 0; i < binding_count; ++i) {
+        VulkanShaderVariableBinding* binding = layout_->get_binding(i);
+        if (binding && binding->is_bindless && binding->type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) {
+            if (writer_) {
+                writer_->update_bindless_texture_at_index(index, texture);
+            }
+            return;
+        }
+    }
+}
+
 VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VulkanDevice *device, uint8_t descriptor_set_index) : device_(device), descriptor_set_index_(descriptor_set_index) {
 
 }
@@ -147,6 +160,15 @@ void VulkanDescriptorSetLayout::add_binding(const char* name,
         layout_built_ = false;
         hashkey_ = InvalidUI64;
     }
+}
+
+bool VulkanDescriptorSetLayout::has_uniform_buffer_binding() const {
+    for (const VulkanShaderVariableBinding& binding : bindings_) {
+        if (binding.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool VulkanDescriptorSetLayout::build_layout()
@@ -404,19 +426,9 @@ std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> VulkanDescripto
         {
             layouts_count++;
         }
-        if (layout != nullptr && layout->build_layout())
+        if (layout != nullptr)
         {
-            if (i == (size_t)DescriptorSetIndex::GLOBAL_SET)
-            {
-                VulkanDescriptorSet *global_descriptor_set = static_cast<VulkanDescriptorSet *>(layout->allocate_descriptor_set());
-                size_t bindings_count = layout->get_bindings_count(); 
-
-                for (size_t j = 0; j < bindings_count; ++j)
-                {
-                    VulkanShaderVariableBinding* binding = layout->get_binding(j);
-                    VulkanDriver::instance().add_global_descriptor_set(hash64(binding->name), global_descriptor_set);
-                }
-            }
+            layout->build_layout();
         }
     }
 

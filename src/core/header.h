@@ -43,6 +43,12 @@
 #define OC_RHI_API __declspec(dllimport)
 #endif
 
+#ifdef OC_FRAMEWORK_EXPORT_DLL
+#define OC_FRAMEWORK_API __declspec(dllexport)
+#else
+#define OC_FRAMEWORK_API __declspec(dllimport)
+#endif
+
 #ifdef OC_BACKENDS_EXPORT_DLL
 #define OC_BACKENDS_API __declspec(dllexport)
 #else

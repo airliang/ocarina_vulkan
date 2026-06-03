@@ -12,6 +12,7 @@ class DescriptorSet;
 struct RHIPipeline;
 class VertexBuffer;
 class IndexBuffer;
+class Fence;
 //This command buffer class is designed to be a holder for the actual command buffer implementation, which can be VulkanCommandBuffer, D3D12CommandBuffer, etc. 
 //It also holds the synchronization primitives (semaphores) that are needed for submitting the command buffer to the GPU. 
 // The actual command buffer implementation is hidden behind the Impl class, which is a pure virtual interface. 
@@ -25,12 +26,15 @@ public:
         virtual void begin_render_pass(RHIRenderPass* render_pass) = 0;
         virtual void end_render_pass() = 0;
         virtual void bind_pipeline(const RHIPipeline* pipeline) = 0;
-        virtual void bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t first_set, uint32_t descriptor_set_count, RHIPipeline* pipeline) = 0;
+        virtual void bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t first_set, uint32_t descriptor_set_count, handle_ty pipeline_layout) = 0;
         virtual void draw_indexed(IndexBuffer* index_buffer, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance) = 0;
         virtual void push_constants(const void* data, uint32_t offset, uint32_t size) = 0;
         virtual void draw_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) = 0;
         virtual void draw_indexed_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) = 0;
-        virtual void set_vertex_buffer(VertexBuffer* vertex_buffer, handle_ty vertex_shader) = 0;
+        virtual void set_vertex_buffer(VertexBuffer* vertex_buffer) = 0;
+        virtual void submit_to_queue(QueueType queue_type, Fence* fence) = 0;
+        virtual void begin() = 0;
+        virtual void end() = 0;
 
         SmallVector<Semaphore, MAX_COMMAND_BUFFERS_PER_SUBMIT> wait_semaphores;
         SmallVector<Semaphore, MAX_COMMAND_BUFFERS_PER_SUBMIT> signal_semaphores;
@@ -61,9 +65,9 @@ public:
     {
         impl_->bind_pipeline(pipeline);
     }
-    void bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t first_set, uint32_t descriptor_set_count, RHIPipeline* pipeline)
+    void bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t first_set, uint32_t descriptor_set_count, handle_ty pipeline_layout)
     {
-        impl_->bind_descriptor_sets(descriptor_sets, first_set, descriptor_set_count, pipeline);
+        impl_->bind_descriptor_sets(descriptor_sets, first_set, descriptor_set_count, pipeline_layout);
     }
     void add_wait_semaphore(const Semaphore& semaphore)
     {
@@ -114,13 +118,23 @@ public:
     {
         //impl_->draw_indexed_indirect(indirect_buffer, draw_count, stride);
     }
-    void set_vertex_buffer(VertexBuffer* vertex_buffer, handle_ty vertex_shader)
+    void set_vertex_buffer(VertexBuffer* vertex_buffer)
     {
-        impl_->set_vertex_buffer(vertex_buffer, vertex_shader);
+        impl_->set_vertex_buffer(vertex_buffer);
     }
     void push_constants(const void* data, uint32_t offset, uint32_t size)
     {
         impl_->push_constants(data, offset, size);
+    }
+    void submit_to_queue(QueueType queue_type, Fence* fence)
+    {
+        impl_->submit_to_queue(queue_type, fence);
+    }
+    void begin() {
+        impl_->begin();
+    }
+    void end() {
+        impl_->end();
     }
 private:
     Impl* impl_ = nullptr;
