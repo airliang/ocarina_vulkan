@@ -55,6 +55,8 @@ public:
                                 const std::string &entry_point);
     VulkanShader* get_shader(handle_ty shader) const;
     OC_MAKE_MEMBER_GETTER(current_buffer, )
+    [[nodiscard]] uint32_t current_frame() const noexcept { return current_frame_; }
+    [[nodiscard]] uint32_t frames_in_flight() const noexcept { return frames_in_flight_; }
     //VkCommandBuffer get_current_command_buffer() const
     //{
     //    return draw_cmd_buffers_[current_buffer_];
@@ -133,11 +135,11 @@ public:
     void recycle_semaphore(const Semaphore& semaphore);
 
     VkSemaphore get_present_complete_semaphore() const {
-        return semaphores.presentComplete;
+        return frame_sync_[current_frame_].image_available;
     }
 
     VkSemaphore get_render_complete_semaphore() const {
-        return semaphores.renderComplete;
+        return frame_sync_[current_frame_].render_finished;
     }
 
     VkQueue get_queue(QueueType queue_type) const {
@@ -163,7 +165,16 @@ private:
     void create_internal_textures();
     void destroy_internal_textures();
     void create_imgui_cmd_buffers();
+    void create_frame_sync();
+    void destroy_frame_sync();
 private:
+    static constexpr uint32_t kMaxFramesInFlight = 3;
+
+    struct FrameSync {
+        VkSemaphore image_available = VK_NULL_HANDLE;
+        VkSemaphore render_finished = VK_NULL_HANDLE;
+        VkFence in_flight_fence = VK_NULL_HANDLE;
+    };
     VulkanDriver();
     VulkanDevice *vulkan_device_;
     std::unique_ptr<VulkanPipelineManager> vulkan_pipeline_manager;
@@ -173,8 +184,6 @@ private:
     VkQueue graphics_queue{VK_NULL_HANDLE};
     VkQueue compute_queue{VK_NULL_HANDLE};
     VkQueue copy_queue{ VK_NULL_HANDLE };
-    // Contains command buffers and semaphores to be presented to the queue
-    VkSubmitInfo submit_info_;
 
     /** @brief Command pools per queue family */
     std::array<VkCommandPool, (size_t)QueueType::NumQueueType> command_pools_ = {};
@@ -183,22 +192,12 @@ private:
 
     using CommandBufferPoolPerQueue = std::array<std::queue<VulkanCommandBuffer*>, (size_t)QueueType::NumQueueType>;
     std::vector<CommandBufferPoolPerQueue> command_buffer_pools_;
-    // Active frame buffer index
+    // Swapchain image index from the latest acquire
     uint32_t current_buffer_ = 0;
-
-    //struct {
-    //    VkImage image;
-    //    VkDeviceMemory mem;
-    //    VkImageView view;
-    //} depth_stencil;
-
-    // Synchronization semaphores
-    struct {
-        // Swap chain image presentation
-        VkSemaphore presentComplete;
-        // Command buffer submission and execution
-        VkSemaphore renderComplete;
-    } semaphores;
+    // Ring index for per-frame CPU/GPU sync (fences, semaphores, command-buffer pools)
+    uint32_t current_frame_ = 0;
+    uint32_t frames_in_flight_ = 0;
+    std::vector<FrameSync> frame_sync_;
 
     VkRenderPass renderpass_framebuffer{VK_NULL_HANDLE};
     //VkFormat depth_stencil_format;

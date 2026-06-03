@@ -27,11 +27,6 @@ VulkanDevice* VulkanDriver::create_device(RHIContext* file_manager, const Instan
 {
     vulkan_device_ = ocarina::new_with_allocator<ocarina::VulkanDevice>(file_manager, instance_creation);
 
-    // Semaphore used to ensures that image presentation is complete before starting to submit again
-    VkSemaphoreCreateInfo semaphoreCreateInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-    vkCreateSemaphore(device(), &semaphoreCreateInfo, nullptr, &semaphores.presentComplete);
-    vkCreateSemaphore(device(), &semaphoreCreateInfo, nullptr, &semaphores.renderComplete);
-
     initialize();
 
     return vulkan_device_;
@@ -55,8 +50,7 @@ void VulkanDriver::terminate()
     vulkan_pipeline_manager->clear(vulkan_device_);
     vulkan_descriptor_manager->clear();
     vulkan_shader_manager->clear(vulkan_device_);
-    vkDestroySemaphore(device(), semaphores.presentComplete, nullptr);
-    vkDestroySemaphore(device(), semaphores.renderComplete, nullptr);
+    destroy_frame_sync();
     release_command_buffers();
     release_command_pool();
 
@@ -340,21 +334,13 @@ void VulkanDriver::release_command_pool()
 
 void VulkanDriver::create_command_buffers()
 {
-    
     VulkanSwapchain *swapchain = vulkan_device_->get_swapchain();
-    
-    command_buffer_pools_.resize(swapchain->backbuffer_size());
-    /*
-    * draw_cmd_buffers_.resize(swapchain->backbuffer_size());
-    VkCommandBufferAllocateInfo const allocateInfo{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = command_pool_,
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = (uint32_t)draw_cmd_buffers_.size(),
-    };
-
-    VK_CHECK_RESULT(vkAllocateCommandBuffers(device(), &allocateInfo, draw_cmd_buffers_.data()));
-    */
+    frames_in_flight_ = std::min({kMaxFramesInFlight, swapchain->backbuffer_size()});
+    if (frames_in_flight_ == 0) {
+        frames_in_flight_ = 1;
+    }
+    command_buffer_pools_.resize(frames_in_flight_);
+    create_frame_sync();
 }
 
 void VulkanDriver::release_command_buffers() {
@@ -392,14 +378,52 @@ void VulkanDriver::initialize()
     create_command_pool();
     create_command_buffers();
 
-    submit_info_.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit_info_.waitSemaphoreCount = 1;
-    submit_info_.pWaitSemaphores = &semaphores.presentComplete;
-    submit_info_.signalSemaphoreCount = 1;
-    submit_info_.pSignalSemaphores = &semaphores.renderComplete;
-
     create_internal_textures();
     create_imgui_cmd_buffers();
+}
+
+void VulkanDriver::create_frame_sync()
+{
+    destroy_frame_sync();
+
+    frame_sync_.resize(frames_in_flight_);
+    VkSemaphoreCreateInfo semaphore_info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+    VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    for (uint32_t i = 0; i < frames_in_flight_; ++i) {
+        VK_CHECK_RESULT(vkCreateSemaphore(device(), &semaphore_info, nullptr, &frame_sync_[i].image_available));
+        VK_CHECK_RESULT(vkCreateSemaphore(device(), &semaphore_info, nullptr, &frame_sync_[i].render_finished));
+        VK_CHECK_RESULT(vkCreateFence(device(), &fence_info, nullptr, &frame_sync_[i].in_flight_fence));
+    }
+    current_frame_ = 0;
+}
+
+void VulkanDriver::destroy_frame_sync()
+{
+    if (frame_sync_.empty()) {
+        return;
+    }
+
+    if (device() != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(device());
+    }
+
+    for (auto &frame : frame_sync_) {
+        if (frame.in_flight_fence != VK_NULL_HANDLE) {
+            vkDestroyFence(device(), frame.in_flight_fence, nullptr);
+            frame.in_flight_fence = VK_NULL_HANDLE;
+        }
+        if (frame.image_available != VK_NULL_HANDLE) {
+            vkDestroySemaphore(device(), frame.image_available, nullptr);
+            frame.image_available = VK_NULL_HANDLE;
+        }
+        if (frame.render_finished != VK_NULL_HANDLE) {
+            vkDestroySemaphore(device(), frame.render_finished, nullptr);
+            frame.render_finished = VK_NULL_HANDLE;
+        }
+    }
+    frame_sync_.clear();
 }
 
 void VulkanDriver::window_resize()
@@ -463,20 +487,21 @@ VulkanPipeline* VulkanDriver::get_pipeline(const PipelineState &pipeline_state, 
 
 void VulkanDriver::begin_frame()
 {
+    FrameSync &frame = frame_sync_[current_frame_];
+    VK_CHECK_RESULT(vkWaitForFences(device(), 1, &frame.in_flight_fence, VK_TRUE, UINT64_MAX));
+
     VulkanSwapchain *swapchain = vulkan_device_->get_swapchain();
-    VkResult result = swapchain->aquire_next_image(semaphores.presentComplete, &current_buffer_);
+    VkResult result = swapchain->aquire_next_image(frame.image_available, &current_buffer_);
+    VK_CHECK_RESULT(result);
 
-    //VkCommandBufferBeginInfo infoCmd{};
-    //infoCmd.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-    //VK_CHECK_RESULT(vkBeginCommandBuffer(draw_cmd_buffers_[current_buffer_], &infoCmd));
+    VK_CHECK_RESULT(vkResetFences(device(), 1, &frame.in_flight_fence));
 }
 
 void VulkanDriver::end_frame()
 {
-    //vkEndCommandBuffer(draw_cmd_buffers_[current_buffer_]);
-    vulkan_device_->get_swapchain()->queue_present(graphics_queue, current_buffer_, semaphores.renderComplete);
-    VK_CHECK_RESULT(vkQueueWaitIdle(graphics_queue));
+    vulkan_device_->get_swapchain()->queue_present(
+        graphics_queue, current_buffer_, frame_sync_[current_frame_].render_finished);
+    current_frame_ = (current_frame_ + 1) % frames_in_flight_;
 }
 
 VulkanRenderPass* VulkanDriver::create_render_pass(const RenderPassCreation& render_pass_creation) {
@@ -626,7 +651,7 @@ void VulkanDriver::create_imgui_cmd_buffers()
 }
 
 VulkanCommandBuffer* VulkanDriver::get_command_buffer(QueueType queue_type) {
-    auto& pool = command_buffer_pools_[current_buffer_][(size_t)queue_type];
+    auto& pool = command_buffer_pools_[current_frame_][(size_t)queue_type];
     if (pool.empty()) {
         VkCommandBufferAllocateInfo allocateInfo{};
         allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -646,7 +671,7 @@ VulkanCommandBuffer* VulkanDriver::get_command_buffer(QueueType queue_type) {
 void VulkanDriver::release_command_buffer(VulkanCommandBuffer* cmd_buffer)
 {
     cmd_buffer->reset();
-    command_buffer_pools_[current_buffer_][(size_t)cmd_buffer->queue_type()].push(cmd_buffer);
+    command_buffer_pools_[current_frame_][(size_t)cmd_buffer->queue_type()].push(cmd_buffer);
 }
 
 void VulkanDriver::queue_submit(VkQueue queue, const VkSubmitInfo2* submit_info, uint32_t submit_count, VkFence fence)
@@ -656,6 +681,11 @@ void VulkanDriver::queue_submit(VkQueue queue, const VkSubmitInfo2* submit_info,
 
 void VulkanDriver::execute_command_buffers(CommandBuffer* cmd_buffers, uint32_t counts, VkFence fence)
 {
+    VkFence frame_fence = VK_NULL_HANDLE;
+    if (fence == VK_NULL_HANDLE && !frame_sync_.empty()) {
+        frame_fence = frame_sync_[current_frame_].in_flight_fence;
+    }
+
     std::array<VkCommandBufferSubmitInfo, MAX_COMMAND_BUFFERS_PER_SUBMIT> cmd_buffers_submit{};
     std::array<VkPipelineStageFlags, MAX_COMMAND_BUFFERS_PER_SUBMIT> wait_stages;
     std::array<uint64_t, MAX_COMMAND_BUFFERS_PER_SUBMIT> signal_values;
@@ -725,7 +755,10 @@ void VulkanDriver::execute_command_buffers(CommandBuffer* cmd_buffers, uint32_t 
 
             submits[i].pNext = &timeline_info;
         }
-        queue_submit(graphics_queue, &submits[i], 1, fence);
+        const VkFence submit_fence = (fence != VK_NULL_HANDLE)
+                                         ? ((i + 1 == counts) ? fence : VK_NULL_HANDLE)
+                                         : ((i + 1 == counts) ? frame_fence : VK_NULL_HANDLE);
+        queue_submit(graphics_queue, &submits[i], 1, submit_fence);
     }
 
     //queue_submit(graphics_queue, submits.data(), counts, fence);
