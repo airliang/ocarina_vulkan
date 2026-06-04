@@ -67,22 +67,10 @@ DrawCallItem Primitive::get_draw_call_item(Device *device, RHIRenderPass *render
         return item_;
     }
 
-    if (material_->is_pipeline_dirty()) {
-        material_->update_material(render_pass);
-    }
-
     if (descriptor_sets_dirty_ || descriptor_sets_material_ != material_) {
         update_descriptor_sets(device);
     }
-    
-    //if (material_->is_shader_dirty())
-    //{
-    //    RHIPipeline* pipeline = device->get_pipeline(material_->get_pipeline_state(), render_pass);
-    //    material_->set_pipeline(pipeline);
-    //    material_->set_shader_dirty(false);
-    //}
-    
-    
+
     item_.vertex_buffer = mesh_->vertex_buffer();
     item_.index_buffer = mesh_->index_buffer();
 

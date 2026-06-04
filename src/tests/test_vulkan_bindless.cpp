@@ -68,14 +68,6 @@ int main(int argc, char *argv[]) {
 
         material = ResourceManager::instance().create_material(device, vertex_shader, pixel_shader);
 
-        
-        PipelineState pipeline_state;
-        pipeline_state.shaders[0] = vertex_shader;
-        pipeline_state.shaders[1] = pixel_shader;
-        pipeline_state.blend_state = BlendState::Opaque();
-        pipeline_state.raster_state = RasterState::Default();
-        pipeline_state.depth_stencil_state = DepthStencilState::Default();
-
         Image image = Image::load("D:\\Github\\Vision\\src\\ocarina\\res\\textures\\granite.png", ColorSpace::SRGB);
         TextureViewCreation texture_view = {};
         texture_view.mip_level_count = 0;
@@ -144,16 +136,24 @@ int main(int argc, char *argv[]) {
     quad.set_draw_call_pre_render_function(pre_render_draw_item);
     quad.set_update_push_constant_function(update_push_constant);
 
-    Renderer renderer(&device);
-    renderer.set_async_loader(&async_loader, nullptr, [&]() {
-        quad.set_geometry_data_setup(&device, setup_quad);
-    });
-
     RenderPassCreation render_pass_creation;
     render_pass_creation.swapchain_clear_color = make_float4(0.1f, 0.1f, 0.1f, 1.0f);
     render_pass_creation.swapchain_clear_depth = 1.0f;
     render_pass_creation.swapchain_clear_stencil = 0;
     RHIRenderPass *render_pass = device.create_render_pass(render_pass_creation);
+
+    auto setup_quad_with_pipeline = [&](Primitive& quad) {
+        setup_quad(quad);
+        if (material != nullptr) {
+            material->set_target_render_pass(render_pass);
+        }
+    };
+
+    Renderer renderer(&device);
+    renderer.set_async_loader(&async_loader, nullptr, [&]() {
+        quad.set_geometry_data_setup(&device, setup_quad_with_pipeline);
+    });
+
     //DescriptorSet *global_descriptor_set = device.get_global_descriptor_set("global_ubo");
     FrameResources::instance().set_update_callback([&](FrameResources&, double) {
         DescriptorSet* global_descriptor_set = FrameResources::instance().get_global_descriptor_set("global_ubo");

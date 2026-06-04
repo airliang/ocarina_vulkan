@@ -120,16 +120,21 @@ int main(int argc, char *argv[]) {
     triangle.set_draw_call_pre_render_function(pre_render_draw_item);
     triangle.set_update_push_constant_function(update_push_constant);
 
-    Renderer renderer(&device);
-    renderer.set_async_loader(&async_loader, nullptr, [&]() {
-        triangle.set_geometry_data_setup(&device, setup_triangle);
-    });
-
     RenderPassCreation render_pass_creation;
     render_pass_creation.swapchain_clear_color = make_float4(0.1f, 0.1f, 0.1f, 1.0f);
     render_pass_creation.swapchain_clear_depth = 1.0f;
     render_pass_creation.swapchain_clear_stencil = 0;
     RHIRenderPass* render_pass = device.create_render_pass(render_pass_creation);
+
+    Renderer renderer(&device);
+    renderer.set_async_loader(&async_loader, nullptr, [&]() {
+        triangle.set_geometry_data_setup(&device, [&](Primitive& triangle) {
+            setup_triangle(triangle);
+            if (material != nullptr) {
+                material->set_target_render_pass(render_pass);
+            }
+        });
+    });
 
     FrameResources::instance().set_update_callback([&](FrameResources&, double) {
         DescriptorSet* global_descriptor_set = FrameResources::instance().get_global_descriptor_set("global_ubo");

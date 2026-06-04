@@ -14,6 +14,7 @@ template <class T>
 class Shader;
 class TextureSampler;
 class Device;
+class RHIRenderPass;
 
 class Material {
 public:
@@ -33,9 +34,9 @@ public:
 
     void set_blend_state(const BlendState& blend_state) {
         if (blend_state != pipeline_state_.blend_state) {
-            pipeline_dirty_ = true;
+            pipeline_state_.blend_state = blend_state;
+            mark_pipeline_dirty();
         }
-        pipeline_state_.blend_state = blend_state;
     }
 
     const BlendState& get_blend_state() const {
@@ -44,9 +45,9 @@ public:
 
     void set_raster_state(const RasterState& raster_state) {
         if (raster_state != pipeline_state_.raster_state) {
-            pipeline_dirty_ = true;
+            pipeline_state_.raster_state = raster_state;
+            mark_pipeline_dirty();
         }
-        pipeline_state_.raster_state = raster_state;
     }
 
     const RasterState& get_raster_state() const {
@@ -55,9 +56,9 @@ public:
 
     void set_depth_stencil_state(const DepthStencilState& depth_stencil_state) {
         if (depth_stencil_state != pipeline_state_.depth_stencil_state) {
-            pipeline_dirty_ = true;
+            pipeline_state_.depth_stencil_state = depth_stencil_state;
+            mark_pipeline_dirty();
         }
-        pipeline_state_.depth_stencil_state = depth_stencil_state;
     }
 
     const DepthStencilState& get_depth_stencil_state() const {
@@ -72,16 +73,29 @@ public:
         return pipeline_state_;
     }
 
+    void mark_pipeline_dirty() {
+        pipeline_dirty_ = true;
+        try_build_pipeline();
+    }
+
+    // Associate the render pass used for pipeline creation (main/setup thread).
+    void set_target_render_pass(RHIRenderPass* render_pass);
+
+    // Create or refresh the GPU pipeline for the current pipeline state and target render pass.
+    // Intended to be called from the main/setup thread when pipeline state changes.
+    void build_pipeline();
+
     RHIPipeline* get_pipeline() const { return pipeline_; }
 
     const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>& descriptor_set_layouts() const {
         return descriptor_set_layouts_;
     }
 
-    void update_material(RHIRenderPass* render_pass);
-
-    bool is_pipeline_dirty() const { return pipeline_dirty_; }
+    [[nodiscard]] RHIRenderPass* target_render_pass() const { return render_pass_; }
+    [[nodiscard]] bool is_pipeline_dirty() const { return pipeline_dirty_; }
+    [[nodiscard]] bool has_built_pipeline() const { return pipeline_ != nullptr; }
 private:
+    void try_build_pipeline();
     void create_global_descriptor_sets();
 
     static uint32_t find_bindless_descriptor_set_index(
@@ -95,6 +109,7 @@ private:
     std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_layouts_ = {};
     PipelineState pipeline_state_;
     RHIPipeline *pipeline_ = nullptr;
+    RHIRenderPass *render_pass_ = nullptr;
     bool pipeline_dirty_ = true;
 
     Device* device_ = nullptr;
