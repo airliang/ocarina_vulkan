@@ -119,10 +119,6 @@ public:
 
     VkDescriptorPool get_imgui_descriptor_pool();
 
-    VkCommandBuffer get_imgui_commandbuffer() const {
-        return imgui_cmd_buffers_[current_buffer_];
-    }
-
     VulkanCommandBuffer* get_command_buffer(QueueType queue_type = QueueType::Graphics);
     void release_command_buffer(VulkanCommandBuffer* cmd_buffer);
 
@@ -164,7 +160,6 @@ private:
     void window_resize();
     void create_internal_textures();
     void destroy_internal_textures();
-    void create_imgui_cmd_buffers();
     void create_frame_sync();
     void destroy_frame_sync();
 private:
@@ -208,8 +203,6 @@ private:
 
     VulkanTexture *internal_textures_[INTERNAL_TEXTURE_COUNT] = {nullptr};
     VkDescriptorPool imgui_descriptorpool_ = VK_NULL_HANDLE;
-    std::vector<VkCommandBuffer> imgui_cmd_buffers_;
-    VkCommandPool imgui_command_pool_ = VK_NULL_HANDLE;
 
     std::list<VkSemaphore> timeline_semaphore_pool_;
     std::list<VkSemaphore> binary_semaphore_pool_;

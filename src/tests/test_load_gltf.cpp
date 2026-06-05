@@ -7,7 +7,8 @@
 #include "ext/enkiTS/src/TaskScheduler.h"
 #include "framework/gltf_async_loader.h"
 #include "rhi/context.h"
-#include "GUI/window.h"
+#include "framework/window_factory.h"
+#include "framework/sdl_window.h"
 
 using namespace ocarina;
 
@@ -17,7 +18,7 @@ int main(int argc, char *argv[]) {
     //FileManager &file_manager = FileManager::instance();
     RHIContext& file_manager = RHIContext::instance();
 
-    auto window = file_manager.create_window("display", make_uint2(800, 600), WindowLibrary::SDL3);
+    auto window = create_sdl_window("display", make_uint2(800, 600));
 
     InstanceCreation instanceCreation = {};
     //instanceCreation.instanceExtentions =

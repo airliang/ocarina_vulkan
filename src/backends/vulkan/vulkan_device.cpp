@@ -344,6 +344,13 @@ void VulkanDevice::end_frame() noexcept
     VulkanDriver::instance().end_frame();
 }
 
+void VulkanDevice::wait_idle() noexcept
+{
+    if (logicalDevice_ != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(logicalDevice_);
+    }
+}
+
 RHIRenderPass *VulkanDevice::create_render_pass(const RenderPassCreation &render_pass_creation) noexcept {
     return VulkanDriver::instance().create_render_pass(render_pass_creation);
 }
@@ -481,23 +488,6 @@ void VulkanDevice::get_imgui_creation(ImguiCreation& imgui_creation) noexcept
     imgui_creation.descriptor_pool_ = reinterpret_cast<handle_ty>(VulkanDriver::instance().get_imgui_descriptor_pool());
     imgui_creation.swapchain_render_pass_ = reinterpret_cast<handle_ty>(VulkanDriver::instance().get_framebuffer_render_pass());
     imgui_creation.surface_ = reinterpret_cast<handle_ty>(m_swapChain.get_surface());
-}
-
-handle_ty VulkanDevice::get_imgui_commandbuffer() const noexcept
-{
-    return reinterpret_cast<handle_ty>(VulkanDriver::instance().get_imgui_commandbuffer());
-}
-
-void VulkanDevice::get_imgui_frameinfo(ImguiFrameInfo& imgui_frame) const noexcept
-{
-    VulkanDriver& driver = VulkanDriver::instance();
-    imgui_frame.command_buffer_ = reinterpret_cast<handle_ty>(driver.get_imgui_commandbuffer());
-    imgui_frame.framebuffer_ = reinterpret_cast<handle_ty>(driver.get_frame_buffer(driver.current_buffer()));
-    imgui_frame.render_pass_ = reinterpret_cast<handle_ty>(driver.get_framebuffer_render_pass());
-    imgui_frame.framebuffer_size_ = m_swapChain.resolution();
-    imgui_frame.clear_color_ = make_float4(0.1f, 0.1f, 0.1f, 1.0f);
-    imgui_frame.clear_depth_ = 0;
-    imgui_frame.clear_stencil_ = 0;
 }
 
 CommandBuffer VulkanDevice::get_command_buffer() noexcept

@@ -65,6 +65,7 @@ public:
     VulkanBuffer *create_vulkan_buffer(VkBufferUsageFlags usage_flags, VkMemoryPropertyFlags memory_property_flags, VkDeviceSize size, const void *data = nullptr);
     void begin_frame() noexcept override;
     void end_frame() noexcept override;
+    void wait_idle() noexcept override;
     RHIRenderPass *create_render_pass(const RenderPassCreation &render_pass_creation) noexcept override;
     void destroy_render_pass(RHIRenderPass *render_pass) noexcept override;
     std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) noexcept override;    
@@ -97,8 +98,6 @@ public:
 
     VkInstance get_instance() const { return m_instance.instance(); }
     void get_imgui_creation(ImguiCreation& imgui_creation) noexcept override;
-    handle_ty get_imgui_commandbuffer() const noexcept override;
-    void get_imgui_frameinfo(ImguiFrameInfo& imgui_frame) const noexcept override;
     CommandBuffer get_command_buffer() noexcept override;
     CommandBuffer get_command_buffer(QueueType queue_type) noexcept;
     void release_command_buffer(const CommandBuffer& cmd_buffer) noexcept override;

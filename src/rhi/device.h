@@ -59,7 +59,6 @@ struct RHIPipeline;
 class Image;
 class TextureSampler;
 struct ImguiCreation;
-struct ImguiFrameInfo;
 
 class OC_RHI_API Device : public concepts::Noncopyable {
 public:
@@ -95,6 +94,7 @@ public:
         virtual IndexBuffer *create_index_buffer(const void *initial_data, uint32_t indices_count, bool bit16) noexcept = 0;
         virtual void begin_frame() noexcept = 0;
         virtual void end_frame() noexcept = 0;
+        virtual void wait_idle() noexcept {}
         virtual RHIRenderPass *create_render_pass(const RenderPassCreation &render_pass_creation) noexcept = 0;
         virtual void destroy_render_pass(RHIRenderPass *render_pass) noexcept = 0;
         virtual std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) noexcept = 0;
@@ -112,9 +112,6 @@ public:
         virtual uint64_t export_handle(handle_ty handle_) { return 0; }
 #endif
         virtual void get_imgui_creation(ImguiCreation& imgui_creation) noexcept { }
-        virtual handle_ty get_imgui_commandbuffer() const noexcept { return 0; }
-        virtual void get_imgui_frameinfo(ImguiFrameInfo& imgui_frame) const noexcept {
-        }
         virtual CommandBuffer get_command_buffer() = 0;
         virtual void release_command_buffer(const CommandBuffer& cmd_buffer) = 0;
         virtual void execute_command_buffers(CommandBuffer* cmd_buffer, uint32_t count) noexcept {}
@@ -218,6 +215,10 @@ public:
         impl_->end_frame();
     }
 
+    void wait_idle() noexcept {
+        impl_->wait_idle();
+    }
+
     [[nodiscard]] RHIRenderPass *create_render_pass(const RenderPassCreation &render_pass_creation) {
         return impl_->create_render_pass(render_pass_creation);
     }
@@ -244,14 +245,6 @@ public:
 
     void get_imgui_creation(ImguiCreation& imgui_creation) {
         return impl_->get_imgui_creation(imgui_creation);
-    }
-
-    handle_ty get_imgui_commandbuffer() noexcept {
-        return impl_->get_imgui_commandbuffer();
-    }
-
-    void get_imgui_frameinfo(ImguiFrameInfo& imgui_frame) noexcept {
-        impl_->get_imgui_frameinfo(imgui_frame);
     }
 
     CommandBuffer get_command_buffer() noexcept {

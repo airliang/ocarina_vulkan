@@ -5,43 +5,40 @@
 #pragma once
 
 #include <utility>
+#include "core/header.h"
 #include "core/stl.h"
 #include "math/basic_types.h"
 #include "core/util.h"
 #include "core/image.h"
-#include "objbase.h"
-#include <commctrl.h>
-#include <commdlg.h>
-#include <comutil.h>
-#include <psapi.h>
-#include <shellscalingapi.h>
-#include <ShlObj_core.h>
-#include <winioctl.h>
 
 namespace ocarina {
 
 struct FileDialogFilter {
     explicit FileDialogFilter(std::string ext_, std::string desc_ = {})
         : desc(std::move(desc_)), ext(std::move(ext_)) {}
-    std::string desc;// The description ("Portable Network Graphics")
-    std::string ext; // The extension, without the `.` ("png")
+    std::string desc;
+    std::string ext;
 };
 
 using FileDialogFilterVec = std::vector<FileDialogFilter>;
+
+#if defined(_WIN32)
+bool open_file_dialog_win32(std::filesystem::path &path, const FileDialogFilterVec &filters) noexcept;
+#endif
 
 enum WindowFlag {
     None = 0,
     MenuBar = 1 << 10
 };
 
-class Window;
+class SDLWindow;
 
-class OC_GUI_API Widgets {
+class OC_FRAMEWORK_API Widgets {
 private:
-    Window *window_{nullptr};
+    SDLWindow *window_{nullptr};
 
 public:
-    explicit Widgets(Window *window = nullptr) : window_(window) {}
+    explicit Widgets(SDLWindow *window = nullptr) : window_(window) {}
 
     virtual void push_item_width(int width) noexcept = 0;
     virtual void pop_item_width() noexcept = 0;

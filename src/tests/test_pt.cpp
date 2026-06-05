@@ -179,7 +179,7 @@ int main(int argc, char *argv[]) {
     };
     auto shader = device.compile(raytracing);
 
-    auto window = context.create_window("display", res);
+    // auto window = create_sdl_window("display", res);
 //    window->run([&](double t) {
 
 

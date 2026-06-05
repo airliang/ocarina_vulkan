@@ -11,7 +11,9 @@
 #include "rhi/vertex_buffer.h"
 #include "rhi/index_buffer.h"
 #include "rhi/resources/buffer.h"
-#include "GUI/window.h"
+#include "framework/window_factory.h"
+#include "framework/sdl_window.h"
+#include "framework/imgui_renderer.h"
 #include "framework/renderer.h"
 #include "framework/primitive.h"
 #include "rhi/descriptor_set.h"
@@ -70,7 +72,7 @@ int main(int argc, char *argv[]) {
     fs::path path(argv[0]);
     RHIContext& file_manager = RHIContext::instance();
 
-    auto window = file_manager.create_window("display", make_uint2(800, 600), WindowLibrary::SDL3);
+    auto window = create_sdl_window("display", make_uint2(800, 600));
 
     InstanceCreation instanceCreation = {};
     instanceCreation.windowHandle = window->get_window_handle();
@@ -151,21 +153,20 @@ int main(int argc, char *argv[]) {
 
     auto image_io = Image::pure_color(make_float4(1, 0, 0, 1), ColorSpace::LINEAR, make_uint2(500));
     window->set_background(image_io.pixel_ptr<float4>(), make_uint2(800, 600));
-    ImguiCreation imgui_creation{};
-    device.get_imgui_creation(imgui_creation);
-    window->init_imgui(&imgui_creation);
+    ImguiRenderer imgui_renderer(*window);
+    imgui_renderer.init(device);
     string window_name = "Vulkan Triangle Test";
-    window->set_imgui_frame_callback([&]() {
+    imgui_renderer.set_frame_callback([&]() {
         window->widgets()->push_window(window_name);
         window->widgets()->text("FPS: %.2f", 1.0f / renderer.dt());
         window->widgets()->pop_window();
     });
 
     renderer.set_render_gui_impl_callback([&](const CommandBuffer& cmd_buffer) {
-        window->render_gui(cmd_buffer);
+        imgui_renderer.render(cmd_buffer);
     });
     renderer.set_render_task_end_callback([&]() {
-        window->cleanup_imgui();
+        imgui_renderer.cleanup();
     });
 
     renderer.run();

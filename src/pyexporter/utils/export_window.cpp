@@ -3,36 +3,34 @@
 //
 
 #include "pyexporter/ocapi.h"
-#include "GUI/window.h"
-#include "rhi/context.h"
+#include "framework/sdl_window.h"
+#include "framework/window_factory.h"
 
 namespace py = pybind11;
 using namespace ocarina;
 
 void export_window(PythonExporter &exporter) {
-    dependency_window();
-    auto mt = py::class_<Window>(exporter.module, "Window");
+    auto mt = py::class_<SDLWindow>(exporter.module, "Window");
     mt.def_static("create", [](uint2 res) {
-        static auto ret = FileManager::instance().create_window("Python", res, "imGui");
-        ret->init_widgets();
+        static auto ret = create_sdl_window("Python", res);
         return ret.get();
     }, ret_policy::reference);
 
-    mt.def("set_clear_color", &Window::set_clear_color);
-    mt.def("set_should_close", &Window::set_should_close);
-    mt.def("set_background", [](Window &self, const py::array_t<float> &buffer) {
+    mt.def("set_clear_color", &SDLWindow::set_clear_color);
+    mt.def("set_should_close", &SDLWindow::set_should_close);
+    mt.def("set_background", [](SDLWindow &self, const py::array_t<float> &buffer) {
         self.set_background(reinterpret_cast<float4 *>(buffer.request().ptr));
     });
 
-    mt.def("set_background", [](Window &self, const py::array_t<uchar> &buffer) {
+    mt.def("set_background", [](SDLWindow &self, const py::array_t<uchar> &buffer) {
         self.set_background(reinterpret_cast<uchar4 *>(buffer.request().ptr));
     });
 
-#define OC_EXPORT_WINDOW_CB(func_name)                              \
-    mt.def(#func_name, [](Window &self, const py::function &func) { \
-        self.func_name([=]<typename... Args>(Args &&...args) {      \
-            func(OC_FORWARD(args)...);                              \
-        });                                                         \
+#define OC_EXPORT_WINDOW_CB(func_name)                                 \
+    mt.def(#func_name, [](SDLWindow &self, const py::function &func) {   \
+        self.func_name([=]<typename... Args>(Args &&...args) {         \
+            func(OC_FORWARD(args)...);                                 \
+        });                                                            \
     });
 
     OC_EXPORT_WINDOW_CB(set_mouse_callback)

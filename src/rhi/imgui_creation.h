@@ -26,14 +26,4 @@ struct OC_RHI_API ImguiCreation {
     void* allocator_callback_;
 };
 
-struct OC_RHI_API ImguiFrameInfo {
-    handle_ty command_buffer_;
-    handle_ty render_pass_;
-    handle_ty framebuffer_;
-    uint2 framebuffer_size_;
-    float4 clear_color_;
-    float clear_depth_;
-    uint32_t clear_stencil_;
-};
-
 }// namespace ocarina

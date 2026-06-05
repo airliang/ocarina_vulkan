@@ -2,43 +2,30 @@
 // Created by Zero on 2024/3/16.
 //
 
-#include "widgets.h"
-#include "imgui_internal.h"
+#include "imgui_widgets.h"
+#include "sdl_window.h"
+#include "core/logging.h"
+#include "ext/imgui/imgui.h"
 
 namespace ocarina {
-template<typename T>
-ImVec2 to_ImVec2(const T &t) noexcept {
-    return ImVec2(t.x, t.y);
+
+namespace {
+
+ImVec2 to_ImVec2(uint2 size) noexcept {
+    return ImVec2(static_cast<float>(size.x), static_cast<float>(size.y));
+}
+
+ImVec2 to_ImVec2(float2 v) noexcept {
+    return ImVec2(v.x, v.y);
 }
 
 float2 from_ImVec2(ImVec2 v) noexcept {
     return make_float2(v.x, v.y);
 }
 
-uint64_t ImGuiWidgets::calculate_key(const ocarina::ImageView &image) noexcept {
-    return hash64(image.resolution(), image.pixel_storage());
-}
+}// namespace
 
-GLTexture *ImGuiWidgets::obtain_texture(const ocarina::ImageView &image) noexcept {
-    uint64_t key = calculate_key(image);
-    if (!texture_map_.contains(key)) {
-        texture_map_.insert(make_pair(key, TextureVec{}));
-    }
-    TextureVec &texture_vec = texture_map_.at(key);
-    uint unbinding_index = texture_vec.size();
-    for (int i = 0; i < texture_vec.size(); ++i) {
-        GLTexture *texture = texture_vec[i].get();
-        if (!texture->binding()) {
-            unbinding_index = i;
-        }
-    }
-    if (unbinding_index == texture_vec.size()) {
-        texture_vec.emplace_back(make_unique<GLTexture>());
-    }
-    return texture_vec[unbinding_index].get();
-}
-
-ImGuiWidgets::ImGuiWidgets(Window *window)
+ImGuiWidgets::ImGuiWidgets(SDLWindow *window)
     : Widgets(window) {
 }
 
@@ -75,13 +62,12 @@ bool ImGuiWidgets::radio_button(const std::string &label, bool active) noexcept 
 void ImGuiWidgets::image(ocarina::uint tex_handle, ocarina::uint2 size,
                          ocarina::float2 uv0, ocarina::float2 uv1) noexcept {
     auto tex_id = static_cast<ImTextureID>(static_cast<handle_ty>(tex_handle));
-    ImGui::Image(tex_id, to_ImVec2(size),
-                 to_ImVec2(uv0), to_ImVec2(uv1));
+    ImGui::Image(tex_id, to_ImVec2(size), to_ImVec2(uv0), to_ImVec2(uv1));
 }
 
 uint2 ImGuiWidgets::node_size() noexcept {
     ImVec2 size = ImGui::GetContentRegionAvail();
-    return make_uint2(size.x, size.y);
+    return make_uint2(static_cast<uint>(size.x), static_cast<uint>(size.y));
 }
 
 void ImGuiWidgets::image(const Image &obj) noexcept {
@@ -89,14 +75,8 @@ void ImGuiWidgets::image(const Image &obj) noexcept {
 }
 
 void ImGuiWidgets::image(const ocarina::ImageView &image_view) noexcept {
-    GLTexture *gl_texture = obtain_texture(image_view);
-    if (image_view.pixel_storage() == PixelStorage::BYTE4) {
-        gl_texture->load(image_view.pixel_ptr<uchar4>(), image_view.resolution());
-    } else if (image_view.pixel_storage() == PixelStorage::FLOAT4) {
-        gl_texture->load(image_view.pixel_ptr<float4>(), image_view.resolution());
-    }
-    uint2 res = image_view.resolution();
-    adaptive_image(gl_texture->handle(), res);
+    (void)image_view;
+    OC_WARNING("ImGuiWidgets::image(ImageView) requires a Vulkan texture id; use image(tex_handle, size) instead.");
 }
 
 bool ImGuiWidgets::push_window(const string &label) noexcept {
@@ -238,7 +218,7 @@ bool ImGuiWidgets::color_edit(const string &label, float4 *val) noexcept {
 }
 
 bool ImGuiWidgets::button(const string &label, uint2 size) noexcept {
-    return ImGui::Button(label.c_str(), ImVec2(size.x, size.y));
+    return ImGui::Button(label.c_str(), ImVec2(static_cast<float>(size.x), static_cast<float>(size.y)));
 }
 
 bool ImGuiWidgets::button(const string &label) noexcept {
@@ -274,11 +254,11 @@ bool ImGuiWidgets::input_int4(const string &label, ocarina::int4 *val) noexcept 
 }
 
 bool ImGuiWidgets::input_uint(const string &label, uint *val) noexcept {
-    return ImGui::InputInt(label.c_str(), (int*)val);
+    return ImGui::InputInt(label.c_str(), reinterpret_cast<int *>(val));
 }
 
 bool ImGuiWidgets::input_uint(const string &label, uint *val, uint step, uint step_fast) noexcept {
-    return ImGui::InputInt(label.c_str(), (int*)val, step, step_fast);
+    return ImGui::InputInt(label.c_str(), reinterpret_cast<int *>(val), static_cast<int>(step), static_cast<int>(step_fast));
 }
 
 bool ImGuiWidgets::input_uint2(const string &label, ocarina::uint2 *val) noexcept {
@@ -286,11 +266,11 @@ bool ImGuiWidgets::input_uint2(const string &label, ocarina::uint2 *val) noexcep
 }
 
 bool ImGuiWidgets::input_uint3(const string &label, ocarina::uint3 *val) noexcept {
-    return ImGui::InputInt3(label.c_str(), reinterpret_cast<int*>(val));
+    return ImGui::InputInt3(label.c_str(), reinterpret_cast<int *>(val));
 }
 
 bool ImGuiWidgets::input_uint4(const string &label, ocarina::uint4 *val) noexcept {
-    return ImGui::InputInt4(label.c_str(), reinterpret_cast<int*>(val));
+    return ImGui::InputInt4(label.c_str(), reinterpret_cast<int *>(val));
 }
 
 bool ImGuiWidgets::input_float(const string &label, float *val) noexcept {
@@ -330,19 +310,19 @@ bool ImGuiWidgets::drag_int4(const string &label, ocarina::int4 *val, float spee
 }
 
 bool ImGuiWidgets::drag_uint(const string &label, ocarina::uint *val, float speed, ocarina::uint min, ocarina::uint max) noexcept {
-    return ImGui::DragInt(label.c_str(), (int*)val, speed, min, max);
+    return ImGui::DragInt(label.c_str(), reinterpret_cast<int *>(val), speed, static_cast<int>(min), static_cast<int>(max));
 }
 
 bool ImGuiWidgets::drag_uint2(const string &label, ocarina::uint2 *val, float speed, ocarina::uint min, ocarina::uint max) noexcept {
-    return ImGui::DragInt2(label.c_str(), reinterpret_cast<int *>(val), speed, min, max);
+    return ImGui::DragInt2(label.c_str(), reinterpret_cast<int *>(val), speed, static_cast<int>(min), static_cast<int>(max));
 }
 
 bool ImGuiWidgets::drag_uint3(const string &label, ocarina::uint3 *val, float speed, ocarina::uint min, ocarina::uint max) noexcept {
-    return ImGui::DragInt3(label.c_str(), reinterpret_cast<int *>(val), speed, min, max);
+    return ImGui::DragInt3(label.c_str(), reinterpret_cast<int *>(val), speed, static_cast<int>(min), static_cast<int>(max));
 }
 
 bool ImGuiWidgets::drag_uint4(const string &label, ocarina::uint4 *val, float speed, ocarina::uint min, ocarina::uint max) noexcept {
-    return ImGui::DragInt4(label.c_str(), reinterpret_cast<int *>(val), speed, min, max);
+    return ImGui::DragInt4(label.c_str(), reinterpret_cast<int *>(val), speed, static_cast<int>(min), static_cast<int>(max));
 }
 
 bool ImGuiWidgets::drag_float(const string &label, float *val, float speed, float min, float max, const char *fmt) noexcept {

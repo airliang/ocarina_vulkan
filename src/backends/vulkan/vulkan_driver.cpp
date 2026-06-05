@@ -325,11 +325,6 @@ void VulkanDriver::release_command_pool()
             command_pools_[i] = VK_NULL_HANDLE;
         }
     }
-
-    if (imgui_command_pool_ != VK_NULL_HANDLE) {
-        vkDestroyCommandPool(device(), imgui_command_pool_, nullptr);
-        imgui_command_pool_ = VK_NULL_HANDLE;
-    }
 }
 
 void VulkanDriver::create_command_buffers()
@@ -358,11 +353,6 @@ void VulkanDriver::release_command_buffers() {
         }
     }
     command_buffer_pools_.clear();
-
-    if (imgui_cmd_buffers_.size() > 0) {
-        vkFreeCommandBuffers(device(), imgui_command_pool_, static_cast<uint32_t>(imgui_cmd_buffers_.size()), imgui_cmd_buffers_.data());
-        imgui_cmd_buffers_.clear();
-    }
 }
 
 void VulkanDriver::initialize()
@@ -379,7 +369,6 @@ void VulkanDriver::initialize()
     create_command_buffers();
 
     create_internal_textures();
-    create_imgui_cmd_buffers();
 }
 
 void VulkanDriver::create_frame_sync()
@@ -625,29 +614,6 @@ VkDescriptorPool VulkanDriver::get_imgui_descriptor_pool()
     VK_CHECK_RESULT(vkCreateDescriptorPool(device(), &pool_info, nullptr, &imgui_descriptorpool_));
 
     return imgui_descriptorpool_;
-}
-
-void VulkanDriver::create_imgui_cmd_buffers()
-{
-    VulkanSwapchain* swapchain = vulkan_device_->get_swapchain();
-    uint32_t graphic_queue_index = vulkan_device_->get_queue_family_index(QueueType::Graphics);
-
-    VkCommandPoolCreateInfo cmd_pool_info = {};
-    cmd_pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    cmd_pool_info.queueFamilyIndex = graphic_queue_index;
-    cmd_pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    VK_CHECK_RESULT(vkCreateCommandPool(device(), &cmd_pool_info, nullptr, &imgui_command_pool_));
-
-    imgui_cmd_buffers_.resize(swapchain->backbuffer_size());
-
-    VkCommandBufferAllocateInfo const allocateInfo{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = imgui_command_pool_,
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = (uint32_t)imgui_cmd_buffers_.size(),
-    };
-
-    VK_CHECK_RESULT(vkAllocateCommandBuffers(device(), &allocateInfo, imgui_cmd_buffers_.data()));
 }
 
 VulkanCommandBuffer* VulkanDriver::get_command_buffer(QueueType queue_type) {
