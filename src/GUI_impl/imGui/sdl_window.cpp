@@ -88,7 +88,6 @@ void SDLWindow::set_background(const Buffer<ocarina::float4> &buffer, ocarina::u
 }
 
 void SDLWindow::unbind_buffer(ocarina::uint &handle) const noexcept {
-    CHECK_GL(glBindBuffer(GL_ARRAY_BUFFER, 0));
 }
 
 void SDLWindow::set_should_close() noexcept {

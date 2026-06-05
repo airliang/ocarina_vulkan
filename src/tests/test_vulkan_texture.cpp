@@ -134,16 +134,18 @@ int main(int argc, char *argv[]) {
     string window_name = "Vulkan Texture Test";
     window->set_imgui_frame_callback([&]() {
         window->widgets()->push_window(window_name);
-        window->widgets()->text("FPS: %.2f", 1.0f / window->dt());
+        window->widgets()->text("FPS: %.2f", 1.0f / renderer.dt());
         window->widgets()->pop_window();
     });
 
     renderer.set_render_gui_impl_callback([&](const CommandBuffer& cmd_buffer) {
         window->render_gui(cmd_buffer);
     });
-
-    window->run([&](double d) {
-        renderer.render_frame(d);
+    renderer.set_render_task_end_callback([&]() {
+        window->cleanup_imgui();
     });
-    window->cleanup_imgui();
+
+    renderer.run();
+    window->run([](double) {});
+    renderer.shutdown();
 }
