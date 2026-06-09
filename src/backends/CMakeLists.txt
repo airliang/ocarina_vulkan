@@ -5,7 +5,7 @@ function(ocarina_add_backend name)
             ocarina-ast
             ocarina-dsl
             ocarina-generator)
-    add_dependencies(ocarina-backend ocarina-backend-${name} copy_cuda_headers)
+    add_dependencies(ocarina-backend ocarina-backend-${name})
     set_target_properties(ocarina-backend-${name} PROPERTIES
             LIBRARY_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
             RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}

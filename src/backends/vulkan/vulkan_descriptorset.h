@@ -49,8 +49,16 @@ class VulkanDescriptorSampler : public VulkanDescriptor {
 class VulkanDescriptorPushConstants : public VulkanDescriptor {
 };
 
+enum class DescriptorSetUsage {
+    PerInstance,
+    GlobalSingleton,
+    BindlessArray,
+};
+
 class VulkanDescriptorSetLayout : public DescriptorSetLayout {
     static constexpr uint8_t MAX_BINDINGS = 16;
+    static constexpr uint32_t GLOBAL_SET = 0;
+    static constexpr uint32_t kMaxPerInstanceDescriptorSets = 256;
 public:
     VulkanDescriptorSetLayout(VulkanDevice* device, uint8_t descriptor_set_index);
     ~VulkanDescriptorSetLayout() override;
@@ -64,6 +72,10 @@ public:
 
 
     bool build_layout();
+
+    void finalize_bindings();
+
+    [[nodiscard]] DescriptorSetUsage usage() const { return usage_; }
 
     DescriptorCount get_descriptor_count() const noexcept {
         return descriptor_count_;
@@ -145,6 +157,7 @@ private:
 
     uint64_t hashkey_ = InvalidUI64;
     bool has_bindless_ = false;
+    DescriptorSetUsage usage_ = DescriptorSetUsage::PerInstance;
     std::vector<VulkanDescriptorSet*> allocated_descriptor_sets_;
 };
 

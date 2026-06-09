@@ -63,6 +63,14 @@ handle_ty VulkanDevice::create_texture(Image *image, const TextureViewCreation &
     return reinterpret_cast<handle_ty>(texture);
 }
 
+handle_ty VulkanDevice::create_texture(uint32_t width, uint32_t height, uint32_t depth, PixelStorage pixel_storage,
+                                       const TextureViewCreation &texture_view, const TextureSampler& sampler,
+                                       uint4 default_color, const void *data) noexcept {
+    auto texture = ocarina::new_with_allocator<VulkanTexture>(
+        this, width, height, depth, pixel_storage, texture_view, sampler, default_color, data);
+    return reinterpret_cast<handle_ty>(texture);
+}
+
 handle_ty VulkanDevice::create_shader(const Function &function) noexcept {
     return 0;
 }

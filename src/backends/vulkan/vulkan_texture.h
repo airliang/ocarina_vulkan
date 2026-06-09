@@ -31,11 +31,14 @@ private:
     TextureSampler texture_sampler_;
 public:
     VulkanTexture(VulkanDevice *device, Image *image, const TextureViewCreation& texture_view, const TextureSampler& sampler);
-    VulkanTexture(VulkanDevice *device, uint32_t width, uint32_t height, uint32_t depth, PixelStorage format, const TextureViewCreation &texture_view, 
-        const TextureSampler& sampler, uint4 default_color);
+    VulkanTexture(VulkanDevice *device, uint32_t width, uint32_t height, uint32_t depth, PixelStorage format, const TextureViewCreation &texture_view,
+        const TextureSampler& sampler, uint4 default_color, const void* data);
     ~VulkanTexture() override;
     void init(Image *image, const TextureViewCreation &texture_view);
+    void init_from_pixels(uint32_t width, uint32_t height, uint32_t depth, PixelStorage format, const TextureViewCreation &texture_view,
+        const TextureSampler& sampler, uint4 default_color, const void* data);
     void load_cpu_data(Image *image);
+    void load_cpu_data(const void* data, size_t size_in_bytes);
     void generate_mipmaps();
     void create_image_view(const TextureViewCreation &texture_view);
     void create_sampler(const TextureSampler& sampler_creation);

@@ -45,6 +45,9 @@ public:
                                            uint level_num,
                                            const string &desc) noexcept override;
     [[nodiscard]] handle_ty create_texture(Image *image, const TextureViewCreation &texture_view, const TextureSampler& sampler) noexcept override;
+    [[nodiscard]] handle_ty create_texture(uint32_t width, uint32_t height, uint32_t depth, PixelStorage pixel_storage,
+                                           const TextureViewCreation &texture_view, const TextureSampler& sampler,
+                                           uint4 default_color, const void *data) noexcept override;
     void destroy_texture(handle_ty handle) noexcept override;
     [[nodiscard]] handle_ty create_shader(const Function &function) noexcept override;
     [[nodiscard]] handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string>& options) noexcept override;

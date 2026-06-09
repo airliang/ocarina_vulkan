@@ -171,6 +171,23 @@ bool VulkanDescriptorSetLayout::has_uniform_buffer_binding() const {
     return false;
 }
 
+void VulkanDescriptorSetLayout::finalize_bindings() {
+    if (has_bindless_) {
+        usage_ = DescriptorSetUsage::BindlessArray;
+        is_global_ubo_ = false;
+        return;
+    }
+
+    if (descriptor_set_index_ == GLOBAL_SET && has_uniform_buffer_binding()) {
+        usage_ = DescriptorSetUsage::GlobalSingleton;
+        is_global_ubo_ = true;
+        return;
+    }
+
+    usage_ = DescriptorSetUsage::PerInstance;
+    is_global_ubo_ = false;
+}
+
 bool VulkanDescriptorSetLayout::build_layout()
 {
     if (layout_built_)
@@ -183,10 +200,8 @@ bool VulkanDescriptorSetLayout::build_layout()
 
     std::vector<VkDescriptorSetLayoutBinding> layout_bindings;
     std::vector<VkDescriptorBindingFlags> binding_flags;
-    std::vector < VkDescriptorPoolSize> pool_sizes;
     uint32_t binding_flag = 0;
     layout_bindings.reserve(bindings_.size());
-    pool_sizes.reserve(bindings_.size());
     for (auto& it : bindings_)
     {
         VkDescriptorSetLayoutBinding descriptor_binding{};
@@ -195,10 +210,6 @@ bool VulkanDescriptorSetLayout::build_layout()
         descriptor_binding.stageFlags = it.shader_stage;
         descriptor_binding.descriptorCount = it.count; 
         layout_bindings.push_back(descriptor_binding);
-        pool_sizes.push_back({
-            .type = it.type,
-            .descriptorCount = it.count
-            });
 
         if (it.is_bindless) {
             binding_flags.push_back(VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT
@@ -211,6 +222,33 @@ bool VulkanDescriptorSetLayout::build_layout()
         {
             binding_flags.push_back(0);
         }
+    }
+
+    uint32_t max_sets = 1;
+    switch (usage_) {
+    case DescriptorSetUsage::GlobalSingleton:
+    case DescriptorSetUsage::BindlessArray:
+        max_sets = 1;
+        break;
+    case DescriptorSetUsage::PerInstance:
+        max_sets = kMaxPerInstanceDescriptorSets;
+        break;
+    }
+
+    std::unordered_map<VkDescriptorType, uint32_t> type_totals;
+    for (const VulkanShaderVariableBinding& binding : bindings_) {
+        const uint32_t per_set_count = binding.is_bindless ? MAX_BINDLESS_TEXTURE_ARRAY_SIZE : binding.count;
+        const uint32_t set_count = usage_ == DescriptorSetUsage::PerInstance ? max_sets : 1;
+        type_totals[binding.type] += per_set_count * set_count;
+    }
+
+    std::vector<VkDescriptorPoolSize> pool_sizes;
+    pool_sizes.reserve(type_totals.size());
+    for (const auto& entry : type_totals) {
+        pool_sizes.push_back({
+            .type = entry.first,
+            .descriptorCount = entry.second,
+        });
     }
 
     
@@ -234,9 +272,9 @@ bool VulkanDescriptorSetLayout::build_layout()
 
     VkDescriptorPoolCreateInfo pool_create_info{};
     pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_create_info.poolSizeCount = pool_sizes.size();
-    pool_create_info.pPoolSizes = pool_sizes.size() == 0 ? nullptr : pool_sizes.data();
-    pool_create_info.maxSets = std::max((uint32_t)pool_sizes.size(), (uint32_t)1);
+    pool_create_info.poolSizeCount = static_cast<uint32_t>(pool_sizes.size());
+    pool_create_info.pPoolSizes = pool_sizes.empty() ? nullptr : pool_sizes.data();
+    pool_create_info.maxSets = std::max(max_sets, 1u);
     pool_create_info.flags = free_descriptor_set_ ? VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT : 0;
 
     if (info.flags & VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT) {
@@ -265,7 +303,7 @@ DescriptorSet *VulkanDescriptorSetLayout::allocate_descriptor_set() {
 
     if (has_bindless_)
     {
-        uint32_t variableCounts[] = { 1024 };
+        uint32_t variableCounts[] = { MAX_BINDLESS_TEXTURE_ARRAY_SIZE };
 
         VkDescriptorSetVariableDescriptorCountAllocateInfo countInfo{};
         countInfo.sType =
@@ -428,6 +466,7 @@ std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> VulkanDescripto
         }
         if (layout != nullptr)
         {
+            layout->finalize_bindings();
             layout->build_layout();
         }
     }

@@ -580,7 +580,8 @@ void VulkanDriver::create_internal_textures() {
         texture_view.mip_level_count = 1;
         texture_view.usage = TextureUsageFlags::ShaderReadOnly;
         TextureSampler sampler = {TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT};
-        internal_textures_[INTERNAL_TEXTURE_WHITE] = ocarina::new_with_allocator<VulkanTexture>(vulkan_device_, 4, 4, 1, PixelStorage::BYTE4, texture_view, sampler, uint4(255,255,255,255));
+        internal_textures_[INTERNAL_TEXTURE_WHITE] = ocarina::new_with_allocator<VulkanTexture>(
+            vulkan_device_, 4, 4, 1, PixelStorage::BYTE4, texture_view, sampler, uint4(255, 255, 255, 255), nullptr);
     }
 }
 

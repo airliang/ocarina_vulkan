@@ -62,6 +62,12 @@ public:
                       device->create_texture(image_resource, texture_view, sampler)),
           channel_num_(ocarina::channel_num(texture_view.format)) {}
 
+    explicit Texture(Device::Impl *device, uint32_t width, uint32_t height, uint32_t depth, PixelStorage pixel_storage,
+                     const TextureViewCreation& texture_view, const TextureSampler& sampler, uint4 default_color, const void* data)
+        : RHIResource(device, Tag::TEXTURE,
+                      device->create_texture(width, height, depth, pixel_storage, texture_view, sampler, default_color, data)),
+          channel_num_(ocarina::channel_num(pixel_storage)) {}
+
     OC_MAKE_MEMBER_GETTER(channel_num, )
 
     [[nodiscard]] uint pixel_num() const noexcept {

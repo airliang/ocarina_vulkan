@@ -59,6 +59,8 @@ bool IsFinite(float x)
 { 
 	float4x4 projectionMatrix;
 	float4x4 viewMatrix;
+	float4 cameraPos;
+	float4 lightPos;
 };
 
 //[[vk::binding(1, GLOBAL_SET)]]Texture2D shadow_map : register(t1);

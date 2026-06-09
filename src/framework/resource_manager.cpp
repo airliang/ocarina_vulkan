@@ -114,15 +114,37 @@ void ResourceManager::add_mesh(const std::string& name, Mesh* mesh) {
     meshes_.emplace(hash64(name), mesh);
 }
 
+Texture* ResourceManager::get_texture(const std::string& name, const TextureViewCreation& texture_view, const TextureSampler& sampler) const noexcept {
+    uint64_t key = make_texture_key(name, texture_view, sampler);
+    auto it = textures_.find(key);
+    return it != textures_.end() ? it->second : nullptr;
+}
+
 Texture* ResourceManager::create_texture(Device* device, const Image& image, const TextureViewCreation& texture_view, const TextureSampler& sampler) {
-    Texture* texture = ocarina::new_with_allocator<Texture>(device->impl(), const_cast<Image*>(&image), texture_view, sampler);
     std::string image_name = image.name();
     uint64_t key = make_texture_key(image_name, texture_view, sampler);
     auto it = textures_.find(key);
     if (it != textures_.end()) {
-        OC_ERROR("Texture with the same key already exists. Cannot create a new texture with the same key.");
         return it->second;
     }
+
+    Texture* texture = ocarina::new_with_allocator<Texture>(device->impl(), const_cast<Image*>(&image), texture_view, sampler);
+    std::lock_guard<std::mutex> l{ mutex_ };
+    textures_.emplace(key, texture);
+    return texture;
+}
+
+Texture* ResourceManager::create_texture(Device* device, const std::string& name, uint32_t width, uint32_t height,
+                                         PixelStorage pixel_storage, const TextureViewCreation& texture_view,
+                                         const TextureSampler& sampler, const void* data) {
+    uint64_t key = make_texture_key(name, texture_view, sampler);
+    auto it = textures_.find(key);
+    if (it != textures_.end()) {
+        return it->second;
+    }
+
+    Texture* texture = ocarina::new_with_allocator<Texture>(
+        device->impl(), width, height, 1, pixel_storage, texture_view, sampler, uint4(0, 0, 0, 255), data);
     std::lock_guard<std::mutex> l{ mutex_ };
     textures_.emplace(key, texture);
     return texture;

@@ -16,7 +16,7 @@
 #include <limits>
 #include "math/base.h"
 #include "ext/tinyexr/tinyexr.h"
-#include "core/logging.h"
+#include "core/util.h"
 
 namespace ocarina {
 
@@ -77,6 +77,7 @@ Image Image::create_empty(ocarina::PixelStorage pixel_format, ocarina::uint2 res
 }
 
 Image Image::load(const fs::path &path, ColorSpace color_space, float3 scale) {
+    PROFILE_SCOPE();
     auto extension = to_lower(path.extension().string());
     OC_INFO("load picture ", path.string());
     Image ret;

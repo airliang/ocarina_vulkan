@@ -1,11 +1,6 @@
 
-add_library(ocarina-ext SHARED empty.cpp)
-set_target_properties(ocarina-ext PROPERTIES
-        PUBLIC_HEADER "${HEADER_FILES}"
-        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
-        WINDOWS_EXPORT_ALL_SYMBOLS ON
-        FOLDER "ocarina")
+# Aggregate third-party dependencies for core/ast; not a standalone library.
+add_library(ocarina-ext INTERFACE)
 
 add_library(xxhash INTERFACE)
 target_include_directories(xxhash INTERFACE xxHash)
@@ -26,7 +21,7 @@ set(FMT_OS OFF CACHE BOOL "" FORCE)
 
 add_subdirectory(EASTL)
 target_include_directories(EASTL PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/EASTL/include)
-target_link_libraries(ocarina-ext PUBLIC EASTL)
+target_link_libraries(ocarina-ext INTERFACE EASTL)
 
 
 add_subdirectory(tinyexr)
@@ -37,7 +32,7 @@ endif()
 set_target_properties(spdlog PROPERTIES
         UNITY_BUILD FALSE)
 #target_link_libraries(spdlog PUBLIC fmt::fmt-header-only)
-target_link_libraries(ocarina-ext PUBLIC spdlog)
+target_link_libraries(ocarina-ext INTERFACE spdlog)
 target_include_directories(ocarina-ext INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/spdlog/include/spdlog)
 
 add_subdirectory(glfw)
@@ -81,12 +76,10 @@ set_property(TARGET spirv-cross-cpp PROPERTY FOLDER "ocarina/ext/spirv")
 set_property(TARGET spirv-cross-reflect PROPERTY FOLDER "ocarina/ext/spirv")
 set_property(TARGET spirv-cross-util PROPERTY FOLDER "ocarina/ext/spirv")
 
-target_link_libraries(ocarina-ext
-        PUBLIC
+target_link_libraries(ocarina-ext INTERFACE
         ocarina-gui-ext
         ocarina-ext-stb
         ${PYTHON_LIBRARIES}
         xxhash
-        spdlog
         ocarina-ext-tinyexr
         SDL3::SDL3)

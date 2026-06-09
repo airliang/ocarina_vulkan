@@ -35,6 +35,9 @@ public:
     void add_mesh(const std::string& name, Mesh* mesh);
 
     Texture* create_texture(Device* device, const Image& image, const TextureViewCreation& texture_view, const TextureSampler& sampler);
+    Texture* create_texture(Device* device, const std::string& name, uint32_t width, uint32_t height, PixelStorage pixel_storage,
+                            const TextureViewCreation& texture_view, const TextureSampler& sampler, const void* data = nullptr);
+    Texture* get_texture(const std::string& name, const TextureViewCreation& texture_view, const TextureSampler& sampler) const noexcept;
 private:
 
     std::unordered_map<uint64_t, Material*> materials_;

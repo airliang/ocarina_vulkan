@@ -81,6 +81,7 @@ int main(int argc, char *argv[]) {
     };
 
     Camera camera;
+    window->add_event_listener(&camera);
     camera.set_aspect_ratio(800.0f / 600.0f);
     camera.set_position({0.0f, 0.0f, -2.5f});
     camera.set_target({0.0f, 0.0f, 0.0f});
@@ -115,7 +116,8 @@ int main(int argc, char *argv[]) {
         });
     });
 
-    FrameResources::instance().set_update_callback([&](FrameResources&, double) {
+    FrameResources::instance().set_update_callback([&](FrameResources&, double dt) {
+        camera.update(dt);
         DescriptorSet* global_descriptor_set = FrameResources::instance().get_global_descriptor_set("global_ubo");
         GlobalUniformBuffer global_ubo_data = {
             camera.get_projection_matrix().transpose(),
@@ -144,6 +146,7 @@ int main(int argc, char *argv[]) {
     });
     renderer.set_render_task_end_callback([&]() {
         imgui_renderer.cleanup();
+        window->remove_event_listener(&camera);
     });
 
     renderer.run();

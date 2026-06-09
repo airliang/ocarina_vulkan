@@ -33,11 +33,17 @@ VulkanTexture::VulkanTexture(VulkanDevice *device, Image *image, const TextureVi
 }
 
 VulkanTexture::VulkanTexture(VulkanDevice *device, uint32_t width, uint32_t height, uint32_t depth, PixelStorage format, const TextureViewCreation &texture_view,
-    const TextureSampler& sampler, uint4 default_color) 
+    const TextureSampler& sampler, uint4 default_color, const void* data)
     : device_(device) {
+    init_from_pixels(width, height, depth, format, texture_view, sampler, default_color, data);
+}
+
+void VulkanTexture::init_from_pixels(uint32_t width, uint32_t height, uint32_t depth, PixelStorage format, const TextureViewCreation &texture_view,
+    const TextureSampler& sampler, uint4 default_color, const void* data) {
     res_.x = width;
     res_.y = height;
     res_.z = depth;
+    pixel_storage_ = format;
     image_format_ = get_vulkan_format(format, false);
     texture_sampler_ = sampler;
 
@@ -59,7 +65,7 @@ VulkanTexture::VulkanTexture(VulkanDevice *device, uint32_t width, uint32_t heig
     image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
     image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    image_info.extent = {static_cast<uint32_t>(res_.x), static_cast<uint32_t>(res_.y), 1};
+    image_info.extent = {static_cast<uint32_t>(res_.x), static_cast<uint32_t>(res_.y), static_cast<uint32_t>(res_.z)};
     image_info.usage = usage;
 
     VK_CHECK_RESULT(vkCreateImage(device_->logicalDevice(), &image_info, nullptr, &image_));
@@ -76,12 +82,13 @@ VulkanTexture::VulkanTexture(VulkanDevice *device, uint32_t width, uint32_t heig
 
     VK_CHECK_RESULT(vkBindImageMemory(device_->logicalDevice(), image_, image_memory_, 0));
 
-    std::vector<uint4> pixels(width * height * depth, default_color);
-
-    VkDeviceSize image_size = pixels.size() * sizeof(uint4);
-    VulkanBuffer staging_buffer(device_, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                                image_size, pixels.data());
-    submit_texture_staging_upload(device_, &staging_buffer, this);
+    const size_t image_size = static_cast<size_t>(width) * height * depth * pixel_size(format);
+    if (data != nullptr) {
+        load_cpu_data(data, image_size);
+    } else {
+        std::vector<uint4> pixels(width * height * depth, default_color);
+        load_cpu_data(pixels.data(), pixels.size() * sizeof(uint4));
+    }
 
     if (mip_levels_ > 1) {
         generate_mipmaps();
@@ -92,60 +99,25 @@ VulkanTexture::VulkanTexture(VulkanDevice *device, uint32_t width, uint32_t heig
 }
 
 void VulkanTexture::init(Image *image, const TextureViewCreation &texture_view) {
-    res_.x = image->resolution().x;
-    res_.y = image->resolution().y;
-    image_format_ = get_vulkan_format(image->pixel_storage(), false);
-
-    uint32_t max_mip_levels = static_cast<uint32_t>(std::floor(std::log2(std::max(res_.x, res_.y)))) + 1;
-    mip_levels_ = texture_view.mip_level_count == 0 ? max_mip_levels : std::min(max_mip_levels, texture_view.mip_level_count);
-
-    VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    if (mip_levels_ > 1)
-    {
-        usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    }
-
-    VkImageCreateInfo image_info{};
-    image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    image_info.imageType = VK_IMAGE_TYPE_2D;
-    image_info.format = image_format_;
-    image_info.mipLevels = mip_levels_;
-    image_info.arrayLayers = texture_view.array_layer_count;
-    image_info.samples = VK_SAMPLE_COUNT_1_BIT;
-    image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    image_info.extent = {static_cast<uint32_t>(res_.x), static_cast<uint32_t>(res_.y), 1};
-    image_info.usage = usage;
-
-    VK_CHECK_RESULT(vkCreateImage(device_->logicalDevice(), &image_info, nullptr, &image_));
-
-    VkMemoryRequirements mem_requirements;
-    vkGetImageMemoryRequirements(device_->logicalDevice(), image_, &mem_requirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = mem_requirements.size;
-    allocInfo.memoryTypeIndex = device_->get_memory_type(mem_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    VK_CHECK_RESULT(vkAllocateMemory(device_->logicalDevice(), &allocInfo, nullptr, &image_memory_));
-
-    VK_CHECK_RESULT(vkBindImageMemory(device_->logicalDevice(), image_, image_memory_, 0));
-
-    load_cpu_data(image);
-
-    if (mip_levels_ > 1) {
-        generate_mipmaps();
-    }
-
-    create_image_view(texture_view);
-
-    create_sampler(texture_sampler_);
+    pixel_storage_ = image->pixel_storage();
+    init_from_pixels(
+        image->resolution().x,
+        image->resolution().y,
+        1,
+        image->pixel_storage(),
+        texture_view,
+        texture_sampler_,
+        uint4(0, 0, 0, 255),
+        image->pixel_ptr());
 }
 
 void VulkanTexture::load_cpu_data(Image *image) {
+    load_cpu_data(image->pixel_ptr(), image->size_in_bytes());
+}
+
+void VulkanTexture::load_cpu_data(const void* data, size_t size_in_bytes) {
     VulkanBuffer staging_buffer(device_, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                                image->size_in_bytes(), image->pixel_ptr());
+                                size_in_bytes, data);
     submit_texture_staging_upload(device_, &staging_buffer, this);
 }
 

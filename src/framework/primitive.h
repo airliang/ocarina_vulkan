@@ -63,11 +63,21 @@ public:
         transform_dirty_ = true;
     }
 
+    void set_rotation(const quaternion &rotation) {
+        rotation_ = rotation;
+        transform_dirty_ = true;
+    }
+
+    void set_scale(const float3 &scale) {
+        scale_ = scale;
+        transform_dirty_ = true;
+    }
+
     const float3 &get_position() const { return position_; }
 
     const float4x4& get_world_matrix() {
         if (transform_dirty_) {
-            transform_.set_TRS(position_, rotation_, float3(1, 1, 1));
+            transform_.set_TRS(position_, rotation_, scale_);
             transform_dirty_ = false;
             world_matrix_ = transform_.mat4x4();
         }
@@ -116,6 +126,7 @@ private:
     float4x4 world_matrix_;
     float3 position_;
     quaternion rotation_ = quaternion(0, 0, 0, 1);
+    float3 scale_ = float3(1, 1, 1);
     bool transform_dirty_ = true;
     std::byte *push_constant_data_ = nullptr;
     

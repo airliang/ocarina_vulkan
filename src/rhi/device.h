@@ -75,6 +75,9 @@ public:
         [[nodiscard]] virtual handle_ty create_texture(uint3 res, PixelStorage pixel_storage,
                                                        uint level_num, const string &desc) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_texture(Image *image, const TextureViewCreation &texture_view, const TextureSampler& sampler) noexcept = 0;
+        [[nodiscard]] virtual handle_ty create_texture(uint32_t width, uint32_t height, uint32_t depth, PixelStorage pixel_storage,
+                                                       const TextureViewCreation &texture_view, const TextureSampler& sampler,
+                                                       uint4 default_color, const void *data) noexcept = 0;
         virtual void destroy_texture(handle_ty handle) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_shader(const Function &function) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept = 0;
@@ -182,6 +185,9 @@ public:
     [[nodiscard]] Texture create_texture(uint3 res, PixelStorage storage, const string &desc = "") const noexcept;
     [[nodiscard]] Texture create_texture(uint2 res, PixelStorage storage, const string &desc = "") const noexcept;
     [[nodiscard]] Texture create_texture(Image *image_resource, const TextureViewCreation &texture_view, const TextureSampler& sampler) const noexcept;
+    [[nodiscard]] Texture create_texture(uint32_t width, uint32_t height, uint32_t depth, PixelStorage pixel_storage,
+                                         const TextureViewCreation &texture_view, const TextureSampler& sampler,
+                                         uint4 default_color = uint4(0, 0, 0, 255), const void *data = nullptr) const noexcept;
     template<typename T>
     [[nodiscard]] auto compile(const Kernel<T> &kernel, const string &shader_desc = "", ShaderTag tag = CS) const noexcept {
         OC_INFO_FORMAT("compile shader : {}", shader_desc.c_str());

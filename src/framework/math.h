@@ -9,6 +9,7 @@
 
 namespace ocarina {
 
+// Left-handed coordinate system: +X right, +Y up, +Z forward (DirectX-style).
 namespace math3d {
 using Vector2D = std::array<float, 2>;
 using Vector3D = std::array<float, 3>;
@@ -29,12 +30,11 @@ inline Vector3D normalize(const Vector3D &v) {
     return len > 0.0f ? Vector3D{v[0] / len, v[1] / len, v[2] / len} : Vector3D({v[0] / len, v[1] / len, v[2] / len});
 }
 
-// Cross product
+// Cross product (left-handed: a x b follows the left-hand rule).
 inline Vector3D cross(const Vector3D &a, const Vector3D &b) {
-    return { a[1] * b[2] - a[2] * b[1],
-           a[2] * b[0] - a[0] * b[2],
-           a[0] * b[1] - a[1] * b[0]
-            };
+    return {a[2] * b[1] - a[1] * b[2],
+            a[0] * b[2] - a[2] * b[0],
+            a[1] * b[0] - a[0] * b[1]};
 }
 
 // Dot product
@@ -132,7 +132,7 @@ struct Matrix4 {
         return r;
     };
 
-    // Matrixñvector multiply (vec3, assume w=1)
+    // Matrixùvector multiply (vec3, assume w=1)
     Vector3D multiplyVec3(const Vector3D &v) const {
         std::array<float, 3> r{};
         r[0] = m[0] * v[0] + m[4] * v[1] + m[8] * v[2] + m[12];
@@ -219,8 +219,8 @@ struct Matrix4 {
         float c = cosf(radians);
         float s = sinf(radians);
         mat(1, 1) = c;
-        mat(2, 1) = -s;
-        mat(1, 2) = s;
+        mat(2, 1) = s;
+        mat(1, 2) = -s;
         mat(2, 2) = c;
         return mat;
     }
@@ -230,8 +230,8 @@ struct Matrix4 {
         float c = cosf(radians);
         float s = sinf(radians);
         mat(0, 0) = c;
-        mat(2, 0) = s;
-        mat(0, 2) = -s;
+        mat(2, 0) = -s;
+        mat(0, 2) = s;
         mat(2, 2) = c;
         return mat;
     }
@@ -241,8 +241,8 @@ struct Matrix4 {
         float c = cosf(radians);
         float s = sinf(radians);
         mat(0, 0) = c;
-        mat(1, 0) = -s;
-        mat(0, 1) = s;
+        mat(1, 0) = s;
+        mat(0, 1) = -s;
         mat(1, 1) = c;
         return mat;
     }
@@ -254,9 +254,9 @@ struct Matrix4 {
         float f = 1.0f / tanf(fovYRadians * 0.5f);
         mat(0, 0) = f / aspect;
         mat(1, 1) = f;
-        mat(2, 2) = (zFar + zNear) / (zNear - zFar);
-        mat(2, 3) = (zFar * zNear) / (zNear - zFar);   //clip space of depth is 0 - 1
-        mat(3, 2) = -1.0f;
+        mat(2, 2) = zFar / (zFar - zNear);
+        mat(2, 3) = -(zFar * zNear) / (zFar - zNear);
+        mat(3, 2) = 1.0f;
         return mat;
     }
 
@@ -265,23 +265,23 @@ struct Matrix4 {
         mat.set_identity();
         mat(0, 0) = 2.0f / (right - left);
         mat(1, 1) = 2.0f / (top - bottom);
-        mat(2, 2) = -2.0f / (zFar - zNear);
+        mat(2, 2) = 1.0f / (zFar - zNear);
         mat(0, 3) = -(right + left) / (right - left);
         mat(1, 3) = -(top + bottom) / (top - bottom);
-        mat(2, 3) = -(zFar + zNear) / (zFar - zNear);
+        mat(2, 3) = -zNear / (zFar - zNear);
         return mat;
     }
 
     static Matrix4 look_at(const Vector3D& eye, const Vector3D& target, const Vector3D& up)
     {
-        Vector3D f = normalize(target - eye);// forward
-        Vector3D r = normalize(cross(f, up));// right
-        Vector3D u = cross(r, f);            // real up
+        Vector3D f = normalize(target - eye);
+        Vector3D r = normalize(cross(up, f));
+        Vector3D u = cross(f, r);
 
         Matrix4 result(
             r[0], r[1], r[2], -dot(r, eye),
             u[0], u[1], u[2], -dot(u, eye),
-            -f[0], -f[1], -f[2], dot(f, eye),
+            f[0], f[1], f[2], -dot(f, eye),
             0, 0, 0, 1.0f);
         return result;
     }

@@ -58,7 +58,7 @@ void BuildinMesh::cleanup() {
 
 Quad::Quad(Device* device) {
     vertex_buffer_ = device->create_vertex_buffer();
-    Vector3 positions[4] = { {1.0f, 1.0f, 0.0f}, {-1.0f, 1.0f, 0.0f}, {-1.0f, -1.0f, 0.0f}, {1.0f, -1.0f, 0.0f} };
+    Vector3 positions[4] = { {-1.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}, {1.0f, -1.0f, 0.0f}, {-1.0f, -1.0f, 0.0f} };
     vertex_buffer_->add_vertex_stream(VertexAttributeType::Enum::Position, 4, sizeof(Vector3), (const void*)&positions[0]);
     Vector2 uvs[4] = { {1.0f, 1.0f}, {0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f} };
     vertex_buffer_->add_vertex_stream(VertexAttributeType::Enum::TexCoord0, 4, sizeof(Vector2), (const void*)&uvs[0]);
