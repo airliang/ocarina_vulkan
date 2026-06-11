@@ -47,7 +47,6 @@ if(AUTO_LOCATE_VULKAN)
 	endforeach()
 
     ocarina_add_backend(vulkan SOURCES ${HEADER_FILES} ${SOURCE_FILES})
-    #target_compile_definitions(ocarina-backend-vulkan PRIVATE OPTIX_INCLUDE=${OptiX_INCLUDE})
     target_link_libraries(ocarina-backend-vulkan PRIVATE Vulkan::Vulkan)
 else()
 	message(STATUS "Attempting to locate Vulkan SDK using manual path......")
