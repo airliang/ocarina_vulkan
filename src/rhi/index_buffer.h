@@ -6,8 +6,6 @@
 
 #include "core/header.h"
 #include "core/stl.h"
-#include "dsl/func.h"
-#include "dsl/rtx_type.h"
 #include "core/image_base.h"
 #include "core/concepts.h"
 #include "core/thread_pool.h"

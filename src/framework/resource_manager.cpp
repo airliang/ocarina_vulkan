@@ -1,6 +1,7 @@
 #pragma once
 
 #include "resource_manager.h"
+#include "core/logging.h"
 #include "material.h"
 #include "mesh.h"
 #include "rhi/resources/texture.h"

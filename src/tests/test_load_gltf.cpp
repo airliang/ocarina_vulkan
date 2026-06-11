@@ -1,4 +1,5 @@
 #include "core/stl.h"
+#include "math/basic_types.h"
 #include "rhi/context.h"
 #include "rhi/common.h"
 #include "framework/window_factory.h"

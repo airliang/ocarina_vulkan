@@ -56,26 +56,26 @@ public:
     RegistrableBuffer() = default;
 
     void register_self(size_t offset = 0, size_t size = 0) noexcept {
-        BufferView<T> buffer_view = super().view(offset, size);
+        BufferRegion<T> buffer_region = super().region(offset, size);
         if (has_registered()) {
-            bindless_array_->set_buffer(index_.hv(), buffer_view);
+            bindless_array_->set_buffer(index_.hv(), buffer_region);
         } else {
-            index_ = bindless_array_->emplace(buffer_view);
+            index_ = bindless_array_->emplace(buffer_region);
         }
         length_ = [=]() {
-            return static_cast<uint>(buffer_view.size());
+            return static_cast<uint>(buffer_region.size());
         };
     }
 
     uint register_view(size_t offset, size_t size = 0) {
-        BufferView<T> buffer_view = super().view(offset, size);
-        return bindless_array_->emplace(buffer_view);
+        BufferRegion<T> buffer_region = super().region(offset, size);
+        return bindless_array_->emplace(buffer_region);
     }
 
     uint register_view_index(uint index, size_t offset, size_t size = 0) {
-        BufferView<T> buffer_view = super().view(offset, size);
+        BufferRegion<T> buffer_region = super().region(offset, size);
         index += index_.hv();
-        bindless_array_->set_buffer(index, buffer_view);
+        bindless_array_->set_buffer(index, buffer_region);
         return index;
     }
 
@@ -117,26 +117,26 @@ public:
     RegistrableByteBuffer() = default;
     [[nodiscard]] Super &super() noexcept { return *this; }
     void register_self(size_t offset = 0, size_t size = 0) noexcept {
-        ByteBufferView buffer_view = super().view(offset, size);
+        ByteBufferRegion buffer_region = super().region(offset, size);
         if (has_registered()) {
-            bindless_array_->set_buffer(index_.hv(), buffer_view);
+            bindless_array_->set_buffer(index_.hv(), buffer_region);
         } else {
-            index_ = bindless_array_->emplace(buffer_view);
+            index_ = bindless_array_->emplace(buffer_region);
         }
         length_ = [=]() {
-            return static_cast<uint>(buffer_view.size());
+            return static_cast<uint>(buffer_region.size());
         };
     }
 
     uint register_view(size_t offset, size_t size = 0) {
-        ByteBufferView buffer_view = super().view(offset, size);
-        return bindless_array_->emplace(buffer_view);
+        ByteBufferRegion buffer_region = super().region(offset, size);
+        return bindless_array_->emplace(buffer_region);
     }
 
     uint register_view_index(uint index, size_t offset, size_t size = 0) {
-        ByteBufferView buffer_view = super().view(offset, size);
+        ByteBufferRegion buffer_region = super().region(offset, size);
         index += index_.hv();
-        bindless_array_->set_buffer(index, buffer_view);
+        bindless_array_->set_buffer(index, buffer_region);
         return index;
     }
 
@@ -319,14 +319,14 @@ public:
     }
 
     uint register_view(size_t offset, size_t size = 0) {
-        BufferView<T> buffer_view = Super::device_buffer().view(offset, size);
-        return bindless_array_->emplace(buffer_view);
+        BufferRegion<T> buffer_region = Super::device_buffer().region(offset, size);
+        return bindless_array_->emplace(buffer_region);
     }
 
     uint register_view_index(uint index, size_t offset, size_t size = 0) {
-        BufferView<T> buffer_view = super().view(offset, size);
+        BufferRegion<T> buffer_region = super().region(offset, size);
         index += index_.hv();
-        bindless_array_->set_buffer(index, buffer_view);
+        bindless_array_->set_buffer(index, buffer_region);
         return index;
     }
 

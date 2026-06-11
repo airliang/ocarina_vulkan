@@ -6,7 +6,6 @@
 
 #include "core/header.h"
 #include "resource.h"
-#include "rhi/command.h"
 #include "texture_sampler.h"
 #include "../graphics_descriptions.h"
 
@@ -38,9 +37,7 @@ public:
         [[nodiscard]] virtual handle_ty array_handle() const noexcept = 0;
         [[nodiscard]] virtual const handle_ty *array_handle_ptr() const noexcept = 0;
         [[nodiscard]] virtual handle_ty tex_handle() const noexcept = 0;
-        [[nodiscard]] virtual const TextureSampler* get_sampler_pointer() const noexcept = 0;
-
-        /// for device side structure
+        [[nodiscard]] virtual const TextureSampler *get_sampler_pointer() const noexcept = 0;
         [[nodiscard]] virtual const void *handle_ptr() const noexcept = 0;
         [[nodiscard]] virtual size_t data_size() const noexcept = 0;
         [[nodiscard]] virtual size_t data_alignment() const noexcept = 0;
@@ -57,13 +54,13 @@ public:
                                              detail::compute_mip_level_num(res, level_num), desc)),
           channel_num_(ocarina::channel_num(pixel_storage)) {}
 
-    explicit Texture(Device::Impl *device, Image* image_resource, const TextureViewCreation& texture_view, const TextureSampler& sampler)
+    explicit Texture(Device::Impl *device, Image *image_resource, const TextureViewCreation &texture_view, const TextureSampler &sampler)
         : RHIResource(device, Tag::TEXTURE,
                       device->create_texture(image_resource, texture_view, sampler)),
           channel_num_(ocarina::channel_num(texture_view.format)) {}
 
     explicit Texture(Device::Impl *device, uint32_t width, uint32_t height, uint32_t depth, PixelStorage pixel_storage,
-                     const TextureViewCreation& texture_view, const TextureSampler& sampler, uint4 default_color, const void* data)
+                     const TextureViewCreation &texture_view, const TextureSampler &sampler, uint4 default_color, const void *data)
         : RHIResource(device, Tag::TEXTURE,
                       device->create_texture(width, height, depth, pixel_storage, texture_view, sampler, default_color, data)),
           channel_num_(ocarina::channel_num(pixel_storage)) {}
@@ -87,64 +84,6 @@ public:
         return impl()->resolution();
     }
 
-    /// for dsl
-    [[nodiscard]] const Expression *expression() const noexcept override {
-        const CapturedResource &captured_resource = Function::current()->get_captured_resource(Type::of<decltype(*this)>(),
-                                                                                               Variable::Tag::TEXTURE,
-                                                                                               memory_block());
-        return captured_resource.expression();
-    }
-
-    template<typename U, typename V>
-    requires(is_all_floating_point_expr_v<U, V>)
-    [[nodiscard]] auto sample(uint channel_num, const U &u, const V &v) const noexcept {
-        return make_expr<Texture>(expression()).sample(channel_num, u, v);
-    }
-
-    template<typename UV>
-    requires(is_float_vector2_v<expr_value_t<UV>>)
-    OC_NODISCARD auto sample(uint channel_num, const UV &uv) const noexcept {
-        return sample(channel_num, uv.x, uv.y);
-    }
-
-    template<typename U, typename V, typename W>
-    requires(is_all_floating_point_expr_v<U, V>)
-    [[nodiscard]] auto sample(uint channel_num, const U &u, const V &v, const W &w) const noexcept {
-        return make_expr<Texture>(expression()).sample(channel_num, u, v, w);
-    }
-
-    template<typename UVW>
-    requires(is_float_vector3_v<expr_value_t<UVW>>)
-    OC_NODISCARD auto sample(uint channel_num, const UVW &uvw) const noexcept {
-        return sample(channel_num, uvw.x, uvw.y, uvw.z);
-    }
-
-    template<typename Target, typename X, typename Y>
-    requires(is_all_integral_expr_v<X, Y>)
-    OC_NODISCARD auto read(const X &x, const Y &y) const noexcept {
-        return make_expr<Texture>(expression()).read<Target>(x, y);
-    }
-
-    template<typename Target, typename XY>
-    requires(is_int_vector2_v<expr_value_t<XY>> ||
-             is_uint_vector2_v<expr_value_t<XY>> &&
-                 (is_uchar_element_expr_v<Target> || is_float_element_expr_v<Target>))
-    OC_NODISCARD auto read(const XY &xy) const noexcept {
-        return read<Target>(xy.x, xy.y);
-    }
-
-    template<typename X, typename Y, typename Val>
-    requires(is_all_integral_expr_v<X, Y> &&
-             (is_uchar_element_expr_v<Val> || is_float_element_expr_v<Val>))
-    void write(const Val &elm, const X &x, const Y &y) noexcept {
-        make_expr<Texture>(expression()).write(elm, x, y);
-    }
-
-    template< typename Val>
-    void write(const Val &elm, const Uint2 &xy) noexcept {
-        write(elm, xy.x, xy.y);
-    }
-
     [[nodiscard]] Impl *impl() noexcept { return reinterpret_cast<Impl *>(handle_); }
     [[nodiscard]] const Impl *impl() const noexcept { return reinterpret_cast<const Impl *>(handle_); }
     [[nodiscard]] Impl *operator->() noexcept { return impl(); }
@@ -154,39 +93,8 @@ public:
     [[nodiscard]] const void *handle_ptr() const noexcept override { return impl()->handle_ptr(); }
     [[nodiscard]] size_t data_size() const noexcept override { return impl()->data_size(); }
     [[nodiscard]] size_t data_alignment() const noexcept override { return impl()->data_alignment(); }
-    [[nodiscard]] size_t max_member_size() const noexcept override { return impl()->max_member_size(); }
-    [[nodiscard]] const TextureSampler* get_sampler_pointer() const noexcept {
+    [[nodiscard]] const TextureSampler *get_sampler_pointer() const noexcept {
         return impl()->get_sampler_pointer();
-    }
-    [[nodiscard]] TextureUploadCommand *upload(const void *data, bool async = true) const noexcept {
-        return TextureUploadCommand::create(data, array_handle(), impl()->resolution(),
-                                            impl()->pixel_storage(), async);
-    }
-    [[nodiscard]] TextureUploadCommand *upload_sync(const void *data) const noexcept {
-        return upload(data, false);
-    }
-    [[nodiscard]] TextureDownloadCommand *download(void *data, bool async = true) const noexcept {
-        return TextureDownloadCommand::create(data, array_handle(), impl()->resolution(),
-                                              impl()->pixel_storage(), async);
-    }
-    [[nodiscard]] TextureDownloadCommand *download_sync(void *data) const noexcept {
-        return download(data, false);
-    }
-
-    template<typename Arg>
-    requires is_buffer_or_view_v<Arg>
-    [[nodiscard]] BufferToTextureCommand *copy_from(const Arg &buffer, size_t buffer_offset, bool async = true) const noexcept {
-        return BufferToTextureCommand::create(buffer.handle(), buffer_offset * buffer.element_size(), array_handle(),
-                                              impl()->pixel_storage(),
-                                              impl()->resolution(), 0, async);
-    }
-
-    void upload_immediately(const void *data) const noexcept {
-        upload_sync(data)->accept(*device_->command_visitor());
-    }
-
-    void download_immediately(void *data) const noexcept {
-        download_sync(data)->accept(*device_->command_visitor());
     }
 };
 
@@ -202,21 +110,6 @@ public:
                        PixelStorage pixel_storage, uint level_num = 1u,
                        const string &desc = "")
         : Texture(device, make_uint3(res, 1u), pixel_storage, level_num, desc) {}
-
-    template<typename... Args>
-    [[nodiscard]] auto sample(Args &&...args) const noexcept {
-        return make_expr<Texture2D<T>>(expression()).sample(channel_num_, OC_FORWARD(args)...).template as_vec<Dim>();
-    }
-
-    template<typename... Args>
-    [[nodiscard]] auto read(Args &&...args) const noexcept {
-        return make_expr<Texture2D<T>>(expression()).template read<T>(OC_FORWARD(args)...);
-    }
-
-    template<typename... Args>
-    void write(T &&elm, Args &&...args) noexcept {
-        make_expr<Texture2D<T>>(expression()).write(OC_FORWARD(args)...);
-    }
 };
 
 }// namespace ocarina

@@ -6,12 +6,9 @@
 
 #include "core/header.h"
 #include "core/stl.h"
-#include "dsl/func.h"
-#include "dsl/rtx_type.h"
 #include "core/image_base.h"
 #include "core/concepts.h"
 #include "core/thread_pool.h"
-#include "params.h"
 #include "graphics_descriptions.h"
 #include "pipeline_state.h"
 #include "command_buffer.h"
@@ -24,31 +21,7 @@ class RHIContext;
 template<typename T>
 class Buffer;
 
-class ByteBuffer;
-
-template<typename T, AccessMode mode = AOS, typename TBuffer = ByteBuffer>
-class List;
-
-template<typename T, AccessMode mode = AOS>
-class ManagedList;
-
-template<typename T>
-class Managed;
-
-class BindlessArray;
-
-template<typename T>
-class Shader;
-
-class Stream;
-
 class Texture;
-
-class RHIMesh;
-
-class Accel;
-
-class CommandVisitor;
 
 class VertexBuffer;
 class IndexBuffer;
@@ -79,20 +52,9 @@ public:
                                                        const TextureViewCreation &texture_view, const TextureSampler& sampler,
                                                        uint4 default_color, const void *data) noexcept = 0;
         virtual void destroy_texture(handle_ty handle) noexcept = 0;
-        [[nodiscard]] virtual handle_ty create_shader(const Function &function) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept = 0;
         virtual void destroy_shader(handle_ty handle) noexcept = 0;
-        [[nodiscard]] virtual handle_ty create_accel() noexcept = 0;
-        virtual void destroy_accel(handle_ty handle) noexcept = 0;
-        [[nodiscard]] virtual handle_ty create_stream() noexcept = 0;
-        virtual void destroy_stream(handle_ty handle) noexcept = 0;
-        [[nodiscard]] virtual handle_ty create_mesh(const MeshParams &params) noexcept = 0;
-        virtual void destroy_mesh(handle_ty handle) noexcept = 0;
-        [[nodiscard]] virtual handle_ty create_bindless_array() noexcept = 0;
-        virtual void destroy_bindless_array(handle_ty handle) noexcept = 0;
         [[nodiscard]] RHIContext *context() noexcept { return context_; }
-        virtual void init_rtx() noexcept = 0;
-        [[nodiscard]] virtual CommandVisitor *command_visitor() noexcept = 0;
         virtual VertexBuffer *create_vertex_buffer() noexcept = 0;
         virtual IndexBuffer *create_index_buffer(const void *initial_data, uint32_t indices_count, bool bit16) noexcept = 0;
         virtual void begin_frame() noexcept = 0;
@@ -103,7 +65,6 @@ public:
         virtual std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) noexcept = 0;
         virtual void bind_pipeline(const CommandBuffer& cmd_buffer, const handle_ty pipeline) noexcept = 0;
         virtual RHIPipeline *get_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass) noexcept = 0;
-        //virtual DescriptorSet *get_global_descriptor_set(const string &name) noexcept = 0;
 
         virtual void memory_allocate(handle_ty *handle, size_t size, bool exported = true) {}
         virtual void memory_free(handle_ty *handle) {}
@@ -142,16 +103,6 @@ public:
         return Buffer<T>(impl_.get(), size, name);
     }
 
-    [[nodiscard]] ByteBuffer create_byte_buffer(size_t size, const string &name = "") const noexcept;
-
-    template<typename T, AccessMode mode = AOS>
-    [[nodiscard]] List<T, mode> create_list(size_t size, const string &name = "") const noexcept;// implement in byte_buffer.h
-
-    template<typename T, AccessMode mode = AOS>
-    [[nodiscard]] ManagedList<T, mode> create_managed_list(size_t size, const string &name = "") const noexcept {
-        return ManagedList<T, mode>(create_list<T, mode>(size, name));
-    }
-
     void destroy_buffer(handle_ty handle) noexcept {
         impl_->destroy_buffer(handle);
     }
@@ -168,38 +119,12 @@ public:
         return impl_->get_aligned_memory_size(handle);
     }
 
-    template<typename T = std::byte>
-    [[nodiscard]] Managed<T> create_managed(size_t size) noexcept {
-        return Managed<T>(impl_.get(), size);
-    }
-
-    template<typename VBuffer, typename TBuffer>
-    [[nodiscard]] RHIMesh create_mesh(const VBuffer &v_buffer,
-                                      const TBuffer &t_buffer,
-                                      AccelUsageTag usage_tag = AccelUsageTag::FAST_TRACE,
-                                      AccelGeomTag geom_tag = AccelGeomTag::DISABLE_ANYHIT) const noexcept;// implement in mesh.h
-    [[nodiscard]] Stream create_stream() noexcept;
-    [[nodiscard]] Accel create_accel() const noexcept;
-    [[nodiscard]] BindlessArray create_bindless_array() const noexcept;
-    void init_rtx() noexcept { impl_->init_rtx(); }
     [[nodiscard]] Texture create_texture(uint3 res, PixelStorage storage, const string &desc = "") const noexcept;
     [[nodiscard]] Texture create_texture(uint2 res, PixelStorage storage, const string &desc = "") const noexcept;
     [[nodiscard]] Texture create_texture(Image *image_resource, const TextureViewCreation &texture_view, const TextureSampler& sampler) const noexcept;
     [[nodiscard]] Texture create_texture(uint32_t width, uint32_t height, uint32_t depth, PixelStorage pixel_storage,
                                          const TextureViewCreation &texture_view, const TextureSampler& sampler,
                                          uint4 default_color = uint4(0, 0, 0, 255), const void *data = nullptr) const noexcept;
-    template<typename T>
-    [[nodiscard]] auto compile(const Kernel<T> &kernel, const string &shader_desc = "", ShaderTag tag = CS) const noexcept {
-        OC_INFO_FORMAT("compile shader : {}", shader_desc.c_str());
-        kernel.function()->set_description(shader_desc);
-        return create<Shader<T>>(kernel.function(), tag);
-    }
-    template<typename T>
-    [[nodiscard]] auto async_compile(Kernel<T> &&kernel, const string &shader_desc = "", ShaderTag tag = CS) const noexcept {
-        return async([=, this, kernel = ocarina::move(kernel)] {
-            return compile(kernel, shader_desc, tag);
-        });
-    }
 
     [[nodiscard]] handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, std::set<std::string> &options) {
         return impl_->create_shader_from_file(file_name, shader_type, options);
@@ -245,10 +170,6 @@ public:
         return impl_->get_pipeline(pipeline_state, render_pass);
     }
 
-    //DescriptorSet *get_global_descriptor_set(const string &name) noexcept {
-    //    return impl_->get_global_descriptor_set(name);
-    //}
-
     void get_imgui_creation(ImguiCreation& imgui_creation) {
         return impl_->get_imgui_creation(imgui_creation);
     }
@@ -278,15 +199,9 @@ public:
     }
 
     Device::Impl* impl() noexcept { return impl_.get(); }
-    //void bind_descriptor_sets(DescriptorSet **descriptor_sets, uint32_t descriptor_sets_num, RHIPipeline *pipeline) noexcept {
-    //    impl_->bind_descriptor_sets(descriptor_sets, descriptor_sets_num, pipeline);
-    //}
 
     [[nodiscard]] static Device create_device(const string &backend_name, const ocarina::InstanceCreation &instance_creation);
     [[nodiscard]] static Device create_device(const string &backend_name);
 };
 
-namespace rhi_global {
-//OC_EXPORT_API Device rhi_create_device(const string &backend_name, const ocarina::InstanceCreation &instance_creation);
-}
 }// namespace ocarina

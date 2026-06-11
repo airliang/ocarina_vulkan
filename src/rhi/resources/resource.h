@@ -17,11 +17,7 @@ public:
     enum Tag : uint8_t {
         BUFFER,
         TEXTURE,
-        BINDLESS_ARRAY,
-        STREAM,
         SHADER,
-        MESH,
-        ACCEL,
     };
 
 protected:
@@ -54,24 +50,14 @@ public:
         other.device_ = nullptr;
         return *this;
     }
-    [[nodiscard]] virtual const Expression *expression() const noexcept {
-        OC_ASSERT(0);
-        return nullptr;
-    }
     [[nodiscard]] Tag tag() const noexcept { return tag_; }
     [[nodiscard]] virtual handle_ty handle() const noexcept { return handle_; }
     virtual void set_device(Device::Impl *device) noexcept { device_ = device; }
     OC_MAKE_MEMBER_GETTER(device, )
     [[nodiscard]] virtual const void *handle_ptr() const noexcept { return &handle_; }
     [[nodiscard]] virtual void *handle_ptr() noexcept { return &handle_; }
-    // size of data on device side
     [[nodiscard]] virtual size_t data_size() const noexcept { return sizeof(handle_ty); }
-    // alignment of data on device side
     [[nodiscard]] virtual size_t data_alignment() const noexcept { return sizeof(handle_ty); }
-    [[nodiscard]] virtual size_t max_member_size() const noexcept { return sizeof(handle_ty); }
-    [[nodiscard]] virtual MemoryBlock memory_block() const noexcept {
-        return {handle_ptr(), data_size(), data_alignment(), max_member_size()};
-    }
     [[nodiscard]] bool valid() const noexcept { return bool(device_); }
     virtual void destroy() { _destroy(); }
     virtual ~RHIResource() { _destroy(); }

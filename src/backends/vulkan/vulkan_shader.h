@@ -6,7 +6,9 @@
 
 #include "core/stl.h"
 #include "core/concepts.h"
-#include "rhi/resources/shader.h"
+#include "core/util.h"
+#include "rhi/device.h"
+#include "rhi/shader_base.h"
 #include <vulkan/vulkan.h>
 #include "shader_reflection.h"
 #include <vector>
@@ -90,7 +92,7 @@ struct VulkanVertexStreamBinding
 };
 
 
-class VulkanShader : public Shader<>::Impl {
+class VulkanShader : public RHIShader {
 public:
 private:
     VkShaderModule shader_module_ = VK_NULL_HANDLE;
@@ -128,7 +130,6 @@ public:
     {
         return entry_.c_str();
     }
-    void launch(handle_ty stream, ShaderDispatchCommand *cmd) noexcept override {}
     static VulkanShader *create(Device::Impl *device,
                                 ShaderType shader_type, 
                                 std::span<uint32_t> shader_code, 

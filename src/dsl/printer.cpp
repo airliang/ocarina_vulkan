@@ -32,12 +32,11 @@ CommandList Printer::retrieve(const OutputFunc &func) noexcept {
         return {};
     }
     CommandList ret;
-    ret << buffer_.download();
     ret << [&]() {
+        buffer_.download_immediately();
         output_log(func);
         buffer_.resize(buffer_.capacity());
     };
-    ret << buffer_.device_buffer().reset();
     return ret;
 }
 

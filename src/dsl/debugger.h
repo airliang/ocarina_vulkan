@@ -43,7 +43,6 @@ public:
     void init(Device &device) noexcept { data_.reset_all(device, 1, "DebugData::data_"); }
     [[nodiscard]] auto &host_data() const noexcept { return data_.host_buffer()[0]; }
     [[nodiscard]] auto &host_data() noexcept { return data_.host_buffer()[0]; }
-    [[nodiscard]] Command *upload(bool async = true) const noexcept { return data_.upload(async); }
     void upload_immediately() const noexcept { data_.upload_immediately(); }
     void filp_enabled() noexcept { host_data().enabled = !host_data().enabled; }
     [[nodiscard]] bool is_enabled() const noexcept { return host_data().enabled; }

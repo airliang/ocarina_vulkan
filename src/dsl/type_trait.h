@@ -428,11 +428,11 @@ template<typename T>
 class Buffer;
 
 template<typename T>
-class BufferView;
+class BufferRegion;
 
 class ByteBuffer;
 
-class ByteBufferView;
+class ByteBufferRegion;
 
 class Texture;
 class Accel;
@@ -460,13 +460,13 @@ template<>
 struct is_buffer_impl<ByteBuffer> : std::true_type {};
 
 template<typename T>
-struct is_buffer_view_impl : std::false_type {};
+struct is_buffer_region_impl : std::false_type {};
 
 template<typename T>
-struct is_buffer_view_impl<BufferView<T>> : std::true_type {};
+struct is_buffer_region_impl<BufferRegion<T>> : std::true_type {};
 
 template<>
-struct is_buffer_view_impl<ByteBufferView> : std::true_type {};
+struct is_buffer_region_impl<ByteBufferRegion> : std::true_type {};
 
 template<typename T>
 struct buffer_element_impl {
@@ -479,7 +479,7 @@ struct buffer_element_impl<Buffer<T>> {
 };
 
 template<typename T>
-struct buffer_element_impl<BufferView<T>> {
+struct buffer_element_impl<BufferRegion<T>> {
     using type = T;
 };
 
@@ -487,7 +487,7 @@ template<typename T>
 struct is_byte_buffer_view : public std::false_type {};
 
 template<>
-struct is_byte_buffer_view<ByteBufferView> : public std::true_type {};
+struct is_byte_buffer_view<ByteBufferRegion> : public std::true_type {};
 
 };// namespace detail
 
@@ -500,11 +500,11 @@ using is_buffer = detail::is_buffer_impl<std::remove_cvref_t<T>>;
 OC_DEFINE_TEMPLATE_VALUE(is_buffer)
 
 template<typename T>
-using is_buffer_view = detail::is_buffer_view_impl<std::remove_cvref_t<T>>;
-OC_DEFINE_TEMPLATE_VALUE(is_buffer_view)
+using is_buffer_region = detail::is_buffer_region_impl<std::remove_cvref_t<T>>;
+OC_DEFINE_TEMPLATE_VALUE(is_buffer_region)
 
 template<typename T>
-using is_buffer_or_view = std::disjunction<is_buffer<T>, is_buffer_view<T>>;
+using is_buffer_or_view = std::disjunction<is_buffer<T>, is_buffer_region<T>>;
 OC_DEFINE_TEMPLATE_VALUE(is_buffer_or_view)
 
 template<typename T>

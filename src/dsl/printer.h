@@ -89,7 +89,6 @@ public:
     [[nodiscard]] uint element_num() const noexcept { return buffer_.host_buffer().back(); }
 
     void reset() {
-        buffer_.device_buffer().reset_immediately();
         buffer_.resize(buffer_.capacity());
     }
 

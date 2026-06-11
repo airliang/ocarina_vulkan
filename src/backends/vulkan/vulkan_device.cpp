@@ -44,17 +44,6 @@ handle_ty VulkanDevice::create_buffer(size_t size, const string &desc, bool expo
     return 0;
 }
 
-namespace detail {
-void context_log_cb(unsigned int level, const char *tag, const char *message, void * /*cbdata */) {
-    std::cerr << "[" << std::setw(2) << level << "][" << std::setw(12) << tag << "]: " << message << "\n";
-}
-}// namespace detail
-
-
-handle_ty VulkanDevice::create_stream() noexcept {
-    return 0;
-}
-
 handle_ty VulkanDevice::create_texture(uint3 res, PixelStorage pixel_storage,
                                      uint level_num,
                                      const string &desc) noexcept {
@@ -74,9 +63,12 @@ handle_ty VulkanDevice::create_texture(uint32_t width, uint32_t height, uint32_t
     return reinterpret_cast<handle_ty>(texture);
 }
 
-handle_ty VulkanDevice::create_shader(const Function &function) noexcept {
-    return 0;
+namespace detail {
+void context_log_cb(unsigned int level, const char *tag, const char *message, void * /*cbdata */) {
+    std::cerr << "[" << std::setw(2) << level << "][" << std::setw(12) << tag << "]: " << message << "\n";
 }
+}// namespace detail
+
 
 handle_ty VulkanDevice::create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept {
     //VulkanShader *shader = VulkanShader::create_from_HLSL(this, shader_type, file_name, "main");
@@ -88,22 +80,6 @@ handle_ty VulkanDevice::create_shader_from_file(const std::string &file_name, Sh
         return (handle_ty)shader;
     }
     return 0;
-}
-
-handle_ty VulkanDevice::create_mesh(const MeshParams &params) noexcept {
-    return 0;
-}
-
-void VulkanDevice::destroy_mesh(handle_ty handle) noexcept {
-    
-}
-
-handle_ty VulkanDevice::create_bindless_array() noexcept {
-    return 0;
-}
-
-void VulkanDevice::destroy_bindless_array(handle_ty handle) noexcept {
-    
 }
 
 void VulkanDevice::destroy_buffer(handle_ty handle) noexcept {
@@ -119,19 +95,6 @@ void VulkanDevice::destroy_shader(handle_ty handle) noexcept {
 
 void VulkanDevice::destroy_texture(handle_ty handle) noexcept {
     ocarina::delete_with_allocator(reinterpret_cast<VulkanTexture *>(handle));
-}
-
-void VulkanDevice::destroy_stream(handle_ty handle) noexcept {
-
-}
-handle_ty VulkanDevice::create_accel() noexcept {
-    return 0;
-}
-void VulkanDevice::destroy_accel(handle_ty handle) noexcept {
-    
-}
-CommandVisitor *VulkanDevice::command_visitor() noexcept {
-    return nullptr;
 }
 
 void VulkanDevice::init_vulkan()

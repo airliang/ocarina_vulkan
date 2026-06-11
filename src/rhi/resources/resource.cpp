@@ -16,11 +16,7 @@ void RHIResource::_destroy() {
     switch (tag_) {
         case Tag::BUFFER: device_->destroy_buffer(handle_); break;
         case Tag::TEXTURE: device_->destroy_texture(handle_); break;
-        case Tag::STREAM: device_->destroy_stream(handle_); break;
         case Tag::SHADER: device_->destroy_shader(handle_); break;
-        case Tag::MESH: device_->destroy_mesh(handle_); break;
-        case Tag::ACCEL: device_->destroy_accel(handle_); break;
-        case Tag::BINDLESS_ARRAY: device_->destroy_bindless_array(handle_); break;
     }
     handle_ = 0;
 }

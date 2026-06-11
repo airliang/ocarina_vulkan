@@ -8,7 +8,7 @@
 #include "core/stl.h"
 #include "core/concepts.h"
 #include "core/thread_pool.h"
-#include "rhi/params.h"
+#include "math/basic_types.h"
 #include "rhi/graphics_descriptions.h"
 #include "rhi/command_buffer.h"
 #include "render_task.h"

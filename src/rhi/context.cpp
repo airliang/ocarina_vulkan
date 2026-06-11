@@ -6,6 +6,8 @@
 #include "core/dynamic_module.h"
 #include "rhi/device.h"
 #include "core/platform.h"
+#include "core/logging.h"
+#include <fstream>
 
 namespace ocarina {
 

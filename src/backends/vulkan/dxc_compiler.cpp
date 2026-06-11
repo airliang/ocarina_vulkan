@@ -4,6 +4,8 @@
 
 #include "dxc_compiler.h"
 #include "shader_reflection.h"
+#include "core/logging.h"
+#include <fstream>
 #ifdef _WIN32
 #define NOMINMAX
 #include <Windows.h>

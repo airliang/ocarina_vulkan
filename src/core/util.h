@@ -4,9 +4,8 @@
 
 #pragma once
 
-#include "math/basic_traits.h"
+#include "stl.h"
 #include "concepts.h"
-#include "math/base.h"
 #include "logging.h"
 
 namespace ocarina {
@@ -58,30 +57,36 @@ requires concepts::subscriptable<T>
     return InvalidUI32;
 }
 
+namespace detail {
+[[nodiscard]] constexpr size_t kb_factor() noexcept { return 1024u; }
+[[nodiscard]] constexpr size_t mb_factor() noexcept { return 1024u * 1024u; }
+[[nodiscard]] constexpr size_t gb_factor() noexcept { return 1024u * 1024u * 1024u; }
+}// namespace detail
+
 inline namespace size_literals {
 [[nodiscard]] constexpr auto operator""_kb(size_t bytes) noexcept {
-    return static_cast<size_t>(bytes * 1024u);
+    return static_cast<size_t>(bytes * detail::kb_factor());
 }
 
 [[nodiscard]] constexpr auto operator""_mb(size_t bytes) noexcept {
-    return static_cast<size_t>(bytes * sqr(1024u));
+    return static_cast<size_t>(bytes * detail::mb_factor());
 }
 
 [[nodiscard]] constexpr auto operator""_gb(size_t bytes) noexcept {
-    return static_cast<size_t>(bytes * Pow<3>(1024u));
+    return static_cast<size_t>(bytes * detail::gb_factor());
 }
 }// namespace size_literals
 
 [[nodiscard]] constexpr float to_kb(size_t bytes) noexcept {
-    return static_cast<float>(bytes) / 1024;
+    return static_cast<float>(bytes) / static_cast<float>(detail::kb_factor());
 }
 
 [[nodiscard]] constexpr float to_mb(size_t bytes) noexcept {
-    return static_cast<float>(bytes) / sqr(1024);
+    return static_cast<float>(bytes) / static_cast<float>(detail::mb_factor());
 }
 
-[[nodiscard]] constexpr float to_gb(size_t bytes) noexcept {
-    return static_cast<double>(bytes) / Pow<3>(1024u);
+[[nodiscard]] constexpr double to_gb(size_t bytes) noexcept {
+    return static_cast<double>(bytes) / static_cast<double>(detail::gb_factor());
 }
 
 [[nodiscard]] inline string bytes_string(size_t bytes) noexcept {

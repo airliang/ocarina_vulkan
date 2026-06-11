@@ -6,7 +6,7 @@
 
 #include "core/stl.h"
 #include "core/concepts.h"
-#include "rhi/resources/shader.h"
+#include "rhi/graphics_descriptions.h"
 #include <vulkan/vulkan.h>
 #include "rhi/graphics_descriptions.h"
 #include "spirv_cross.hpp"

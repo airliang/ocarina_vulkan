@@ -8,18 +8,15 @@
 #include "core/stl.h"
 #include "core/concepts.h"
 #include "core/thread_pool.h"
-#include "rhi/params.h"
 #include "rhi/graphics_descriptions.h"
 #include "rhi/pipeline_state.h"
 #include "rhi/renderpass.h"
 #include "rhi/resources/texture.h"
-#include "math/transform.h"
+#include "transform.h"
 
 namespace ocarina {
 class VertexBuffer;
 class IndexBuffer;
-template <class T>
-class Shader;
 class DescriptorSet;
 class DescriptorSetLayout;
 class Device;

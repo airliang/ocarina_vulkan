@@ -1,10 +1,7 @@
 function(ocarina_add_backend name)
     cmake_parse_arguments(BACKEND "" "" "SOURCES" ${ARGN})
     add_library(ocarina-backend-${name} MODULE ${BACKEND_SOURCES})
-    target_link_libraries(ocarina-backend-${name} PRIVATE
-            ocarina-ast
-            ocarina-dsl
-            ocarina-generator)
+    target_link_libraries(ocarina-backend-${name} PRIVATE ocarina-rhi ocarina-core)
     add_dependencies(ocarina-backend ocarina-backend-${name})
     set_target_properties(ocarina-backend-${name} PROPERTIES
             LIBRARY_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
@@ -18,5 +15,4 @@ endfunction()
 add_library(ocarina-backend INTERFACE)
 
 add_subdirectory(vulkan)
-
 

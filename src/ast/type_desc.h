@@ -14,7 +14,7 @@ template<typename T>
 class BufferDesc;
 
 template<typename T>
-class BufferView;
+class BufferRegion;
 
 class Texture;
 class ByteBuffer;

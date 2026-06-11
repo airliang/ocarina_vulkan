@@ -8,7 +8,6 @@
 #include "rhi/index_buffer.h"
 #include "rhi/device.h"
 #include "rhi/descriptor_set.h"
-#include "rhi/resources/shader.h"
 #include "rhi/resources/texture_sampler.h"
 #include "mesh.h"
 #include "bindless_texture_registry.h"

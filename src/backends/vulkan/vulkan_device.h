@@ -49,19 +49,8 @@ public:
                                            const TextureViewCreation &texture_view, const TextureSampler& sampler,
                                            uint4 default_color, const void *data) noexcept override;
     void destroy_texture(handle_ty handle) noexcept override;
-    [[nodiscard]] handle_ty create_shader(const Function &function) noexcept override;
     [[nodiscard]] handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string>& options) noexcept override;
     void destroy_shader(handle_ty handle) noexcept override;
-    [[nodiscard]] handle_ty create_accel() noexcept override;
-    void destroy_accel(handle_ty handle) noexcept override;
-    [[nodiscard]] handle_ty create_stream() noexcept override;
-    void destroy_stream(handle_ty handle) noexcept override;
-    [[nodiscard]] handle_ty create_mesh(const MeshParams &params) noexcept override;
-    void destroy_mesh(handle_ty handle) noexcept override;
-    [[nodiscard]] handle_ty create_bindless_array() noexcept override;
-    void destroy_bindless_array(handle_ty handle) noexcept override;
-    void init_rtx() noexcept override {  }
-    [[nodiscard]] CommandVisitor *command_visitor() noexcept override;
     void shutdown();
     VertexBuffer* create_vertex_buffer() noexcept override;
     IndexBuffer* create_index_buffer(const void *initial_data, uint32_t indices_count, bool bit16) noexcept override;

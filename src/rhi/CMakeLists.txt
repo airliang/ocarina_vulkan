@@ -9,4 +9,4 @@ set_target_properties(ocarina-rhi PROPERTIES
         WINDOWS_EXPORT_ALL_SYMBOLS OFF
         FOLDER "ocarina")
 target_compile_definitions(ocarina-rhi PRIVATE OC_RHI_EXPORT_DLL=1)
-target_link_libraries(ocarina-rhi PUBLIC ocarina-generator)
+target_link_libraries(ocarina-rhi PUBLIC ocarina-core)
