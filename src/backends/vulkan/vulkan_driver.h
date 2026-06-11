@@ -88,7 +88,7 @@ public:
 
     void draw_triangles(VkCommandBuffer cmd, VulkanIndexBuffer* index_buffer);
 
-    void push_constants(VkCommandBuffer cmd, VkPipelineLayout pipeline, void *data, uint32_t size, uint32_t offset, VkShaderStageFlags stage_flags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+    void push_constants(VkCommandBuffer cmd, VkPipelineLayout pipeline, const void *data, uint32_t size, uint32_t offset, VkShaderStageFlags stage_flags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 
     void bind_descriptor_sets(VkCommandBuffer cmd, DescriptorSet **descriptor_sets, uint32_t first_set, uint32_t descriptor_sets_num, VkPipelineLayout pipeline_layout);
 

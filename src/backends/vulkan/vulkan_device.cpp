@@ -22,8 +22,11 @@
 namespace ocarina {
 
 VulkanDevice::VulkanDevice(RHIContext *file_manager, const ocarina::InstanceCreation &instance_creation)
-    : Device::Impl(file_manager), m_instance(instance_creation), m_windowHandle(instance_creation.windowHandle) {
-
+    : Device::Impl(file_manager)
+    , m_instance(instance_creation)
+    , m_windowHandle(instance_creation.windowHandle)
+    , m_windowWidth(instance_creation.windowWidth)
+    , m_windowHeight(instance_creation.windowHeight) {
     init_vulkan();
 }
 
@@ -257,7 +260,11 @@ void VulkanDevice::init_vulkan()
     create_logical_device();
 
     m_swapChain.create_surface(m_instance.instance(), m_windowHandle);
+
+    OC_ASSERT(m_windowWidth > 0 && m_windowHeight > 0);
     SwapChainCreation swapchain_creation{};
+    swapchain_creation.width = m_windowWidth;
+    swapchain_creation.height = m_windowHeight;
     m_swapChain.create_swapchain(swapchain_creation, this);
 }
 

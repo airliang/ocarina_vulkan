@@ -35,15 +35,21 @@ public:
         descriptor_buffer_info_.range = size_;
         return &descriptor_buffer_info_;
     }
+
+protected:
+    void map() noexcept override;
+    void unmap() noexcept override;
+
 private:
     VulkanDevice *device_ = nullptr;
     VkBuffer vulkan_buffer_ = VK_NULL_HANDLE;
     VkBufferUsageFlags usage_ = {};
     VkMemoryPropertyFlags memory_property_flags_ = {};
     VkDeviceMemory memory_ = VK_NULL_HANDLE;
-    void *mapped_ = nullptr;
+    
     VkDescriptorBufferInfo descriptor_buffer_info_ = {};
     //VkDeviceSize size_; //buffer size in bytes
+    VkDeviceSize memory_allocation_size_ = 0;
     VkResult flush(VkDeviceSize size = VK_WHOLE_SIZE, VkDeviceSize offset = 0);
 };
 

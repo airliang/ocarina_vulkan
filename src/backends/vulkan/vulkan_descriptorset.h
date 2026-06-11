@@ -174,7 +174,7 @@ public:
     OC_MAKE_MEMBER_GETTER(descriptor_set, );
     OC_MAKE_MEMBER_GETTER(layout, );
     //void copy_descriptors(VulkanDescriptor *descriptor);
-    void update_buffer(uint64_t name_id, void *data, uint32_t size) override;
+    void update_buffer(uint64_t name_id, const void *data, uint32_t size) override;
     void update_texture(uint64_t name_id, Texture *texture) override;
     void update_sampler(uint64_t name_id, const TextureSampler& sampler) override;
     uint32_t update_bindless_texture(uint64_t name_id, Texture *texture) override;

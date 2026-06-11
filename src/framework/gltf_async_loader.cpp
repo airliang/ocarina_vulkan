@@ -491,7 +491,7 @@ void GltfAsyncLoader::load_material(Primitive* prim, const tinygltf::Material& m
         return;
     }
 
-    prim->add_texture(hash64("albedo"), texture);
+    prim->add_bindless_texture(hash64("albedo"), texture);
     prim->add_sampler(hash64("sampler_albedo"), *texture->get_sampler_pointer());
 }
 

@@ -82,6 +82,8 @@ public:
 
     OC_MAKE_MEMBER_GETTER(physicalDevice, );
 
+    [[nodiscard]] const VkPhysicalDeviceLimits &device_limits() const { return m_deviceProperties.limits; }
+
     //uint32_t get_queue_family_index
     VulkanSwapchain* get_swapchain()
     {
@@ -118,6 +120,8 @@ public:
     VulkanInstance m_instance;
     VulkanSwapchain m_swapChain;
     uint64_t m_windowHandle = InvalidUI64;
+    uint32_t m_windowWidth = 0;
+    uint32_t m_windowHeight = 0;
 
     uint32_t queueFamilyIndices_[(uint32_t)QueueType::NumQueueType];
     //uint32_t queueFamilyIndexPerQueue_[(uint32_t)QueueType::NumQueueType];

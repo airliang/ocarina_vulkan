@@ -3,6 +3,7 @@
 #include "vulkan_device.h"
 #include "util.h"
 #include "vulkan_texture.h"
+#include <algorithm>
 #ifdef _WIN32
 #include <vulkan/vulkan_win32.h>
 #endif
@@ -46,15 +47,22 @@ void VulkanSwapchain::create_swapchain(const SwapChainCreation &creation, Vulkan
 
     VkExtent2D swapchainExtent = {};
     // If width (and height) equals the special value 0xFFFFFFFF, the size of the surface will be set by the swapchain
-    if (surfCaps.currentExtent.width == (uint32_t)-1) {
-        // If the surface size is undefined, the size is set to
-        // the size of the images requested.
-        swapchainExtent.width = creation.width;
-        swapchainExtent.height = creation.height;
+    if (surfCaps.currentExtent.width == UINT32_MAX) {
+        swapchainExtent.width = std::max(creation.width, 1u);
+        swapchainExtent.height = std::max(creation.height, 1u);
     } else {
         // If the surface size is defined, the swap chain size must match
         swapchainExtent = surfCaps.currentExtent;
     }
+
+    swapchainExtent.width = std::clamp(
+        swapchainExtent.width,
+        surfCaps.minImageExtent.width,
+        std::max(surfCaps.minImageExtent.width, surfCaps.maxImageExtent.width));
+    swapchainExtent.height = std::clamp(
+        swapchainExtent.height,
+        surfCaps.minImageExtent.height,
+        std::max(surfCaps.minImageExtent.height, surfCaps.maxImageExtent.height));
 
     // Select a present mode for the swapchain
 
@@ -134,7 +142,7 @@ void VulkanSwapchain::create_swapchain(const SwapChainCreation &creation, Vulkan
         vkDestroySwapchainKHR(device, oldSwapchain, nullptr);
     }
 
-    resolution_ = uint2(creation.width, creation.height);
+    resolution_ = make_uint2(swapchainExtent.width, swapchainExtent.height);
     setup_backbuffers(swapchainCI);
     setup_depth_stencil();
 }

@@ -1,5 +1,6 @@
 #include "core/stl.h"
 #include "rhi/context.h"
+#include "rhi/common.h"
 #include "framework/window_factory.h"
 #include "framework/sdl_window.h"
 #include "framework/imgui_renderer.h"
@@ -19,23 +20,28 @@ using namespace ocarina;
 struct GlobalUniformBuffer {
     math3d::Matrix4 projection_matrix;
     math3d::Matrix4 view_matrix;
+    float4 camera_pos;
+    float4 light_pos;
 };
 
 int main(int argc, char* argv[]) {
     RHIContext& context = RHIContext::instance();
 
-    auto window = create_sdl_window("FlightHelmet glTF", make_uint2(800, 600));
+    const uint2 window_size = make_uint2(1280, 720);
+    auto window = create_sdl_window("FlightHelmet glTF", window_size);
 
     InstanceCreation instance_creation{};
     instance_creation.windowHandle = window->get_window_handle();
+    instance_creation.windowWidth = window_size.x;
+    instance_creation.windowHeight = window_size.y;
     Device device = context.create_device("vulkan", instance_creation);
 
     const fs::path source_dir = fs::path(__FILE__).parent_path();
     const fs::path src_root = source_dir.parent_path();
     const fs::path repo_root = src_root.parent_path();
     const fs::path gltf_path = repo_root / "res/FlightHelmet/glTF/FlightHelmet.gltf";
-    const fs::path shader_vert = src_root / "backends/vulkan/builtin/texture.vert";
-    const fs::path shader_frag = src_root / "backends/vulkan/builtin/texture.frag";
+    const fs::path shader_vert = src_root / "backends/vulkan/builtin/mesh.vert";
+    const fs::path shader_frag = src_root / "backends/vulkan/builtin/mesh.frag";
 
     Material* material = nullptr;
     GltfAsyncLoader* gltf_loader = nullptr;
@@ -66,11 +72,19 @@ int main(int argc, char* argv[]) {
     camera.set_target({0.0f, 0.05f, 0.0f});
 
     const uint64_t model_matrix_name_id = hash64("modelMatrix");
+    const uint64_t albedo_index_name_id = hash64("albedoIndex");
+    const uint64_t albedo_texture_name_id = hash64("albedo");
     auto update_push_constant = [&](Primitive& primitive) {
         primitive.set_push_constant_variable(
             model_matrix_name_id,
             reinterpret_cast<std::byte*>(const_cast<void*>(static_cast<const void*>(&primitive.get_world_matrix()))),
             sizeof(primitive.get_world_matrix()));
+
+        const Primitive::TextureHandle albedo_handle = primitive.get_texture_handle(albedo_texture_name_id);
+        primitive.set_push_constant_variable(
+            albedo_index_name_id,
+            reinterpret_cast<std::byte*>(const_cast<uint32_t*>(&albedo_handle.bindless_index_)),
+            sizeof(albedo_handle.bindless_index_));
     };
 
     RenderPassCreation render_pass_creation;
@@ -99,9 +113,12 @@ int main(int argc, char* argv[]) {
     FrameResources::instance().set_update_callback([&](FrameResources&, double dt) {
         camera.update(dt);
         DescriptorSet* global_descriptor_set = FrameResources::instance().get_global_descriptor_set("global_ubo");
+        const math3d::Vector3D& cam_position = camera.get_position();
         GlobalUniformBuffer global_ubo_data = {
             camera.get_projection_matrix().transpose(),
-            camera.get_view_matrix().transpose()};
+            camera.get_view_matrix().transpose(),
+            make_float4(cam_position[0], cam_position[1], cam_position[2], 1.0f),
+            make_float4(5.0f, 10.0f, 5.0f, 1.0f)};
         global_descriptor_set->update_buffer(hash64("global_ubo"), &global_ubo_data, sizeof(GlobalUniformBuffer));
 
         render_pass->clear_draw_call_items();
@@ -121,6 +138,15 @@ int main(int argc, char* argv[]) {
     imgui_renderer.set_frame_callback([&]() {
         window->widgets()->push_window(window_name);
         window->widgets()->text("FPS: %.2f", 1.0f / renderer.dt());
+        const math3d::Vector3D& cam_position = camera.get_position();
+        const math3d::Vector3D cam_forward = math3d::normalize(
+            math3d::operator-(camera.get_target(), cam_position));
+        window->widgets()->text(
+            "Camera position: (%.3f, %.3f, %.3f)",
+            cam_position[0], cam_position[1], cam_position[2]);
+        window->widgets()->text(
+            "Camera forward: (%.3f, %.3f, %.3f)",
+            cam_forward[0], cam_forward[1], cam_forward[2]);
         if (gltf_loader != nullptr) {
             window->widgets()->text("Primitives: %zu", gltf_loader->get_primitives().size());
         }

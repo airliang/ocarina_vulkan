@@ -19,7 +19,7 @@ public:
     //DescriptorSet() {}
     virtual ~DescriptorSet() {}
 
-    virtual void update_buffer(uint64_t name_id, void *data, uint32_t size) = 0;
+    virtual void update_buffer(uint64_t name_id, const void *data, uint32_t size) = 0;
     virtual void update_texture(uint64_t name_id, Texture *texture) = 0;
     virtual void update_sampler(uint64_t name_id, const TextureSampler& sampler) = 0;
     virtual uint32_t update_bindless_texture(uint64_t name_id, Texture *texture) = 0;
@@ -71,8 +71,8 @@ public:
     //virtual void set_sampler(uint32_t binding, const void *sampler) = 0;
     //virtual void bind_buffer(uint64_t name_id, handle_ty buffer) = 0;
     //virtual void bind_texture(uint64_t name_id, handle_ty texture) = 0;
-    virtual void update_buffer(uint64_t name_id, void *data, uint32_t size) = 0;
-    virtual void update_push_constants(const CommandBuffer& cmd_buffer, uint64_t name_id, void *data, uint32_t size, RHIPipeline* pipeline) = 0;
+    virtual void update_buffer(uint64_t name_id, const void *data, uint32_t size) = 0;
+    virtual void update_push_constants(const CommandBuffer& cmd_buffer, uint64_t name_id, const void *data, uint32_t size, RHIPipeline* pipeline) = 0;
     virtual void update_texture(uint64_t name_id, Texture* texture) = 0;
 
 protected:

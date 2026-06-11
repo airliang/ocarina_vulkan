@@ -51,11 +51,14 @@ int main(int argc, char *argv[]) {
     //FileManager &file_manager = FileManager::instance();
     RHIContext &file_manager = RHIContext::instance();
 
-    auto window = create_sdl_window("display", make_uint2(800, 600));
+    const uint2 window_size = make_uint2(800, 600);
+    auto window = create_sdl_window("display", window_size);
 
     InstanceCreation instanceCreation = {};
     //instanceCreation.instanceExtentions =
     instanceCreation.windowHandle = window->get_window_handle();
+    instanceCreation.windowWidth = window_size.x;
+    instanceCreation.windowHeight = window_size.y;
     Device device = file_manager.create_device("vulkan", instanceCreation);
     Primitive quad;
     Material* material = nullptr;

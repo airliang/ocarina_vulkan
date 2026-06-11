@@ -29,7 +29,7 @@ VulkanDescriptorSet::~VulkanDescriptorSet() {
     }
 }
 
-void VulkanDescriptorSet::update_buffer(uint64_t name_id, void *data, uint32_t size) {
+void VulkanDescriptorSet::update_buffer(uint64_t name_id, const void *data, uint32_t size) {
     if (writer_) {
         writer_->update_buffer(name_id, data, size);
     }

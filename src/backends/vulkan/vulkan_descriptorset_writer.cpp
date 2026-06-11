@@ -23,7 +23,7 @@ VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, Vulka
         VulkanShaderVariableBinding* binding = layout->get_binding(i);
         if (binding && binding->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
             VulkanBuffer *buffer = ocarina::new_with_allocator<VulkanBuffer>(device, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                                                                             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, binding->size);
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, binding->size);
             // Create a descriptor for uniform buffer
             VulkanDescriptorBuffer *descriptor_buffer = ocarina::new_with_allocator<VulkanDescriptorBuffer>();
             descriptor_buffer->binding = binding->binding;
@@ -145,15 +145,16 @@ void VulkanDescriptorSetWriter::build(VulkanDevice *device) {
     writes_.clear();
 }
 
-void VulkanDescriptorSetWriter::update_buffer(uint64_t name_id, void *data, uint32_t size) {
+void VulkanDescriptorSetWriter::update_buffer(uint64_t name_id, const void *data, uint32_t size) {
     auto it = descriptors_.find(name_id);
     if (it != descriptors_.end()) {
         VulkanDescriptorBuffer *descriptor_buffer = static_cast<VulkanDescriptorBuffer *>(it->second);
-        descriptor_buffer->buffer_->load_from_cpu(data, 0, size);
+        //descriptor_buffer->buffer_->load_from_cpu(data, 0, size);
+        descriptor_buffer->buffer_->copy_from_immediately(data, size);
     }
 }
 
-void VulkanDescriptorSetWriter::update_push_constants(const CommandBuffer& cmd_buffer, uint64_t name_id, void *data, uint32_t size, RHIPipeline *pipeline) {
+void VulkanDescriptorSetWriter::update_push_constants(const CommandBuffer& cmd_buffer, uint64_t name_id, const void *data, uint32_t size, RHIPipeline *pipeline) {
     auto it = descriptors_.find(name_id);
     if (it != descriptors_.end()) {
         VulkanDescriptorPushConstants *push_constants_descriptor = static_cast<VulkanDescriptorPushConstants *>(it->second);

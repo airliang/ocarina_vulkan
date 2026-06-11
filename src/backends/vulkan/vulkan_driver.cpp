@@ -544,7 +544,7 @@ void VulkanDriver::draw_triangles(VkCommandBuffer cmd, VulkanIndexBuffer* index_
     vkCmdDrawIndexed(cmd, index_buffer->get_index_count(), 1, 0, 0, 0);
 }
 
-void VulkanDriver::push_constants(VkCommandBuffer cmd, VkPipelineLayout pipeline_layout, void *data, uint32_t size, uint32_t offset, VkShaderStageFlags stage_flags) {
+void VulkanDriver::push_constants(VkCommandBuffer cmd, VkPipelineLayout pipeline_layout, const void *data, uint32_t size, uint32_t offset, VkShaderStageFlags stage_flags) {
     //VkCommandBuffer current_buffer = get_current_command_buffer();
     vkCmdPushConstants(cmd, pipeline_layout, stage_flags, offset, size, data);
 }

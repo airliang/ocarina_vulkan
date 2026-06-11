@@ -330,6 +330,21 @@ public:
     void reset_immediately() const noexcept {
         reset(false)->accept(*device_->command_visitor());
     }
+
+    void copy_from_immediately(const void* src, uint32_t size, uint32_t dst_offset = 0) noexcept
+    { 
+        if (src == nullptr || size == 0) return;
+        if (mapped_ == nullptr) {
+            map();
+        }
+        memcpy(mapped_, src, size);
+    }
+
+protected:
+    virtual void map() noexcept {}
+    virtual void unmap() noexcept {}
+
+    void* mapped_ = nullptr;
 };
 
 template<typename T>
