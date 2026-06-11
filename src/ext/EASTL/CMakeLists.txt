@@ -65,7 +65,7 @@ if (WIN32 OR EASTL_ENABLE_MIMALLOC)
         target_compile_options(mimalloc-static PRIVATE /W0)
         target_compile_definitions(mimalloc-static PUBLIC _CRT_SECURE_NO_WARNINGS=1)
     endif ()
-    set_target_properties(mimalloc-static PROPERTIES UNITY_BUILD ON)
+    set_target_properties(mimalloc-static PROPERTIES UNITY_BUILD ON FOLDER "ext")
     target_compile_definitions(EASTL PRIVATE EASTL_MIMALLOC_ENABLED=1 EASTL_PROJECT=1)
     target_link_libraries(EASTL PRIVATE mimalloc-static)
 endif ()
@@ -74,7 +74,8 @@ set_target_properties(EASTL PROPERTIES
         UNITY_BUILD ON
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
-        WINDOWS_EXPORT_ALL_SYMBOLS ON)
+        WINDOWS_EXPORT_ALL_SYMBOLS ON
+        FOLDER "ext")
 
 #-------------------------------------------------------------------------------------------
 # Defines

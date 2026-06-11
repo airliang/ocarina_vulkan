@@ -7,8 +7,14 @@
 **/*.vcxproj
 **/*.vcxproj.filters
 **/*.pdb
+**/*.obj
 .cache/
 
 .idea/
 .vscode/
 .vs/
+/cmake
+/x64
+/lib
+/build_check
+/bin

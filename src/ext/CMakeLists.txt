@@ -1,12 +1,14 @@
 
 # Aggregate third-party dependencies for core/ast; not a standalone library.
 add_library(ocarina-ext INTERFACE)
+set_target_properties(ocarina-ext PROPERTIES FOLDER "ext")
 
 add_library(xxhash INTERFACE)
 target_include_directories(xxhash INTERFACE xxHash)
 target_compile_definitions(xxhash INTERFACE XXH_INLINE_ALL)
 set_target_properties(xxhash PROPERTIES
-        UNITY_BUILD OFF)
+        UNITY_BUILD OFF
+        FOLDER "ext")
 
 set(FMT_OS OFF CACHE BOOL "" FORCE)
 #add_subdirectory(fmt)
@@ -30,25 +32,18 @@ if(NOT TARGET spdlog)
     add_subdirectory(spdlog)
 endif()
 set_target_properties(spdlog PROPERTIES
-        UNITY_BUILD FALSE)
+        UNITY_BUILD FALSE
+        FOLDER "ext")
 #target_link_libraries(spdlog PUBLIC fmt::fmt-header-only)
 target_link_libraries(ocarina-ext INTERFACE spdlog)
 target_include_directories(ocarina-ext INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/spdlog/include/spdlog)
 
-add_subdirectory(glfw)
-#add_subdirectory(imgui)
-add_library(glfw_config INTERFACE)
-target_link_libraries(glfw_config INTERFACE glfw)
-
 add_subdirectory(stblib)
 
-add_library(ocarina-gui-ext INTERFACE)
-target_link_libraries(ocarina-gui-ext INTERFACE glfw_config)
-
 add_subdirectory(SDL)
-set_property(TARGET SDL_uclibc PROPERTY FOLDER "ocarina/ext/SDL3")
-set_property(TARGET SDL3_test PROPERTY FOLDER "ocarina/ext/SDL3")
-set_property(TARGET SDL3-shared PROPERTY FOLDER "ocarina/ext/SDL3")
+set_property(TARGET SDL_uclibc PROPERTY FOLDER "ext/SDL3")
+set_property(TARGET SDL3_test PROPERTY FOLDER "ext/SDL3")
+set_property(TARGET SDL3-shared PROPERTY FOLDER "ext/SDL3")
 
 cmake_policy(SET CMP0148 NEW)
 
@@ -66,18 +61,26 @@ endif ()
 
 
 add_subdirectory(SPIRV-Cross)
-set_property(TARGET spirv-cross PROPERTY FOLDER "ocarina/ext/spirv")
-set_property(TARGET spirv-cross-c PROPERTY FOLDER "ocarina/ext/spirv")
-set_property(TARGET spirv-cross-core PROPERTY FOLDER "ocarina/ext/spirv")
-set_property(TARGET spirv-cross-glsl PROPERTY FOLDER "ocarina/ext/spirv")
-set_property(TARGET spirv-cross-hlsl PROPERTY FOLDER "ocarina/ext/spirv")
-set_property(TARGET spirv-cross-msl PROPERTY FOLDER "ocarina/ext/spirv")
-set_property(TARGET spirv-cross-cpp PROPERTY FOLDER "ocarina/ext/spirv")
-set_property(TARGET spirv-cross-reflect PROPERTY FOLDER "ocarina/ext/spirv")
-set_property(TARGET spirv-cross-util PROPERTY FOLDER "ocarina/ext/spirv")
+set(_ocarina_spirv_targets
+    spirv-cross spirv-cross-c spirv-cross-core spirv-cross-glsl
+    spirv-cross-hlsl spirv-cross-msl spirv-cross-cpp spirv-cross-reflect
+    spirv-cross-util)
+foreach(_t IN LISTS _ocarina_spirv_targets)
+    if(TARGET ${_t})
+        set_target_properties(${_t} PROPERTIES FOLDER "ext/spirv")
+    endif()
+endforeach()
+
+# Group remaining third-party targets under ext/ in Visual Studio.
+set(_ocarina_ext_targets
+    xxhash ocarina-ext EASTL mimalloc-static EABase spdlog)
+foreach(_t IN LISTS _ocarina_ext_targets)
+    if(TARGET ${_t})
+        set_target_properties(${_t} PROPERTIES FOLDER "ext")
+    endif()
+endforeach()
 
 target_link_libraries(ocarina-ext INTERFACE
-        ocarina-gui-ext
         ocarina-ext-stb
         ${PYTHON_LIBRARIES}
         xxhash
