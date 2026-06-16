@@ -78,5 +78,14 @@ public:
         image_info.sampler = sampler_;
         return image_info;
     }
+
+    VkDescriptorImageInfo get_sampled_image_descriptor_info() const
+    {
+        VkDescriptorImageInfo image_info{};
+        image_info.imageLayout = image_layout_;
+        image_info.imageView = image_view_;
+        image_info.sampler = VK_NULL_HANDLE;
+        return image_info;
+    }
 };
 }// namespace ocarina

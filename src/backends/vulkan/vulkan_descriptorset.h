@@ -41,6 +41,7 @@ public:
 class VulkanDescriptorImage : public VulkanDescriptor{
 public:
     std::string default_sampler_name_;
+    VkDescriptorType descriptor_type_ = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 };
 
 class VulkanDescriptorSampler : public VulkanDescriptor {

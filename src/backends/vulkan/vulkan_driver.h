@@ -104,6 +104,8 @@ public:
     }
 
     VkSampler get_vulkan_sampler(const TextureSampler& sampler);
+    /// Bindless sampler table: 0=linear wrap, 1=linear clamp, 2=point wrap, 3=point clamp.
+    VkSampler get_bindless_sampler(uint32_t index);
     
     VkQueue get_graphics_queue() const {
         return graphics_queue;

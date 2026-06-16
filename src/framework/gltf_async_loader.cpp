@@ -11,6 +11,8 @@
 #include "primitive.h"
 #include "mesh.h"
 #include "material.h"
+#include "scene.h"
+#include "bounding_box.h"
 #include "resource_manager.h"
 #include "rhi/vertex_buffer.h"
 #include "rhi/index_buffer.h"
@@ -146,12 +148,6 @@ GltfAsyncLoader::GltfAsyncLoader(const std::string& gltf_file, Device* device, M
     , shared_material_(shared_material) {}
 
 GltfAsyncLoader::~GltfAsyncLoader() noexcept {
-    for (Primitive* primitive : primitive_storage_) {
-        ocarina::delete_with_allocator<Primitive>(primitive);
-    }
-    primitive_storage_.clear();
-    primitives_.clear();
-
     for (Mesh* mesh : mesh_storage_) {
         ocarina::delete_with_allocator<Mesh>(mesh);
     }
@@ -202,7 +198,12 @@ bool GltfAsyncLoader::load_gltf_file() {
         load_gltf_node(gltf_model.nodes[node_index], gltf_model, identity);
     }
 
+    build_scene_clusters();
     return true;
+}
+
+void GltfAsyncLoader::build_scene_clusters() {
+    scene_.build_cluster_hierarchy();
 }
 
 void GltfAsyncLoader::load_gltf_node(
@@ -216,17 +217,15 @@ void GltfAsyncLoader::load_gltf_node(
         for (size_t primitive_index = 0; primitive_index < mesh.primitives.size(); ++primitive_index) {
             const tinygltf::Primitive& gltf_primitive = mesh.primitives[primitive_index];
 
-            Primitive* prim = ocarina::new_with_allocator<Primitive>();
-            primitive_storage_.push_back(prim);
-            primitives_.push_back(prim);
+            Primitive& prim = scene_.emplace_primitive();
 
             float3 translation;
             quaternion rotation;
             float3 scale;
             decompose(world_transform, &translation, &rotation, &scale);
-            prim->set_position(translation);
-            prim->set_rotation(rotation);
-            prim->set_scale(scale);
+            prim.set_position(translation);
+            prim.set_rotation(rotation);
+            prim.set_scale(scale);
 
             Mesh* mesh_obj = nullptr;
             const uint64_t geometry_key = make_geometry_key(gltf_primitive);
@@ -241,8 +240,11 @@ void GltfAsyncLoader::load_gltf_node(
                 mesh_storage_.push_back(mesh_obj);
 
                 VertexBuffer* vb = device_->create_vertex_buffer();
-                load_vertex_attributes(vb, gltf_primitive, model);
+                const BoundingBox local_bounds = load_vertex_attributes(vb, gltf_primitive, model);
                 mesh_obj->set_vertex_buffer(vb);
+                if (local_bounds.valid) {
+                    mesh_obj->set_local_bounds(local_bounds.min, local_bounds.max);
+                }
 
                 if (gltf_primitive.indices >= 0) {
                     IndexBuffer* ib = load_index_buffer(gltf_primitive, model);
@@ -252,10 +254,10 @@ void GltfAsyncLoader::load_gltf_node(
                 geometry_meshes_.emplace(geometry_key, mesh_obj);
             }
 
-            prim->set_mesh(mesh_obj);
+            prim.set_mesh(mesh_obj);
 
             if (shared_material_ != nullptr) {
-                prim->set_material(shared_material_);
+                prim.set_material(shared_material_);
             }
 
             if (gltf_primitive.material >= 0 && gltf_primitive.material < static_cast<int>(model.materials.size())) {
@@ -272,13 +274,14 @@ void GltfAsyncLoader::load_gltf_node(
     }
 }
 
-void GltfAsyncLoader::load_vertex_attributes(
+BoundingBox GltfAsyncLoader::load_vertex_attributes(
     VertexBuffer* vb,
     const tinygltf::Primitive& primitive,
     const tinygltf::Model& model) {
     const auto start = std::chrono::steady_clock::now();
     const uint64_t geometry_key = make_geometry_key(primitive);
     bool has_color = false;
+    BoundingBox local_bounds;
 
     for (const auto& attr : primitive.attributes) {
         const std::string& name = attr.first;
@@ -306,6 +309,11 @@ void GltfAsyncLoader::load_vertex_attributes(
         if (name == "POSITION") {
             if (type == TINYGLTF_TYPE_VEC3 && component_type == TINYGLTF_COMPONENT_TYPE_FLOAT) {
                 vb->add_vertex_stream(VertexAttributeType::Enum::Position, count, sizeof(Vector3), data);
+                const auto* positions = reinterpret_cast<const Vector3*>(data);
+                for (int vertex_index = 0; vertex_index < count; ++vertex_index) {
+                    const Vector3& position = positions[vertex_index];
+                    local_bounds.expand(make_float3(position.x, position.y, position.z));
+                }
             }
         } else if (name == "NORMAL") {
             if (type == TINYGLTF_TYPE_VEC3 && component_type == TINYGLTF_COMPONENT_TYPE_FLOAT) {
@@ -352,6 +360,8 @@ void GltfAsyncLoader::load_vertex_attributes(
         geometry_key,
         position_vertex_count(vb),
         elapsed_ms(start));
+
+    return local_bounds;
 }
 
 IndexBuffer* GltfAsyncLoader::load_index_buffer(const tinygltf::Primitive& primitive, const tinygltf::Model& model) {
@@ -466,13 +476,9 @@ Texture* GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::Model
     return texture;
 }
 
-void GltfAsyncLoader::load_material(Primitive* prim, const tinygltf::Material& material, const tinygltf::Model& model) {
-    if (prim == nullptr) {
-        return;
-    }
-
+void GltfAsyncLoader::load_material(Primitive& prim, const tinygltf::Material& material, const tinygltf::Model& model) {
     if (shared_material_ != nullptr) {
-        prim->set_material(shared_material_);
+        prim.set_material(shared_material_);
     }
 
     if (material.pbrMetallicRoughness.baseColorTexture.index < 0) {
@@ -490,8 +496,8 @@ void GltfAsyncLoader::load_material(Primitive* prim, const tinygltf::Material& m
         return;
     }
 
-    prim->add_bindless_texture(hash64("albedo"), texture);
-    prim->add_sampler(hash64("sampler_albedo"), *texture->get_sampler_pointer());
+    prim.add_bindless_texture(hash64("albedo"), texture);
+    prim.add_sampler(hash64("sampler_albedo"), *texture->get_sampler_pointer());
 }
 
 }// namespace ocarina

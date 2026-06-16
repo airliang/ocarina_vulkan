@@ -1,4 +1,5 @@
 #include "core/stl.h"
+#include "core/hash.h"
 #include "math/basic_types.h"
 #include "rhi/context.h"
 #include "rhi/common.h"
@@ -12,8 +13,10 @@
 #include "framework/material.h"
 #include "framework/async_loader.h"
 #include "framework/frame_resources.h"
-#include "framework/gltf_async_loader.h"
 #include "framework/scene.h"
+#include "framework/mesh.h"
+#include "framework/internal_textures.h"
+#include "framework/bindless_texture_registry.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/renderpass.h"
 
@@ -26,11 +29,19 @@ struct GlobalUniformBuffer {
     float4 light_pos;
 };
 
+namespace {
+
+constexpr uint32_t kGridCount = 50;
+constexpr float kGridSpacing = 2.0f;
+constexpr uint32_t kTotalCubes = kGridCount * kGridCount * kGridCount;
+
+}// namespace
+
 int main(int argc, char* argv[]) {
     RHIContext& context = RHIContext::instance();
 
     const uint2 window_size = make_uint2(1280, 720);
-    auto window = create_sdl_window("FlightHelmet glTF", window_size);
+    auto window = create_sdl_window("Culling Test - 100x100x100 Cubes", window_size);
 
     InstanceCreation instance_creation{};
     instance_creation.windowHandle = window->get_window_handle();
@@ -40,13 +51,13 @@ int main(int argc, char* argv[]) {
 
     const fs::path source_dir = fs::path(__FILE__).parent_path();
     const fs::path src_root = source_dir.parent_path();
-    const fs::path repo_root = src_root.parent_path();
-    const fs::path gltf_path = repo_root / "res/FlightHelmet/glTF/FlightHelmet.gltf";
     const fs::path shader_vert = src_root / "backends/vulkan/builtin/mesh.vert";
     const fs::path shader_frag = src_root / "backends/vulkan/builtin/mesh.frag";
 
     Material* material = nullptr;
-    GltfAsyncLoader* gltf_loader = nullptr;
+    Mesh* cube_mesh = nullptr;
+    Scene* scene = nullptr;
+    Texture* white_texture = nullptr;
 
     AsyncLoader async_loader(&device, [&](Device* load_device) {
         std::set<string> options;
@@ -60,18 +71,39 @@ int main(int argc, char* argv[]) {
             options);
 
         material = ResourceManager::instance().create_material(load_device, vertex_shader, pixel_shader);
-        gltf_loader = ocarina::new_with_allocator<GltfAsyncLoader>(
-            fs::absolute(gltf_path).string(),
-            load_device,
-            material);
-        gltf_loader->Execute();
+        cube_mesh = Mesh::create_cube(load_device);
+        white_texture = InternalTextures::instance().get_white_texture(load_device);
+        BindlessTextureRegistry::instance().allocate_index(white_texture);
+
+        scene = ocarina::new_with_allocator<Scene>();
+        scene->reserve_primitives(kTotalCubes);
+
+        for (uint32_t height = 0; height < kGridCount; ++height) {
+            for (uint32_t row = 0; row < kGridCount; ++row) {
+                for (uint32_t col = 0; col < kGridCount; ++col) {
+                    Primitive& primitive = scene->emplace_primitive();
+                    primitive.set_position(make_float3(
+                        static_cast<float>(col) * kGridSpacing,
+                        static_cast<float>(height) * kGridSpacing,
+                        static_cast<float>(row) * kGridSpacing));
+                    primitive.set_mesh(cube_mesh);
+                    primitive.set_material(material);
+                    primitive.add_bindless_texture(hash64("albedo"), white_texture);
+                    primitive.add_sampler(hash64("sampler_albedo"), *white_texture->get_sampler_pointer());
+                }
+            }
+        }
+
+        scene->build_cluster_hierarchy();
     });
 
     Camera camera;
     window->add_event_listener(&camera);
     camera.set_aspect_ratio(1280.0f / 720.0f);
-    camera.set_position({0.0f, 0.05f, -0.45f});
-    camera.set_target({0.0f, 0.05f, 0.0f});
+    camera.set_znear(0.1f);
+    camera.set_zfar(2000.0f);
+    camera.set_position({-80.0f, 120.0f, -80.0f});
+    camera.set_target({99.0f, 99.0f, 99.0f});
 
     const uint64_t model_matrix_name_id = hash64("modelMatrix");
     const uint64_t albedo_index_name_id = hash64("albedoIndex");
@@ -96,21 +128,23 @@ int main(int argc, char* argv[]) {
     };
 
     RenderPassCreation render_pass_creation;
-    render_pass_creation.swapchain_clear_color = make_float4(0.15f, 0.15f, 0.18f, 1.0f);
+    render_pass_creation.swapchain_clear_color = make_float4(0.08f, 0.08f, 0.1f, 1.0f);
     render_pass_creation.swapchain_clear_depth = 1.0f;
     render_pass_creation.swapchain_clear_stencil = 0;
     RHIRenderPass* render_pass = device.create_render_pass(render_pass_creation);
 
+    bool frustum_culling_enabled = true;
+
     Renderer renderer(&device);
     renderer.set_camera(&camera);
+    renderer.set_frustum_culling_enabled(frustum_culling_enabled);
     renderer.set_async_loader(&async_loader, nullptr, [&]() {
-        if (gltf_loader == nullptr) {
+        if (scene == nullptr) {
             return;
         }
 
-        Scene& scene = gltf_loader->get_scene();
-        for (uint32_t index = 0; index < scene.primitive_count(); ++index) {
-            Primitive& primitive = scene.primitive(index);
+        for (uint32_t index = 0; index < scene->primitive_count(); ++index) {
+            Primitive& primitive = scene->primitive(index);
             primitive.set_update_push_constant_function(update_push_constant);
             primitive.set_geometry_data_setup(&device, [&](Primitive& prim) {
                 if (material != nullptr) {
@@ -119,24 +153,26 @@ int main(int argc, char* argv[]) {
                 (void)prim;
             });
         }
-        renderer.set_scene(&scene);
+        renderer.set_scene(scene);
     });
 
     FrameResources::instance().set_update_callback([&](FrameResources&, double dt) {
+        (void)dt;
+        renderer.set_frustum_culling_enabled(frustum_culling_enabled);
+
         DescriptorSet* global_descriptor_set = FrameResources::instance().get_global_descriptor_set("global_ubo");
         const math3d::Vector3D& cam_position = camera.get_position();
         GlobalUniformBuffer global_ubo_data = {
             camera.get_projection_matrix().transpose(),
             camera.get_view_matrix().transpose(),
             make_float4(cam_position[0], cam_position[1], cam_position[2], 1.0f),
-            make_float4(5.0f, 10.0f, 5.0f, 1.0f)};
+            make_float4(200.0f, 300.0f, 200.0f, 1.0f)};
         global_descriptor_set->update_buffer(hash64("global_ubo"), &global_ubo_data, sizeof(GlobalUniformBuffer));
 
         render_pass->clear_draw_call_items();
-        if (gltf_loader != nullptr) {
-            Scene& scene = gltf_loader->get_scene();
-            for (uint32_t primitive_index : scene.visible_primitive_indices()) {
-                Primitive& primitive = scene.primitive(primitive_index);
+        if (scene != nullptr) {
+            for (uint32_t primitive_index : scene->visible_primitive_indices()) {
+                Primitive& primitive = scene->primitive(primitive_index);
                 DrawCallItem draw_item = primitive.get_draw_call_item(&device, render_pass);
                 render_pass->add_draw_call(draw_item);
             }
@@ -147,23 +183,17 @@ int main(int argc, char* argv[]) {
 
     ImguiRenderer imgui_renderer(*window);
     imgui_renderer.init(device);
-    const string window_name = "FlightHelmet glTF";
+    const string window_name = "Culling Test";
     imgui_renderer.set_frame_callback([&]() {
         window->widgets()->push_window(window_name);
         window->widgets()->text("FPS: %.2f", 1.0f / renderer.dt());
-        const math3d::Vector3D& cam_position = camera.get_position();
-        const math3d::Vector3D cam_forward = math3d::normalize(
-            math3d::operator-(camera.get_target(), cam_position));
-        window->widgets()->text(
-            "Camera position: (%.3f, %.3f, %.3f)",
-            cam_position[0], cam_position[1], cam_position[2]);
-        window->widgets()->text(
-            "Camera forward: (%.3f, %.3f, %.3f)",
-            cam_forward[0], cam_forward[1], cam_forward[2]);
-        if (gltf_loader != nullptr) {
-            const Scene& scene = gltf_loader->get_scene();
-            window->widgets()->text("Primitives: %zu", scene.primitives().size());
-            window->widgets()->text("Visible primitives: %zu", scene.visible_primitive_indices().size());
+        window->widgets()->check_box("Frustum culling", &frustum_culling_enabled);
+        if (scene != nullptr) {
+            window->widgets()->text("Total cubes: %u", scene->primitive_count());
+            window->widgets()->text("Visible cubes: %zu", scene->visible_primitive_indices().size());
+            window->widgets()->text(
+                "Culling: %s",
+                frustum_culling_enabled ? "enabled" : "disabled");
         }
         window->widgets()->pop_window();
     });
@@ -174,10 +204,11 @@ int main(int argc, char* argv[]) {
     renderer.set_render_task_end_callback([&]() {
         imgui_renderer.cleanup();
         window->remove_event_listener(&camera);
-        if (gltf_loader != nullptr) {
-            ocarina::delete_with_allocator<GltfAsyncLoader>(gltf_loader);
-            gltf_loader = nullptr;
+        if (scene != nullptr) {
+            ocarina::delete_with_allocator<Scene>(scene);
+            scene = nullptr;
         }
+        InternalTextures::instance().cleanup();
     });
 
     renderer.run();

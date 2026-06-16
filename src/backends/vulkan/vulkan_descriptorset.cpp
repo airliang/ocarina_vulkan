@@ -63,7 +63,9 @@ uint32_t VulkanDescriptorSet::update_bindless_texture(uint64_t name_id, Texture 
     for (size_t i = 0; i < binding_count; ++i)
     {
         VulkanShaderVariableBinding *binding = layout_->get_binding(i);
-        if (binding && binding->is_bindless && binding->type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) {
+        if (binding && binding->is_bindless &&
+            (binding->type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
+             binding->type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)) {
             if (writer_) {
                 return writer_->update_bindless_texture(name_id, texture);
             }
@@ -76,7 +78,9 @@ void VulkanDescriptorSet::update_bindless_texture_at_index(uint32_t index, Textu
     size_t binding_count = layout_->get_bindings_count();
     for (size_t i = 0; i < binding_count; ++i) {
         VulkanShaderVariableBinding* binding = layout_->get_binding(i);
-        if (binding && binding->is_bindless && binding->type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) {
+        if (binding && binding->is_bindless &&
+            (binding->type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
+             binding->type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)) {
             if (writer_) {
                 writer_->update_bindless_texture_at_index(index, texture);
             }
@@ -237,7 +241,9 @@ bool VulkanDescriptorSetLayout::build_layout()
 
     std::unordered_map<VkDescriptorType, uint32_t> type_totals;
     for (const VulkanShaderVariableBinding& binding : bindings_) {
-        const uint32_t per_set_count = binding.is_bindless ? MAX_BINDLESS_TEXTURE_ARRAY_SIZE : binding.count;
+        const uint32_t per_set_count = binding.is_bindless
+            ? get_vulkan_bindless_resource_max_count(binding.type)
+            : binding.count;
         const uint32_t set_count = usage_ == DescriptorSetUsage::PerInstance ? max_sets : 1;
         type_totals[binding.type] += per_set_count * set_count;
     }

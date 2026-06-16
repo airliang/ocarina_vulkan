@@ -12,6 +12,8 @@
 #include "rhi/graphics_descriptions.h"
 #include "rhi/command_buffer.h"
 #include "render_task.h"
+#include "frustum.h"
+#include "renderer_primitive_cull_task.h"
 #include "ext/enkiTS/src/TaskScheduler.h"
 
 namespace enki { class TaskScheduler; struct ITaskSet; }
@@ -20,6 +22,8 @@ namespace ocarina {
 class Primitive;
 class RHIRenderPass;
 class Device;
+class Scene;
+class Camera;
 
 
 class Renderer : public concepts::Noncopyable {
@@ -71,6 +75,15 @@ public:
         render_passes_.remove(render_pass);
     }
 
+    void set_scene(Scene* scene) noexcept { scene_ = scene; }
+    void set_camera(Camera* camera) noexcept { camera_ = camera; }
+
+    void set_frustum_culling_enabled(bool enabled) noexcept { frustum_culling_enabled_ = enabled; }
+    [[nodiscard]] bool frustum_culling_enabled() const noexcept { return frustum_culling_enabled_; }
+
+    void cull_scene();
+    void cull_visible_primitives_parallel(Scene& scene, const Frustum& frustum);
+
 private:
     RenderCallback render = nullptr;
     RenderGUIImplCallback render_gui_impl_ = nullptr;
@@ -87,6 +100,11 @@ protected:
     enki::ITaskSet* async_loader_task_ = nullptr;
     ocarina::function<void()> async_wait_fn_ = nullptr;
     AsyncLoaderCompleteCallback async_complete_fn_ = nullptr;
+
+    Scene* scene_ = nullptr;
+    Camera* camera_ = nullptr;
+    RendererPrimitiveCullTask primitive_cull_task_;
+    bool frustum_culling_enabled_ = true;
 
     bool shutdown_called_ = false;
 };

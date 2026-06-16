@@ -398,6 +398,7 @@ void DXCCompiler::run_spriv_reflection(const std::vector<uint32_t> &spriv, Shade
     {
         uint32_t set = spirvmodule.get_decoration(resource.id, spv::DecorationDescriptorSet);
         uint32_t binding = spirvmodule.get_decoration(resource.id, spv::DecorationBinding);
+        auto& type = spirvmodule.get_type(resource.type_id);
 
         ShaderReflection::ShaderResource shader_resource;
         shader_resource.name = spirvmodule.get_name(resource.id);
@@ -405,6 +406,9 @@ void DXCCompiler::run_spriv_reflection(const std::vector<uint32_t> &spriv, Shade
         shader_resource.binding = binding;
         shader_resource.parameter_type = ShaderReflection::ResourceType::Sampler;
         shader_resource.shader_type = (uint32_t)shader_type;
+        if (!type.array.empty() && type.array[0] == 0) {
+            shader_resource.is_bindless = true;
+        }
         shader_reflection.shader_resources.push_back(std::move(shader_resource));
     }
 

@@ -2,7 +2,9 @@
 
 #include "core/header.h"
 #include "core/stl.h"
+#include "bounding_box.h"
 #include "math/basic_types.h"
+#include "scene.h"
 #include "ext/enkiTS/src/TaskScheduler.h"
 #include "rhi/device.h"
 
@@ -31,14 +33,19 @@ public:
 
     void Execute() override;
 
-    [[nodiscard]] const std::vector<Primitive*>& get_primitives() const { return primitives_; }
+    [[nodiscard]] Scene& get_scene() noexcept { return scene_; }
+    [[nodiscard]] const Scene& get_scene() const noexcept { return scene_; }
 
 private:
+    void build_scene_clusters();
     bool load_gltf_file();
     void load_gltf_node(const tinygltf::Node& node, const tinygltf::Model& model, const float4x4& parent_transform);
-    void load_vertex_attributes(VertexBuffer* vb, const tinygltf::Primitive& primitive, const tinygltf::Model& model);
+    [[nodiscard]] BoundingBox load_vertex_attributes(
+        VertexBuffer* vb,
+        const tinygltf::Primitive& primitive,
+        const tinygltf::Model& model);
     IndexBuffer* load_index_buffer(const tinygltf::Primitive& primitive, const tinygltf::Model& model);
-    void load_material(Primitive* prim, const tinygltf::Material& material, const tinygltf::Model& model);
+    void load_material(Primitive& prim, const tinygltf::Material& material, const tinygltf::Model& model);
     Texture* load_gltf_image(int image_index, const tinygltf::Model& model);
     [[nodiscard]] static uint64_t make_geometry_key(const tinygltf::Primitive& primitive);
 
@@ -46,12 +53,11 @@ private:
     fs::path gltf_directory_;
     Device* device_ = nullptr;
     Material* shared_material_ = nullptr;
-    std::vector<Primitive*> primitives_;
-    std::vector<Primitive*> primitive_storage_;
     std::vector<Mesh*> mesh_storage_;
     std::unordered_map<int, Texture*> image_textures_;
     std::unordered_map<int, IndexBuffer*> index_buffer_cache_;
     std::unordered_map<uint64_t, Mesh*> geometry_meshes_;
+    Scene scene_;
     bool is_loaded_ = false;
 };
 

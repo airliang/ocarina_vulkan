@@ -2,9 +2,9 @@
 #include "common.hlsl"
 #include "push_constant.hlsl"
 
-[[vk::binding(0, MATERIAL_SET)]]SamplerState sampler_albedo;
-// No PER_OBJECT_SET in this shader: bindless is set 2 (GLOBAL=0, MATERIAL=1).
-[[vk::binding(0, 2)]]Texture2D g_textures[];
+
+[[vk::binding(0, MATERIAL_SET)]]Texture2D g_textures[];
+[[vk::binding(1, MATERIAL_SET)]]SamplerState samplers[];
 
 [[vk::push_constant]]
 PushConstants pushConstants;
@@ -21,7 +21,7 @@ struct VSOutput
 
 float4 main(VSOutput input) : SV_TARGET
 {
-	float4 color = g_textures[pushConstants.albedoIndex].Sample(sampler_albedo, input.UV);
+	float4 color = g_textures[pushConstants.albedoIndex].Sample(samplers[pushConstants.albedoSamplerIndex], input.UV);
 	float3 N = normalize(input.Normal);
 	float3 L = normalize(input.LightVec);
 	float3 V = normalize(input.ViewVec);

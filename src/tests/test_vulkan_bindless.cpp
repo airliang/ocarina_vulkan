@@ -41,6 +41,7 @@ struct GlobalUniformBuffer {
 struct PushConstants {
     float4x4 world_matrix;
     uint32_t albedo_index;
+    uint32_t albedo_sampler_index;
 };
 
 
@@ -63,25 +64,38 @@ int main(int argc, char *argv[]) {
     Material* material = nullptr;
     Mesh* quad_mesh = nullptr;
     Texture* texture = nullptr;
-    AsyncLoader async_loader(&device, [&material, &quad_mesh, &texture](Device* device) {
+    const fs::path source_dir = fs::path(__FILE__).parent_path();
+    const fs::path src_root = source_dir.parent_path();
+    const fs::path shader_vert = src_root / "backends/vulkan/builtin/texture.vert";
+    const fs::path shader_frag = src_root / "backends/vulkan/builtin/bindless_texture.frag";
+    const fs::path project_root = src_root.parent_path();
+    const fs::path texture_path = project_root / "res/textures/granite.png";
+
+    AsyncLoader async_loader(&device, [&material, &quad_mesh, &texture, &shader_vert, &shader_frag, &texture_path](Device* local_device) {
         // Your async task code here
         //Shader
         std::set<string> options;
-        handle_ty vertex_shader = device->create_shader_from_file("D:\\github\\Vision\\src\\ocarina\\src\\backends\\vulkan\\builtin\\texture.vert", ShaderType::VertexShader, options);
-        handle_ty pixel_shader = device->create_shader_from_file("D:\\github\\Vision\\src\\ocarina\\src\\backends\\vulkan\\builtin\\bindless_texture.frag", ShaderType::PixelShader, options);
+        handle_ty vertex_shader = local_device->create_shader_from_file(
+            fs::absolute(shader_vert).string(),
+            ShaderType::VertexShader,
+            options);
+        handle_ty pixel_shader = local_device->create_shader_from_file(
+            fs::absolute(shader_frag).string(),
+            ShaderType::PixelShader,
+            options);
 
-        material = ResourceManager::instance().create_material(device, vertex_shader, pixel_shader);
+        material = ResourceManager::instance().create_material(local_device, vertex_shader, pixel_shader);
 
-        Image image = Image::load("D:\\Github\\Vision\\src\\ocarina\\res\\textures\\granite.png", ColorSpace::SRGB);
+        Image image = Image::load(texture_path, ColorSpace::SRGB);
         TextureViewCreation texture_view = {};
         texture_view.mip_level_count = 0;
         texture_view.usage = TextureUsageFlags::ShaderReadOnly;
         TextureSampler sampler{ TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT };
-        texture = ResourceManager::instance().create_texture(device, image, texture_view, sampler);//device.create_texture(&image, texture_view, sampler);
+        texture = ResourceManager::instance().create_texture(local_device, image, texture_view, sampler);//device.create_texture(&image, texture_view, sampler);
 
         uint64_t albedo_name_id = hash64("albedo");
 
-        quad_mesh = ResourceManager::instance().create_mesh(device, "quad");
+        quad_mesh = ResourceManager::instance().create_mesh(local_device, "quad");
         
     });
 
@@ -121,7 +135,9 @@ int main(int argc, char *argv[]) {
 
     uint64_t name_id_world_matrix = hash64("modelMatrix");
     uint64_t name_id_albedo_index = hash64("albedoIndex");
+    uint64_t name_id_albedo_sampler_index = hash64("albedoSamplerIndex");
     uint64_t albedo_name_id = hash64("albedo");
+    constexpr uint32_t kAlbedoSamplerIndex = 0; // linear wrap
     auto update_push_constant = [&](Primitive &primitive) {
         // Setup push constant data if needed
         push_constants_data.world_matrix = primitive.get_world_matrix();
@@ -131,11 +147,16 @@ int main(int argc, char *argv[]) {
             sizeof(primitive.get_world_matrix()));
         Primitive::TextureHandle albedo_texture_handle = primitive.get_texture_handle(albedo_name_id);
         push_constants_data.albedo_index = albedo_texture_handle.bindless_index_;
+        push_constants_data.albedo_sampler_index = kAlbedoSamplerIndex;
         //primitive.set_push_constant_data(reinterpret_cast<const std::byte *>(&push_constants_data));
         primitive.set_push_constant_variable(
             name_id_albedo_index,
             reinterpret_cast<std::byte *>(&albedo_texture_handle.bindless_index_),
             sizeof(push_constants_data.albedo_index));
+        primitive.set_push_constant_variable(
+            name_id_albedo_sampler_index,
+            reinterpret_cast<std::byte *>(const_cast<uint32_t *>(&kAlbedoSamplerIndex)),
+            sizeof(kAlbedoSamplerIndex));
     };
 
     quad.set_draw_call_pre_render_function(pre_render_draw_item);

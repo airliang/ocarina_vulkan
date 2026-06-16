@@ -86,12 +86,16 @@ int main(int argc, char *argv[]) {
 
     AsyncLoader async_loader(&device, [&material, &triangle_mesh](Device* device) {
         std::set<string> options;
+        const fs::path source_dir = fs::path(__FILE__).parent_path();
+        const fs::path src_root = source_dir.parent_path();
+        const fs::path shader_vert = src_root / "backends/vulkan/builtin/triangle.vert";
+        const fs::path shader_frag = src_root / "backends/vulkan/builtin/triangle.frag";
         handle_ty vertex_shader = device->create_shader_from_file(
-            "D:\\github\\Vision\\src\\ocarina\\src\\backends\\vulkan\\builtin\\triangle.vert",
+            fs::absolute(shader_vert).string(),
             ShaderType::VertexShader,
             options);
         handle_ty pixel_shader = device->create_shader_from_file(
-            "D:\\github\\Vision\\src\\ocarina\\src\\backends\\vulkan\\builtin\\triangle.frag",
+            fs::absolute(shader_frag).string(),
             ShaderType::PixelShader,
             options);
 

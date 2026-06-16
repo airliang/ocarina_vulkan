@@ -116,7 +116,9 @@ void VulkanShader::get_shader_variables(const ShaderReflection &reflection) {
             variable.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         } else if (shader_resource.parameter_type == ShaderReflection::ResourceType::SRV)
         {
-            variable.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            variable.type = shader_resource.is_bindless
+                ? VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+                : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         } else if (shader_resource.parameter_type == ShaderReflection::ResourceType::UAV) {
             variable.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         } else if (shader_resource.parameter_type == ShaderReflection::ResourceType::Sampler) {

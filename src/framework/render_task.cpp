@@ -1,5 +1,6 @@
 #include "render_task.h"
 #include "renderer.h"
+#include "camera.h"
 #include "cmd_record_task.h"
 #include "rhi/device.h"
 #include "rhi/command_buffer.h"
@@ -94,6 +95,11 @@ void RenderTask::Execute() {
 }
 
 void RenderTask::render_one_frame() {
+    if (renderer_.camera_ != nullptr) {
+        renderer_.camera_->update(dt_);
+    }
+    renderer_.cull_scene();
+
     FrameResources::instance().update_per_frame(dt_);
 
     if (renderer_.render) {

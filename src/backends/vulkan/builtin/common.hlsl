@@ -8,7 +8,6 @@
 #define GLOBAL_SET 0
 #define MATERIAL_SET 1
 #define PER_OBJECT_SET 2
-#define BINDLESS_SET 3
 
 bool IsNaN(float x)
 {

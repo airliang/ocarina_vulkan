@@ -462,7 +462,7 @@ static uint32_t get_vulkan_bindless_resource_max_count(VkDescriptorType descript
         case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
             return MAX_BINDLESS_BUFFER_ARRAY_SIZE;//device_properties.limits.maxPerStageDescriptorStorageBuffers;
         case VK_DESCRIPTOR_TYPE_SAMPLER:
-            return MAX_BINDLESS_BUFFER_ARRAY_SIZE;//device_properties.limits.maxPerStageDescriptorSamplers;
+            return MAX_BINDLESS_SAMPLER_ARRAY_SIZE;
         default:
             return 1;
     }

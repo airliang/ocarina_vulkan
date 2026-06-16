@@ -470,6 +470,17 @@ VkSampler VulkanDriver::get_vulkan_sampler(const TextureSampler& sampler) {
     return vk_sampler;
 }
 
+VkSampler VulkanDriver::get_bindless_sampler(uint32_t index) {
+    static const TextureSampler bindless_sampler_configs[] = {
+        {TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT},
+        {TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::CLAMP},
+        {TextureSampler::Filter::POINT, TextureSampler::Address::REPEAT},
+        {TextureSampler::Filter::POINT, TextureSampler::Address::CLAMP},
+    };
+    OC_ASSERT(index < 4);
+    return get_vulkan_sampler(bindless_sampler_configs[index]);
+}
+
 VulkanPipeline* VulkanDriver::get_pipeline(const PipelineState &pipeline_state, VkRenderPass render_pass) {
     return vulkan_pipeline_manager->get_or_create_pipeline(pipeline_state, vulkan_device_, render_pass);
 }

@@ -7,4 +7,5 @@ struct PushConstants
     float4x4 modelMatrix;
 	uint albedoIndex;
     uint normalIndex;
+    uint albedoSamplerIndex;
 };

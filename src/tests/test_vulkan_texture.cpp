@@ -53,18 +53,26 @@ int main(int argc, char *argv[]) {
 
     AsyncLoader async_loader(&device, [&material, &quad_mesh, &texture](Device* device) {
         std::set<string> options;
+
+        const fs::path source_dir = fs::path(__FILE__).parent_path();
+        const fs::path src_root = source_dir.parent_path();
+        const fs::path shader_vert = src_root / "backends/vulkan/builtin/texture.vert";
+        const fs::path shader_frag = src_root / "backends/vulkan/builtin/texture.frag";
+        const fs::path project_root = src_root.parent_path();
+        const fs::path texture_path = project_root / "res/textures/granite.png";
+
         handle_ty vertex_shader = device->create_shader_from_file(
-            "D:\\github\\Vision\\src\\ocarina\\src\\backends\\vulkan\\builtin\\texture.vert",
+            fs::absolute(shader_vert).string(),
             ShaderType::VertexShader,
             options);
         handle_ty pixel_shader = device->create_shader_from_file(
-            "D:\\github\\Vision\\src\\ocarina\\src\\backends\\vulkan\\builtin\\texture.frag",
+            fs::absolute(shader_frag).string(),
             ShaderType::PixelShader,
             options);
 
         material = ResourceManager::instance().create_material(device, vertex_shader, pixel_shader);
 
-        Image image = Image::load("D:\\Github\\Vision\\src\\ocarina\\res\\textures\\granite.png", ColorSpace::SRGB);
+        Image image = Image::load(texture_path, ColorSpace::SRGB);
         TextureViewCreation texture_view = {};
         texture_view.mip_level_count = 0;
         texture_view.usage = TextureUsageFlags::ShaderReadOnly;

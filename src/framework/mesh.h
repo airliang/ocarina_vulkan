@@ -2,6 +2,7 @@
 
 #include "core/header.h"
 #include "core/stl.h"
+#include "bounding_box.h"
 #include "rhi/graphics_descriptions.h"
 
 namespace ocarina {
@@ -19,11 +20,19 @@ public:
     OC_MAKE_MEMBER_GETTER(index_buffer, )
     
     static Mesh* create_quad(Device* device);
+    static Mesh* create_cube(Device* device);
+    static Mesh* create_sphere(Device* device);
     void set_vertex_buffer(VertexBuffer* vertex_buffer) { vertex_buffer_ = vertex_buffer; }
     void set_index_buffer(IndexBuffer* index_buffer) { index_buffer_ = index_buffer; }
+
+    void set_local_bounds(const float3& min_point, const float3& max_point) noexcept;
+    [[nodiscard]] bool has_local_bounds() const noexcept { return local_bounds_.valid; }
+    [[nodiscard]] const BoundingBox& get_local_bounds() const noexcept { return local_bounds_; }
+
 protected:
     VertexBuffer* vertex_buffer_ = nullptr;
     IndexBuffer* index_buffer_ = nullptr;
+    BoundingBox local_bounds_;
 };
 
 constexpr uint32_t MAX_BUILDIN_MESH = 3;
@@ -63,11 +72,15 @@ public:
 };
 
 class Cube : public Mesh {
-    
+public:
+    explicit Cube(Device* device);
+    ~Cube();
 };
 
 class Sphere : public Mesh {
-    
+public:
+    explicit Sphere(Device* device, uint32_t slice_count = 32, uint32_t stack_count = 16);
+    ~Sphere();
 };
 
 }// namespace ocarina
