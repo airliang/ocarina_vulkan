@@ -190,9 +190,16 @@ void VulkanCommandBuffer::begin() {
     begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT; // Adjust as needed
     begin_info.pInheritanceInfo = nullptr; // Only relevant for secondary command buffers
     VK_CHECK_RESULT(vkBeginCommandBuffer(vulkan_command_buffer_, &begin_info));
+
+    if (queue_type_ == QueueType::Graphics) {
+        VulkanDriver::instance().write_gpu_timestamp_begin(vulkan_command_buffer_);
+    }
 }
 
 void VulkanCommandBuffer::end() {
+    if (queue_type_ == QueueType::Graphics) {
+        VulkanDriver::instance().write_gpu_timestamp_end(vulkan_command_buffer_);
+    }
     VK_CHECK_RESULT(vkEndCommandBuffer(vulkan_command_buffer_));
 }
 

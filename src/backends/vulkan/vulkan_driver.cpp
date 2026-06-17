@@ -56,6 +56,12 @@ void VulkanDriver::terminate()
 
     destroy_internal_textures();
 
+    if (gpu_timestamp_query_pool_ != VK_NULL_HANDLE) {
+        vkDestroyQueryPool(device(), gpu_timestamp_query_pool_, nullptr);
+        gpu_timestamp_query_pool_ = VK_NULL_HANDLE;
+    }
+    gpu_timestamp_written_.clear();
+
     for (auto& it : samplers_)
     {
         vkDestroySampler(device(), it.second, nullptr);
@@ -369,6 +375,18 @@ void VulkanDriver::initialize()
     create_command_buffers();
 
     create_internal_textures();
+
+    // GPU timestamp queries (2 per in-flight frame).
+    if (gpu_timestamp_query_pool_ == VK_NULL_HANDLE && frames_in_flight_ > 0) {
+        VkQueryPoolCreateInfo query_info{};
+        query_info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+        query_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
+        query_info.queryCount = frames_in_flight_ * 2;
+        VK_CHECK_RESULT(vkCreateQueryPool(device(), &query_info, nullptr, &gpu_timestamp_query_pool_));
+        gpu_timestamp_period_ns_ = static_cast<double>(vulkan_device_->device_limits().timestampPeriod);
+        gpu_frame_time_ms_ = 0.0;
+        gpu_timestamp_written_.assign(frames_in_flight_, 0u);
+    }
 }
 
 void VulkanDriver::create_frame_sync()
@@ -490,11 +508,59 @@ void VulkanDriver::begin_frame()
     FrameSync &frame = frame_sync_[current_frame_];
     VK_CHECK_RESULT(vkWaitForFences(device(), 1, &frame.in_flight_fence, VK_TRUE, UINT64_MAX));
 
+    // Resolve GPU timestamp for the last time we used this frame slot (fence already signaled => no stall).
+    if (gpu_timestamp_query_pool_ != VK_NULL_HANDLE) {
+        const uint32_t query_base = current_frame_ * 2;
+        if (current_frame_ < gpu_timestamp_written_.size() && gpu_timestamp_written_[current_frame_] != 0u) {
+            uint64_t timestamps[2] = {0, 0};
+            const VkResult qr = vkGetQueryPoolResults(
+                device(),
+                gpu_timestamp_query_pool_,
+                query_base,
+                2,
+                sizeof(timestamps),
+                timestamps,
+                sizeof(uint64_t),
+                VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+            if (qr == VK_SUCCESS) {
+                const uint64_t delta = (timestamps[1] > timestamps[0]) ? (timestamps[1] - timestamps[0]) : 0;
+                const double ns = static_cast<double>(delta) * gpu_timestamp_period_ns_;
+                gpu_frame_time_ms_ = ns * 1e-6;
+            }
+            gpu_timestamp_written_[current_frame_] = 0u;
+        }
+
+        // IMPORTANT: We cannot call vkResetQueryPool() on host unless hostQueryReset is enabled.
+        // Reset is recorded into the command buffer (vkCmdResetQueryPool) right before timestamps are written.
+    }
+
     VulkanSwapchain *swapchain = vulkan_device_->get_swapchain();
     VkResult result = swapchain->aquire_next_image(frame.image_available, &current_buffer_);
     VK_CHECK_RESULT(result);
 
     VK_CHECK_RESULT(vkResetFences(device(), 1, &frame.in_flight_fence));
+}
+
+void VulkanDriver::write_gpu_timestamp_begin(VkCommandBuffer cmd) noexcept {
+    if (gpu_timestamp_query_pool_ == VK_NULL_HANDLE) {
+        return;
+    }
+    const uint32_t query_base = current_frame_ * 2;
+    // Reset both queries for this frame slot before writing timestamps (no hostQueryReset needed).
+    vkCmdResetQueryPool(cmd, gpu_timestamp_query_pool_, query_base, 2);
+    const uint32_t query = query_base + 0;
+    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpu_timestamp_query_pool_, query);
+}
+
+void VulkanDriver::write_gpu_timestamp_end(VkCommandBuffer cmd) noexcept {
+    if (gpu_timestamp_query_pool_ == VK_NULL_HANDLE) {
+        return;
+    }
+    const uint32_t query = current_frame_ * 2 + 1;
+    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_query_pool_, query);
+    if (current_frame_ < gpu_timestamp_written_.size()) {
+        gpu_timestamp_written_[current_frame_] = 1u;
+    }
 }
 
 void VulkanDriver::end_frame()

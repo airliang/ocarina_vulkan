@@ -99,6 +99,7 @@ public:
     Semaphore get_present_complete_semaphore() noexcept override;
     Semaphore get_render_complete_semaphore() noexcept override;
     Fence create_fence() noexcept override;
+    [[nodiscard]] double gpu_frame_time_ms() const noexcept override;
  private:
     void init_vulkan();
     void create_logical_device();

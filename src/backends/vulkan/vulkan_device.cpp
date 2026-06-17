@@ -510,6 +510,10 @@ Fence VulkanDevice::create_fence() noexcept
     Fence::UniqueImplPtr impl(ocarina::new_with_allocator<ocarina::VulkanFence>(this));
     return Fence(std::move(impl));
 }
+
+double VulkanDevice::gpu_frame_time_ms() const noexcept {
+    return VulkanDriver::instance().gpu_frame_time_ms();
+}
 }// namespace ocarina
 
 OC_EXPORT_API ocarina::VulkanDevice *create_device(ocarina::RHIContext *file_manager, const ocarina::InstanceCreation& instance_creation) {

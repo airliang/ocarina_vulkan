@@ -5,6 +5,7 @@
 #include "rhi/graphics_descriptions.h"
 #include <vulkan/vulkan.h>
 #include "vulkan_pipeline.h"
+#include <array>
 
 namespace ocarina {
 class VulkanPipelineManager;
@@ -71,6 +72,11 @@ public:
 
     void begin_frame();
     void end_frame();
+
+    // GPU frame timing (timestamps). Returns last resolved frame GPU time in ms.
+    [[nodiscard]] double gpu_frame_time_ms() const noexcept { return gpu_frame_time_ms_; }
+    void write_gpu_timestamp_begin(VkCommandBuffer cmd) noexcept;
+    void write_gpu_timestamp_end(VkCommandBuffer cmd) noexcept;
 
     std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(VulkanShader *shaders[], uint32_t shaders_count);
     //VkPipelineLayout get_pipeline_layout(VkDescriptorSetLayout *descriptset_layouts, uint8_t descriptset_layouts_count, VkPushConstantRange* push_constants, uint32_t push_constant_array_size);
@@ -195,6 +201,13 @@ private:
     uint32_t current_frame_ = 0;
     uint32_t frames_in_flight_ = 0;
     std::vector<FrameSync> frame_sync_;
+
+    // Timestamp queries: 2 per frame (begin/end).
+    VkQueryPool gpu_timestamp_query_pool_ = VK_NULL_HANDLE;
+    double gpu_timestamp_period_ns_ = 0.0;
+    double gpu_frame_time_ms_ = 0.0;
+    // Tracks whether a frame-slot has valid timestamp data to read.
+    std::vector<uint8_t> gpu_timestamp_written_;
 
     VkRenderPass renderpass_framebuffer{VK_NULL_HANDLE};
     //VkFormat depth_stencil_format;

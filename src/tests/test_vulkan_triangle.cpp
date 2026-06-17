@@ -167,6 +167,7 @@ int main(int argc, char *argv[]) {
     imgui_renderer.set_frame_callback([&]() {
         window->widgets()->push_window(window_name);
         window->widgets()->text("FPS: %.2f", 1.0f / renderer.dt());
+        window->widgets()->text("GPU frame: %.3f ms", device.gpu_frame_time_ms());
         window->widgets()->pop_window();
     });
 

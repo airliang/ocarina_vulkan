@@ -94,7 +94,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        scene->build_cluster_hierarchy();
+        scene->build_grid();
     });
 
     Camera camera;
@@ -187,10 +187,25 @@ int main(int argc, char* argv[]) {
     imgui_renderer.set_frame_callback([&]() {
         window->widgets()->push_window(window_name);
         window->widgets()->text("FPS: %.2f", 1.0f / renderer.dt());
+        window->widgets()->text("GPU frame: %.3f ms", device.gpu_frame_time_ms());
         window->widgets()->check_box("Frustum culling", &frustum_culling_enabled);
         if (scene != nullptr) {
             window->widgets()->text("Total cubes: %u", scene->primitive_count());
             window->widgets()->text("Visible cubes: %zu", scene->visible_primitive_indices().size());
+            window->widgets()->text("Total grids: %u", scene->grid_cell_count());
+            window->widgets()->text("Visible grids: %u", scene->visible_grid_count());
+            const auto& visible_grids = scene->visible_grid_indices();
+            const uint32_t sample_count = static_cast<uint32_t>(std::min<size_t>(visible_grids.size(), 12));
+            for (uint32_t i = 0; i < sample_count; ++i) {
+                const uint32_t flat = visible_grids[i];
+                const auto [cx, cz] = scene->grid_cell_coords(flat);
+                window->widgets()->text(
+                    "Grid[%u] cell=(%d,%d) prim=%u",
+                    flat,
+                    cx,
+                    cz,
+                    scene->grid_cell_primitive_count(flat));
+            }
             window->widgets()->text(
                 "Culling: %s",
                 frustum_culling_enabled ? "enabled" : "disabled");

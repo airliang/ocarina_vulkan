@@ -203,7 +203,7 @@ bool GltfAsyncLoader::load_gltf_file() {
 }
 
 void GltfAsyncLoader::build_scene_clusters() {
-    scene_.build_cluster_hierarchy();
+    scene_.build_grid();
 }
 
 void GltfAsyncLoader::load_gltf_node(

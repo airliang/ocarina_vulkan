@@ -82,6 +82,8 @@ public:
         virtual Semaphore get_present_complete_semaphore() noexcept = 0;
         virtual Semaphore get_render_complete_semaphore() noexcept = 0;
         virtual Fence create_fence() noexcept = 0;
+        // Returns last completed frame GPU time in milliseconds (0 if unsupported).
+        [[nodiscard]] virtual double gpu_frame_time_ms() const noexcept { return 0.0; }
     };
 
     using Creator = Device::Impl *(RHIContext *);
@@ -196,6 +198,10 @@ public:
 
     Fence create_fence() const noexcept {
         return impl_->create_fence();
+    }
+
+    [[nodiscard]] double gpu_frame_time_ms() const noexcept {
+        return impl_->gpu_frame_time_ms();
     }
 
     Device::Impl* impl() noexcept { return impl_.get(); }
