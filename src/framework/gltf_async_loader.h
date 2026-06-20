@@ -5,6 +5,7 @@
 #include "bounding_box.h"
 #include "math/basic_types.h"
 #include "scene.h"
+#include "mesh_geometry.h"
 #include "ext/enkiTS/src/TaskScheduler.h"
 #include "rhi/device.h"
 
@@ -22,8 +23,6 @@ class Material;
 class Mesh;
 class Texture;
 class Primitive;
-class VertexBuffer;
-class IndexBuffer;
 
 class GltfAsyncLoader : public enki::IPinnedTask {
 public:
@@ -40,11 +39,10 @@ private:
     void build_scene_clusters();
     bool load_gltf_file();
     void load_gltf_node(const tinygltf::Node& node, const tinygltf::Model& model, const float4x4& parent_transform);
-    [[nodiscard]] BoundingBox load_vertex_attributes(
-        VertexBuffer* vb,
+    [[nodiscard]] BoundingBox append_primitive_geometry(
         const tinygltf::Primitive& primitive,
-        const tinygltf::Model& model);
-    IndexBuffer* load_index_buffer(const tinygltf::Primitive& primitive, const tinygltf::Model& model);
+        const tinygltf::Model& model,
+        MeshGeometrySlice& out_slice);
     void load_material(Primitive& prim, const tinygltf::Material& material, const tinygltf::Model& model);
     Texture* load_gltf_image(int image_index, const tinygltf::Model& model);
     [[nodiscard]] static uint64_t make_geometry_key(const tinygltf::Primitive& primitive);
@@ -55,7 +53,6 @@ private:
     Material* shared_material_ = nullptr;
     std::vector<Mesh*> mesh_storage_;
     std::unordered_map<int, Texture*> image_textures_;
-    std::unordered_map<int, IndexBuffer*> index_buffer_cache_;
     std::unordered_map<uint64_t, Mesh*> geometry_meshes_;
     Scene scene_;
     bool is_loaded_ = false;

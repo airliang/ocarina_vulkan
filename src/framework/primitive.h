@@ -10,9 +10,8 @@
 #include "core/thread_pool.h"
 #include "rhi/graphics_descriptions.h"
 #include "rhi/pipeline_state.h"
-#include "rhi/renderpass.h"
+#include "render_component.h"
 #include "rhi/resources/texture.h"
-#include "transform.h"
 
 namespace ocarina {
 class VertexBuffer;
@@ -25,6 +24,7 @@ struct RHIPipeline;
 class TextureSampler;
 class Material;
 class Mesh;
+class TransformComponent;
 
 
 class Primitive {
@@ -34,12 +34,9 @@ public:
     ~Primitive();
 
     using GeometryDataSetup = ocarina::function<void(Primitive&)>;
-    using UpdatePushConstant = ocarina::function<void(Primitive&)>;
+    using UpdatePushConstant = ocarina::function<void(Primitive&, TransformComponent&)>;
 
     void set_geometry_data_setup(Device *device, GeometryDataSetup setup);
-    void set_draw_call_pre_render_function(DrawCallItem::PreRenderFunction pre_render_function) {
-        drawcall_pre_draw_function_ = pre_render_function;
-    }
 
     void set_update_push_constant_function(UpdatePushConstant func) {
         update_push_constant_function_ = func;
@@ -54,38 +51,7 @@ public:
 
     void add_descriptor_set(DescriptorSet* descriptor_set);
 
-    void set_position(const float3 &position) {
-        position_ = position;
-        transform_.set_position(position);
-        transform_dirty_ = true;
-    }
-
-    void set_rotation(const quaternion &rotation) {
-        rotation_ = rotation;
-        transform_dirty_ = true;
-    }
-
-    void set_scale(const float3 &scale) {
-        scale_ = scale;
-        transform_dirty_ = true;
-    }
-
-    const float3 &get_position() const { return position_; }
-
-    const float4x4& get_world_matrix() {
-        if (transform_dirty_) {
-            transform_.set_TRS(position_, rotation_, scale_);
-            transform_dirty_ = false;
-            world_matrix_ = transform_.mat4x4();
-        }
-        return world_matrix_;
-    }
-
-    const Transform<float4x4>& get_transform() const {
-        return transform_;
-    }
-
-    DrawCallItem get_draw_call_item(Device *device, RHIRenderPass *render_pass);
+    void update_render_component(Device* device, RenderComponent& render_component, TransformComponent& transform);
 
     void add_texture(uint64_t name_id, Texture* texture);
 
@@ -117,14 +83,8 @@ private:
     void update_descriptor_sets(Device *device);
 
     GeometryDataSetup geometry_data_setup_;
-    DrawCallItem::PreRenderFunction drawcall_pre_draw_function_ = nullptr;
     UpdatePushConstant update_push_constant_function_ = nullptr;
 
-    float4x4 world_matrix_;
-    float3 position_;
-    quaternion rotation_ = quaternion(0, 0, 0, 1);
-    float3 scale_ = float3(1, 1, 1);
-    bool transform_dirty_ = true;
     std::byte *push_constant_data_ = nullptr;
     
     std::unordered_map<uint64_t, TextureHandle> textures_;
@@ -133,12 +93,10 @@ private:
     std::vector<DescriptorSet *> descriptor_sets_;
     bool descriptor_sets_dirty_ = true;
     Material* descriptor_sets_material_ = nullptr;
-
-    DrawCallItem item_;
+    uint32_t first_descriptor_set_ = 0;
 
     Material* material_ = nullptr;
     Mesh* mesh_ = nullptr;
-    Transform<float4x4> transform_;
 };
 
 }// namespace ocarina

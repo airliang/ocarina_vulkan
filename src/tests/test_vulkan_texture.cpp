@@ -51,6 +51,8 @@ int main(int argc, char *argv[]) {
     Mesh* quad_mesh = nullptr;
     Texture* texture = nullptr;
 
+    Renderer renderer(&device);
+
     AsyncLoader async_loader(&device, [&material, &quad_mesh, &texture](Device* device) {
         std::set<string> options;
 
@@ -79,7 +81,7 @@ int main(int argc, char *argv[]) {
         TextureSampler sampler{TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT};
         texture = ResourceManager::instance().create_texture(device, image, texture_view, sampler);
 
-        quad_mesh = ResourceManager::instance().create_mesh(device, "quad");
+        quad_mesh = ResourceManager::instance().create_mesh("quad");
     });
 
     auto setup_quad = [&](Primitive& quad) {
@@ -96,18 +98,14 @@ int main(int argc, char *argv[]) {
     camera.set_position({0.0f, 0.0f, -2.5f});
     camera.set_target({0.0f, 0.0f, 0.0f});
 
-    auto pre_render_draw_item = [&](const DrawCallItem& item) {
-    };
-
     uint64_t model_matrix_name_id = hash64("modelMatrix");
-    auto update_push_constant = [&](Primitive& primitive) {
+    auto update_push_constant = [&](Primitive& primitive, TransformComponent& transform) {
         primitive.set_push_constant_variable(
             model_matrix_name_id,
-            reinterpret_cast<std::byte*>(const_cast<void*>(static_cast<const void*>(&primitive.get_world_matrix()))),
-            sizeof(primitive.get_world_matrix()));
+            reinterpret_cast<std::byte*>(const_cast<void*>(static_cast<const void*>(&transform.get_world_matrix()))),
+            sizeof(transform.get_world_matrix()));
     };
 
-    quad.set_draw_call_pre_render_function(pre_render_draw_item);
     quad.set_update_push_constant_function(update_push_constant);
 
     RenderPassCreation render_pass_creation;
@@ -116,7 +114,6 @@ int main(int argc, char *argv[]) {
     render_pass_creation.swapchain_clear_stencil = 0;
     RHIRenderPass* render_pass = device.create_render_pass(render_pass_creation);
 
-    Renderer renderer(&device);
     renderer.set_async_loader(&async_loader, nullptr, [&]() {
         quad.set_geometry_data_setup(&device, [&](Primitive& quad) {
             setup_quad(quad);
@@ -134,8 +131,13 @@ int main(int argc, char *argv[]) {
             camera.get_view_matrix().transpose()};
         global_descriptor_set->update_buffer(hash64("global_ubo"), &global_ubo_data, sizeof(GlobalUniformBuffer));
         render_pass->clear_draw_call_items();
-        auto draw_item = quad.get_draw_call_item(&device, render_pass);
-        render_pass->add_draw_call(draw_item);
+        renderer.ensure_render_components(1);
+        quad.update_render_component(
+            &device,
+            renderer.ecs().render_component(0),
+            renderer.ecs().transform_component(0));
+        RenderComponent& render_component = renderer.ecs().render_component(0);
+        render_pass->add_draw_call(0, render_component.pipeline);
     });
 
     renderer.add_render_pass(render_pass);

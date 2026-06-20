@@ -7,12 +7,12 @@ namespace ocarina {
 
 namespace {
 
-[[nodiscard]] BoundingBox get_primitive_world_bounds(Primitive& primitive) {
+[[nodiscard]] BoundingBox get_primitive_world_bounds(Primitive& primitive, const TransformComponent& transform) {
     Mesh* mesh = primitive.get_mesh();
     if (mesh == nullptr || !mesh->has_local_bounds()) {
         return {};
     }
-    return mesh->get_local_bounds().transformed(primitive.get_world_matrix());
+    return mesh->get_local_bounds().transformed(transform.get_world_matrix());
 }
 
 [[nodiscard]] math3d::Matrix4 multiply_matrix(const math3d::Matrix4& lhs, const math3d::Matrix4& rhs) {
@@ -35,6 +35,7 @@ namespace {
 
 void Scene::clear_primitives() {
     primitives_.clear();
+    transform_components_.clear();
     visible_primitive_indices_.clear();
     primitive_cull_batch_.clear();
     need_cull_primitive_count_ = 0;
@@ -53,7 +54,9 @@ BoundingBox Scene::compute_primitive_bounds(uint32_t primitive_index) const {
     if (primitive_index >= primitives_.size()) {
         return {};
     }
-    return get_primitive_world_bounds(const_cast<Primitive&>(primitives_[primitive_index]));
+    return get_primitive_world_bounds(
+        const_cast<Primitive&>(primitives_[primitive_index]),
+        transform_components_[primitive_index]);
 }
 
 BoundingBox Scene::compute_bounds(const std::vector<uint32_t>& primitive_indices) const {
@@ -94,7 +97,7 @@ void Scene::build_grid(float cell_size_meters) {
     for (uint32_t index = 0; index < primitives_.size(); ++index) {
         primitive_bounds[index] = compute_primitive_bounds(index);
         const BoundingBox& b = primitive_bounds[index];
-        const float3 center = b.valid ? b.center() : primitives_[index].get_position();
+        const float3 center = b.valid ? b.center() : transform_components_[index].get_position();
         const auto [cx, cz] = to_cell(center);
         min_cell_x = std::min(min_cell_x, cx);
         min_cell_z = std::min(min_cell_z, cz);
@@ -126,7 +129,7 @@ void Scene::build_grid(float cell_size_meters) {
     // Reserve roughly: average primitives per cell might be unknown, but reserving a bit helps.
     for (uint32_t index = 0; index < primitives_.size(); ++index) {
         const BoundingBox& b = primitive_bounds[index];
-        const float3 center = b.valid ? b.center() : primitives_[index].get_position();
+        const float3 center = b.valid ? b.center() : transform_components_[index].get_position();
         const auto [cx, cz] = to_cell(center);
         SceneGridCell& cell = grid_cells_[cell_index(cx, cz)];
         cell.primitive_indices.push_back(index);

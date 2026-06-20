@@ -9,9 +9,15 @@
 #include "resource_manager.h"
 #include "scene.h"
 #include "camera.h"
+#include "mesh_geometry.h"
+#include "global_gpu_storage.h"
 #include "frustum.h"
 #include "renderer_primitive_cull_task.h"
 #include "rhi/device.h"
+#include "rhi/renderpass.h"
+#include "rhi/vertex_buffer.h"
+#include "rhi/index_buffer.h"
+#include "rhi/descriptor_set.h"
 #include "core/logging.h"
 #include <chrono>
 #include <algorithm>
@@ -22,6 +28,7 @@ Renderer::Renderer(Device *device)
     : device_(device),
       render_task_(*this)
 {
+    GlobalGPUStorage::instance().initialize(device);
     task_scheduler_.Initialize();
 }
 
@@ -37,10 +44,85 @@ void Renderer::shutdown() {
     }
     shutdown_called_ = true;
     task_scheduler_.WaitforAllAndShutdown();
+    GlobalGPUStorage::instance().cleanup();
 }
 
 void Renderer::set_render_callback(RenderCallback cb) {
     render = cb;
+}
+
+void Renderer::ensure_render_components(size_t count) {
+    if (ecs_.render_component_count() < count) {
+        ecs_.resize(count);
+    }
+    if (scene_ != nullptr && scene_->transform_components().size() >= count) {
+        for (size_t index = 0; index < count; ++index) {
+            ecs_.transform_component(static_cast<uint32_t>(index)) =
+                scene_->transform_component(static_cast<uint32_t>(index));
+        }
+    }
+}
+
+void Renderer::set_scene(Scene* scene) noexcept {
+    scene_ = scene;
+    if (scene_ != nullptr) {
+        scene_->bind_entity_component_system(&ecs_);
+        ensure_render_components(scene_->primitive_count());
+    }
+}
+
+void Renderer::draw_opaque(CommandBuffer& cmd, RHIRenderPass* render_pass) {
+    if (render_pass == nullptr) {
+        return;
+    }
+
+    VertexBuffer* vertex_buffer = GlobalGPUStorage::instance().vertex_buffer();
+    IndexBuffer* index_buffer = GlobalGPUStorage::instance().index_buffer();
+    if (vertex_buffer != nullptr && index_buffer != nullptr) {
+        cmd.set_index_buffer(index_buffer);
+    }
+
+    for (const auto& queue : render_pass->pipeline_render_queues()) {
+        cmd.bind_pipeline(queue.first);
+
+        if (vertex_buffer != nullptr) {
+            cmd.set_vertex_buffer(vertex_buffer);
+        }
+
+        for (uint32_t render_component_index : queue.second->draw_call_items) {
+            if (render_component_index >= ecs_.render_component_count()) {
+                continue;
+            }
+
+            RenderComponent& item = ecs_.render_component(render_component_index);
+            if (item.push_constant_data && item.push_constant_size > 0) {
+                cmd.push_constants(item.push_constant_data, 0, item.push_constant_size);
+            }
+
+            if (!item.descriptor_sets.empty()) {
+                cmd.bind_descriptor_sets(
+                    item.descriptor_sets.data(),
+                    item.first_set,
+                    item.descriptor_sets.size(),
+                    queue.first->pipeline_layout);
+            }
+
+            if (!is_valid_geometry_slice(item.geometry)) { 
+                continue;
+            }
+
+            if (vertex_buffer == nullptr || index_buffer == nullptr) {
+                continue;
+            }
+
+            cmd.draw_indexed(
+                item.geometry.index_count,
+                1,
+                item.geometry.index_offset,
+                static_cast<int32_t>(item.geometry.vertex_offset),
+                0);
+        }
+    }
 }
 
 void Renderer::cull_visible_primitives_parallel(Scene& scene, const Frustum& frustum) {
@@ -76,6 +158,7 @@ void Renderer::cull_visible_primitives_parallel(Scene& scene, const Frustum& fru
 #endif
     primitive_cull_task_.configure(
         &scene.primitives(),
+        &scene.transform_components(),
         &primitive_batch,
         &frustum,
         max_primitives_per_batch,
@@ -110,20 +193,20 @@ void Renderer::cull_visible_primitives_parallel(Scene& scene, const Frustum& fru
 
     // Perf analysis: WaitForTask typically dominates because it includes the real work:
     // per-primitive AABB transform + frustum test in worker threads.
-    OC_INFO_FORMAT(
-        "Renderer::cull_visible_primitives_parallel: total={:.3f}ms (buildBatch={:.3f} prepare={:.3f} batchSize={:.3f} configure={:.3f} wait(work)={:.3f} writeBack={:.3f}) "
-        "needCull={} visible={} threads={} minRange={}",
-        total_ms,
-        build_batch_ms,
-        prepare_ms,
-        batch_size_ms,
-        configure_ms,
-        wait_ms,
-        write_back_ms,
-        need_cull_count,
-        primitive_cull_task_.visible_count(),
-        worker_thread_count,
-        static_cast<uint32_t>(max_primitives_per_batch));
+    //OC_INFO_FORMAT(
+    //    "Renderer::cull_visible_primitives_parallel: total={:.3f}ms (buildBatch={:.3f} prepare={:.3f} batchSize={:.3f} configure={:.3f} wait(work)={:.3f} writeBack={:.3f}) "
+    //    "needCull={} visible={} threads={} minRange={}",
+    //    total_ms,
+    //    build_batch_ms,
+    //    prepare_ms,
+    //    batch_size_ms,
+    //    configure_ms,
+    //    wait_ms,
+    //    write_back_ms,
+    //    need_cull_count,
+    //    primitive_cull_task_.visible_count(),
+    //    worker_thread_count,
+    //    static_cast<uint32_t>(max_primitives_per_batch));
 #endif
 }
 
@@ -163,6 +246,8 @@ void Renderer::run()
         if (async_complete_fn_) {
             async_complete_fn_();
         }
+
+        GlobalGPUStorage::instance().finalize();
 
         async_loader_task_ = nullptr;
         async_wait_fn_ = nullptr;

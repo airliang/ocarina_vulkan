@@ -21,7 +21,6 @@ VulkanIndexBuffer::VulkanIndexBuffer(VulkanDevice *device, const void* initial_d
 }
 
 VulkanIndexBuffer::~VulkanIndexBuffer() {
-    //release_index_buffer(device_, this);
     if (vulkan_buffer_ != nullptr) {
         ocarina::delete_with_allocator<VulkanBuffer>(vulkan_buffer_);
     }

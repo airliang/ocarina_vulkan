@@ -76,7 +76,7 @@ bool ResourceManager::release_material(handle_ty vertex_shader, handle_ty pixel_
     return true;
 }
 
-Mesh* ResourceManager::create_mesh(Device* device, const std::string& name) {
+Mesh* ResourceManager::create_mesh(const std::string& name) {
     auto it = meshes_.find(hash64(name));
     if (it != meshes_.end()) {
         return it->second;
@@ -84,10 +84,10 @@ Mesh* ResourceManager::create_mesh(Device* device, const std::string& name) {
     Mesh* mesh = nullptr;
     if (name == "quad") {
         mesh = get_mesh(name);
-        if (!mesh)
-            mesh = Mesh::create_quad(device);
+        if (!mesh) {
+            mesh = Mesh::create_quad();
+        }
     }
-    // Add more built-in meshes here if needed
     if (mesh) {
         std::lock_guard<std::mutex> l{ mutex_ };
         meshes_.emplace(hash64(name), mesh);

@@ -6,10 +6,12 @@
 #include "frustum.h"
 #include "math.h"
 #include "primitive.h"
+#include "transform_component.h"
 
 namespace ocarina {
 
 class Camera;
+class EntityComponentSystem;
 
 struct SceneGridCell {
     BoundingBox bounds;
@@ -33,8 +35,11 @@ public:
     template<typename... Args>
     Primitive& emplace_primitive(Args&&... args) {
         grid_built_ = false;
+        transform_components_.emplace_back();
         return primitives_.emplace_back(OC_FORWARD(args)...);
     }
+
+    void bind_entity_component_system(EntityComponentSystem* ecs) noexcept { ecs_ = ecs; }
 
     void clear_primitives();
 
@@ -56,6 +61,22 @@ public:
     [[nodiscard]] Primitive& primitive(uint32_t index) { return primitives_[index]; }
     [[nodiscard]] const Primitive& primitive(uint32_t index) const { return primitives_[index]; }
     [[nodiscard]] uint32_t primitive_count() const noexcept { return static_cast<uint32_t>(primitives_.size()); }
+
+    [[nodiscard]] TransformComponent& transform_component(uint32_t index) {
+        return transform_components_[index];
+    }
+
+    [[nodiscard]] const TransformComponent& transform_component(uint32_t index) const {
+        return transform_components_[index];
+    }
+
+    [[nodiscard]] const std::vector<TransformComponent>& transform_components() const noexcept {
+        return transform_components_;
+    }
+
+    [[nodiscard]] std::vector<TransformComponent>& transform_components() noexcept {
+        return transform_components_;
+    }
 
     [[nodiscard]] const std::vector<uint32_t>& visible_primitive_indices() const noexcept {
         return visible_primitive_indices_;
@@ -90,7 +111,9 @@ private:
     void ensure_primitive_cull_batch_capacity();
     void set_all_primitives_visible();
 
+    EntityComponentSystem* ecs_ = nullptr;
     std::vector<Primitive> primitives_;
+    std::vector<TransformComponent> transform_components_;
     std::vector<uint32_t> visible_primitive_indices_;
     std::vector<uint32_t> primitive_cull_batch_;
     uint32_t need_cull_primitive_count_ = 0;

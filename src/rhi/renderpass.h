@@ -25,26 +25,9 @@ struct DescriptorSetsBinding
     uint32_t descriptor_set_count = 0;
 };
 
-struct DrawCallItem {
-    //Material* material = nullptr;
-    VertexBuffer* vertex_buffer = nullptr;
-    IndexBuffer* index_buffer = nullptr;
-    
-    std::vector<DescriptorSet*> descriptor_sets;
-    //uint32_t descriptor_set_count = 0;
-    uint32_t first_set = 0;
-     
-    using PreRenderFunction = ocarina::function<void(const DrawCallItem&)>;
-
-    PreRenderFunction pre_render_function = nullptr;
-    RHIPipeline *pipeline = nullptr;
-    std::byte *push_constant_data = nullptr;
-    uint8_t push_constant_size = 0;
-};
-
 struct PipelineRenderQueue
 {
-    std::list<DrawCallItem> draw_call_items;
+    std::list<uint32_t> draw_call_items;
     RHIPipeline *pipeline_line = nullptr;
 
     void clear()
@@ -66,14 +49,12 @@ public:
 
     void clear_draw_call_items();
 
-    void add_draw_call(DrawCallItem &item);
+    void add_draw_call(uint32_t render_component_index, RHIPipeline* pipeline);
 
     void add_render_target(RenderTarget* render_target) {
         OC_ASSERT(render_target_count_ < kMaxRenderTargets);
         render_target_[render_target_count_++] = render_target;
     }
-
-    void draw_items(CommandBuffer& cmd);
 
     bool is_swapchain_renderpass() const
     {
@@ -100,7 +81,6 @@ public:
 protected:
     
 
-    //std::list<DrawCallItem> draw_call_items_;
     float4 viewport_ = {0, 0, 0, 0};
     int4 scissor_ = {0, 0, 0, 0};
     uint2 size_ = {0, 0};

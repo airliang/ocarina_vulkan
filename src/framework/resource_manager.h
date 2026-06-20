@@ -30,7 +30,7 @@ public:
     Material* get_material(handle_ty vertex_shader, handle_ty pixel_shader) const noexcept;
     bool release_material(handle_ty vertex_shader, handle_ty pixel_shader);
 
-    Mesh* create_mesh(Device* device, const std::string& name);
+    Mesh* create_mesh(const std::string& name);
     Mesh* get_mesh(const std::string& name) const noexcept;
     void add_mesh(const std::string& name, Mesh* mesh);
 

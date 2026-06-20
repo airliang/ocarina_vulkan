@@ -59,6 +59,8 @@ int main(int argc, char* argv[]) {
     Scene* scene = nullptr;
     Texture* white_texture = nullptr;
 
+    Renderer renderer(&device);
+
     AsyncLoader async_loader(&device, [&](Device* load_device) {
         std::set<string> options;
         handle_ty vertex_shader = load_device->create_shader_from_file(
@@ -71,7 +73,7 @@ int main(int argc, char* argv[]) {
             options);
 
         material = ResourceManager::instance().create_material(load_device, vertex_shader, pixel_shader);
-        cube_mesh = Mesh::create_cube(load_device);
+        cube_mesh = Mesh::create_cube();
         white_texture = InternalTextures::instance().get_white_texture(load_device);
         BindlessTextureRegistry::instance().allocate_index(white_texture);
 
@@ -82,7 +84,8 @@ int main(int argc, char* argv[]) {
             for (uint32_t row = 0; row < kGridCount; ++row) {
                 for (uint32_t col = 0; col < kGridCount; ++col) {
                     Primitive& primitive = scene->emplace_primitive();
-                    primitive.set_position(make_float3(
+                    const uint32_t primitive_index = scene->primitive_count() - 1;
+                    scene->transform_component(primitive_index).set_position(make_float3(
                         static_cast<float>(col) * kGridSpacing,
                         static_cast<float>(height) * kGridSpacing,
                         static_cast<float>(row) * kGridSpacing));
@@ -110,11 +113,11 @@ int main(int argc, char* argv[]) {
     const uint64_t albedo_sampler_index_name_id = hash64("albedoSamplerIndex");
     const uint64_t albedo_texture_name_id = hash64("albedo");
     constexpr uint32_t kAlbedoSamplerIndex = 0; // linear wrap
-    auto update_push_constant = [&](Primitive& primitive) {
+    auto update_push_constant = [&](Primitive& primitive, TransformComponent& transform) {
         primitive.set_push_constant_variable(
             model_matrix_name_id,
-            reinterpret_cast<std::byte*>(const_cast<void*>(static_cast<const void*>(&primitive.get_world_matrix()))),
-            sizeof(primitive.get_world_matrix()));
+            reinterpret_cast<std::byte*>(const_cast<void*>(static_cast<const void*>(&transform.get_world_matrix()))),
+            sizeof(transform.get_world_matrix()));
 
         const Primitive::TextureHandle albedo_handle = primitive.get_texture_handle(albedo_texture_name_id);
         primitive.set_push_constant_variable(
@@ -135,7 +138,6 @@ int main(int argc, char* argv[]) {
 
     bool frustum_culling_enabled = true;
 
-    Renderer renderer(&device);
     renderer.set_camera(&camera);
     renderer.set_frustum_culling_enabled(frustum_culling_enabled);
     renderer.set_async_loader(&async_loader, nullptr, [&]() {
@@ -171,10 +173,15 @@ int main(int argc, char* argv[]) {
 
         render_pass->clear_draw_call_items();
         if (scene != nullptr) {
+            renderer.ensure_render_components(scene->primitive_count());
             for (uint32_t primitive_index : scene->visible_primitive_indices()) {
                 Primitive& primitive = scene->primitive(primitive_index);
-                DrawCallItem draw_item = primitive.get_draw_call_item(&device, render_pass);
-                render_pass->add_draw_call(draw_item);
+                primitive.update_render_component(
+                    &device,
+                    renderer.ecs().render_component(primitive_index),
+                    scene->transform_component(primitive_index));
+                RenderComponent& render_component = renderer.ecs().render_component(primitive_index);
+                render_pass->add_draw_call(primitive_index, render_component.pipeline);
             }
         }
     });

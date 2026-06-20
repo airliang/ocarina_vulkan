@@ -23,11 +23,12 @@ public:
     void end_render_pass() override;
     void bind_pipeline(const RHIPipeline* pipeline) override;
     void bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t first_set, uint32_t descriptor_set_count, handle_ty pipeline_layout) override;
-    void draw_indexed(IndexBuffer* index_buffer, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance) override;
+    void draw_indexed(uint32_t index_count, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance) override;
     void push_constants(const void* data, uint32_t offset, uint32_t size) override;
     void draw_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) override;
     void draw_indexed_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) override;
-    void set_vertex_buffer(VertexBuffer* vertex_buffer) override;
+    void set_vertex_buffer(VertexBuffer* vertex_buffer, uint32_t base_vertex = 0) override;
+    void set_index_buffer(IndexBuffer* index_buffer, uint32_t first_index = 0) override;
     void submit_to_queue(QueueType queue_type, Fence* fence) override;
     void begin() override;
     void end() override;

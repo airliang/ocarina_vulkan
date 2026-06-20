@@ -71,6 +71,8 @@ int main(int argc, char *argv[]) {
     const fs::path project_root = src_root.parent_path();
     const fs::path texture_path = project_root / "res/textures/granite.png";
 
+    Renderer renderer(&device);
+
     AsyncLoader async_loader(&device, [&material, &quad_mesh, &texture, &shader_vert, &shader_frag, &texture_path](Device* local_device) {
         // Your async task code here
         //Shader
@@ -95,7 +97,7 @@ int main(int argc, char *argv[]) {
 
         uint64_t albedo_name_id = hash64("albedo");
 
-        quad_mesh = ResourceManager::instance().create_mesh(local_device, "quad");
+        quad_mesh = ResourceManager::instance().create_mesh("quad");
         
     });
 
@@ -124,13 +126,6 @@ int main(int argc, char *argv[]) {
     camera.set_position({0.0f, 0.0f, -2.5f});
     camera.set_target({0.0f, 0.0f, 0.0f});
 
-    uint64_t push_constant_name_id = hash64("PushConstants");
-
-    auto pre_render_draw_item = [&](const DrawCallItem &item) {
-        //update push constants before draw
-        //item.descriptor_set_writer->update_push_constants(push_constant_name_id, (void *)&item.world_matrix, sizeof(item.world_matrix), item.pipeline_line);
-    };
-
     PushConstants push_constants_data = {};
 
     uint64_t name_id_world_matrix = hash64("modelMatrix");
@@ -138,13 +133,13 @@ int main(int argc, char *argv[]) {
     uint64_t name_id_albedo_sampler_index = hash64("albedoSamplerIndex");
     uint64_t albedo_name_id = hash64("albedo");
     constexpr uint32_t kAlbedoSamplerIndex = 0; // linear wrap
-    auto update_push_constant = [&](Primitive &primitive) {
+    auto update_push_constant = [&](Primitive &primitive, TransformComponent &transform) {
         // Setup push constant data if needed
-        push_constants_data.world_matrix = primitive.get_world_matrix();
+        push_constants_data.world_matrix = transform.get_world_matrix();
         primitive.set_push_constant_variable(
             name_id_world_matrix,
-            reinterpret_cast<std::byte *>(const_cast<void *>(static_cast<const void *>(&primitive.get_world_matrix()))),
-            sizeof(primitive.get_world_matrix()));
+            reinterpret_cast<std::byte *>(const_cast<void *>(static_cast<const void *>(&transform.get_world_matrix()))),
+            sizeof(transform.get_world_matrix()));
         Primitive::TextureHandle albedo_texture_handle = primitive.get_texture_handle(albedo_name_id);
         push_constants_data.albedo_index = albedo_texture_handle.bindless_index_;
         push_constants_data.albedo_sampler_index = kAlbedoSamplerIndex;
@@ -159,7 +154,6 @@ int main(int argc, char *argv[]) {
             sizeof(kAlbedoSamplerIndex));
     };
 
-    quad.set_draw_call_pre_render_function(pre_render_draw_item);
     quad.set_update_push_constant_function(update_push_constant);
 
     RenderPassCreation render_pass_creation;
@@ -175,7 +169,6 @@ int main(int argc, char *argv[]) {
         }
     };
 
-    Renderer renderer(&device);
     renderer.set_async_loader(&async_loader, nullptr, [&]() {
         quad.set_geometry_data_setup(&device, setup_quad_with_pipeline);
     });
@@ -187,8 +180,13 @@ int main(int argc, char *argv[]) {
         GlobalUniformBuffer global_ubo_data = {camera.get_projection_matrix().transpose(), camera.get_view_matrix().transpose()};
         global_descriptor_set->update_buffer(hash64("global_ubo"), &global_ubo_data, sizeof(GlobalUniformBuffer));
         render_pass->clear_draw_call_items();
-        auto draw_item = quad.get_draw_call_item(&device, render_pass);
-        render_pass->add_draw_call(draw_item);
+        renderer.ensure_render_components(1);
+        quad.update_render_component(
+            &device,
+            renderer.ecs().render_component(0),
+            renderer.ecs().transform_component(0));
+        RenderComponent& render_component = renderer.ecs().render_component(0);
+        render_pass->add_draw_call(0, render_component.pipeline);
     });
 
 

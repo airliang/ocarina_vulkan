@@ -12,6 +12,7 @@
 #include "mesh.h"
 #include "material.h"
 #include "scene.h"
+#include "global_gpu_storage.h"
 #include "bounding_box.h"
 #include "resource_manager.h"
 #include "rhi/vertex_buffer.h"
@@ -55,9 +56,8 @@ float4x4 node_local_transform(const tinygltf::Node& node) {
     return transform.mat4x4();
 }
 
-uint32_t position_vertex_count(VertexBuffer* vb) {
-    VertexStream* stream = vb->get_vertex_stream(VertexAttributeType::Enum::Position);
-    return stream != nullptr ? stream->count : 0;
+uint32_t position_vertex_count(const std::vector<Vector3>& positions) {
+    return static_cast<uint32_t>(positions.size());
 }
 
 struct GltfPixelSource {
@@ -133,6 +133,22 @@ uint64_t make_vertex_attributes_key(const tinygltf::Primitive& primitive) {
         key = hash64(attr.first, attr.second, key);
     }
     return key;
+}
+
+[[nodiscard]] BoundingBox bounds_from_position_accessor(const tinygltf::Accessor& accessor) {
+    BoundingBox bounds;
+    if (accessor.minValues.size() >= 3 && accessor.maxValues.size() >= 3) {
+        bounds.min = make_float3(
+            static_cast<float>(accessor.minValues[0]),
+            static_cast<float>(accessor.minValues[1]),
+            static_cast<float>(accessor.minValues[2]));
+        bounds.max = make_float3(
+            static_cast<float>(accessor.maxValues[0]),
+            static_cast<float>(accessor.maxValues[1]),
+            static_cast<float>(accessor.maxValues[2]));
+        bounds.valid = true;
+    }
+    return bounds;
 }
 
 }// namespace
@@ -214,8 +230,8 @@ void GltfAsyncLoader::load_gltf_node(
 
     if (node.mesh >= 0 && node.mesh < static_cast<int>(model.meshes.size())) {
         const tinygltf::Mesh& mesh = model.meshes[node.mesh];
-        for (size_t primitive_index = 0; primitive_index < mesh.primitives.size(); ++primitive_index) {
-            const tinygltf::Primitive& gltf_primitive = mesh.primitives[primitive_index];
+        for (size_t gltf_primitive_index = 0; gltf_primitive_index < mesh.primitives.size(); ++gltf_primitive_index) {
+            const tinygltf::Primitive& gltf_primitive = mesh.primitives[gltf_primitive_index];
 
             Primitive& prim = scene_.emplace_primitive();
 
@@ -223,9 +239,10 @@ void GltfAsyncLoader::load_gltf_node(
             quaternion rotation;
             float3 scale;
             decompose(world_transform, &translation, &rotation, &scale);
-            prim.set_position(translation);
-            prim.set_rotation(rotation);
-            prim.set_scale(scale);
+            const uint32_t scene_primitive_index = static_cast<uint32_t>(scene_.primitive_count() - 1);
+            scene_.transform_component(scene_primitive_index).set_position(translation);
+            scene_.transform_component(scene_primitive_index).set_rotation(rotation);
+            scene_.transform_component(scene_primitive_index).set_scale(scale);
 
             Mesh* mesh_obj = nullptr;
             const uint64_t geometry_key = make_geometry_key(gltf_primitive);
@@ -239,16 +256,11 @@ void GltfAsyncLoader::load_gltf_node(
                 mesh_obj = ocarina::new_with_allocator<Mesh>();
                 mesh_storage_.push_back(mesh_obj);
 
-                VertexBuffer* vb = device_->create_vertex_buffer();
-                const BoundingBox local_bounds = load_vertex_attributes(vb, gltf_primitive, model);
-                mesh_obj->set_vertex_buffer(vb);
+                MeshGeometrySlice geometry_slice{};
+                const BoundingBox local_bounds = append_primitive_geometry(gltf_primitive, model, geometry_slice);
+                mesh_obj->set_geometry_slice(geometry_slice);
                 if (local_bounds.valid) {
                     mesh_obj->set_local_bounds(local_bounds.min, local_bounds.max);
-                }
-
-                if (gltf_primitive.indices >= 0) {
-                    IndexBuffer* ib = load_index_buffer(gltf_primitive, model);
-                    mesh_obj->set_index_buffer(ib);
                 }
 
                 geometry_meshes_.emplace(geometry_key, mesh_obj);
@@ -274,14 +286,21 @@ void GltfAsyncLoader::load_gltf_node(
     }
 }
 
-BoundingBox GltfAsyncLoader::load_vertex_attributes(
-    VertexBuffer* vb,
+BoundingBox GltfAsyncLoader::append_primitive_geometry(
     const tinygltf::Primitive& primitive,
-    const tinygltf::Model& model) {
+    const tinygltf::Model& model,
+    MeshGeometrySlice& out_slice) {
     const auto start = std::chrono::steady_clock::now();
     const uint64_t geometry_key = make_geometry_key(primitive);
-    bool has_color = false;
     BoundingBox local_bounds;
+
+    std::vector<Vector3> positions;
+    std::vector<Vector3> normals;
+    std::vector<Vector2> uvs;
+    std::vector<Vector4> colors;
+    bool has_normals = false;
+    bool has_uvs = false;
+    bool has_colors = false;
 
     for (const auto& attr : primitive.attributes) {
         const std::string& name = attr.first;
@@ -308,115 +327,103 @@ BoundingBox GltfAsyncLoader::load_vertex_attributes(
 
         if (name == "POSITION") {
             if (type == TINYGLTF_TYPE_VEC3 && component_type == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-                vb->add_vertex_stream(VertexAttributeType::Enum::Position, count, sizeof(Vector3), data);
-                const auto* positions = reinterpret_cast<const Vector3*>(data);
-                for (int vertex_index = 0; vertex_index < count; ++vertex_index) {
-                    const Vector3& position = positions[vertex_index];
-                    local_bounds.expand(make_float3(position.x, position.y, position.z));
+                positions.resize(static_cast<size_t>(count));
+                memcpy(positions.data(), data, static_cast<size_t>(count) * sizeof(Vector3));
+                local_bounds = bounds_from_position_accessor(accessor);
+                if (!local_bounds.valid) {
+                    for (int vertex_index = 0; vertex_index < count; ++vertex_index) {
+                        const Vector3& position = positions[static_cast<size_t>(vertex_index)];
+                        local_bounds.expand(make_float3(position.x, position.y, position.z));
+                    }
                 }
             }
         } else if (name == "NORMAL") {
             if (type == TINYGLTF_TYPE_VEC3 && component_type == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-                vb->add_vertex_stream(VertexAttributeType::Enum::Normal, count, sizeof(Vector3), data);
+                normals.resize(static_cast<size_t>(count));
+                memcpy(normals.data(), data, static_cast<size_t>(count) * sizeof(Vector3));
+                has_normals = true;
             }
         } else if (name == "TEXCOORD_0") {
             if (type == TINYGLTF_TYPE_VEC2 && component_type == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-                vb->add_vertex_stream(VertexAttributeType::Enum::TexCoord0, count, sizeof(Vector2), data);
+                uvs.resize(static_cast<size_t>(count));
+                memcpy(uvs.data(), data, static_cast<size_t>(count) * sizeof(Vector2));
+                has_uvs = true;
             }
         } else if (name == "COLOR_0") {
             if (type == TINYGLTF_TYPE_VEC4 && component_type == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-                vb->add_vertex_stream(VertexAttributeType::Enum::Color0, count, sizeof(Vector4), data);
-                has_color = true;
+                colors.resize(static_cast<size_t>(count));
+                memcpy(colors.data(), data, static_cast<size_t>(count) * sizeof(Vector4));
+                has_colors = true;
             } else if (type == TINYGLTF_TYPE_VEC3 && component_type == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-                std::vector<Vector4> colors(static_cast<size_t>(count));
+                colors.resize(static_cast<size_t>(count));
                 const auto* src = reinterpret_cast<const Vector3*>(data);
                 for (int i = 0; i < count; ++i) {
                     colors[static_cast<size_t>(i)] = Vector4(src[i].x, src[i].y, src[i].z, 1.0f);
                 }
-                vb->add_vertex_stream(
-                    VertexAttributeType::Enum::Color0,
-                    count,
-                    sizeof(Vector4),
-                    colors.data());
-                has_color = true;
+                has_colors = true;
             }
         }
     }
 
-    const uint32_t vertex_count = position_vertex_count(vb);
-    if (!has_color && vertex_count > 0) {
-        std::vector<Vector4> colors(vertex_count, Vector4(1.0f, 1.0f, 1.0f, 1.0f));
-        vb->add_vertex_stream(
-            VertexAttributeType::Enum::Color0,
-            vertex_count,
-            sizeof(Vector4),
-            colors.data());
+    const uint32_t vertex_count = position_vertex_count(positions);
+    OC_ASSERT(vertex_count > 0);
+
+    if (!has_normals) {
+        normals.clear();
+    }
+    if (!has_uvs) {
+        uvs.clear();
+    }
+    if (!has_colors) {
+        colors.clear();
     }
 
-    vb->upload_data();
+    std::vector<uint16_t> indices;
+    if (primitive.indices >= 0 && primitive.indices < static_cast<int>(model.accessors.size())) {
+        const tinygltf::Accessor& accessor = model.accessors[primitive.indices];
+        if (accessor.bufferView >= 0 && accessor.bufferView < static_cast<int>(model.bufferViews.size())) {
+            const tinygltf::BufferView& buffer_view = model.bufferViews[accessor.bufferView];
+            if (buffer_view.buffer >= 0 && buffer_view.buffer < static_cast<int>(model.buffers.size())) {
+                const tinygltf::Buffer& buffer = model.buffers[buffer_view.buffer];
+                const unsigned char* data = buffer.data.data() + buffer_view.byteOffset + accessor.byteOffset;
+                const int count = accessor.count;
+                indices.resize(static_cast<size_t>(count));
+                if (accessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
+                    memcpy(indices.data(), data, static_cast<size_t>(count) * sizeof(uint16_t));
+                } else if (accessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
+                    const auto* src = reinterpret_cast<const uint32_t*>(data);
+                    for (int i = 0; i < count; ++i) {
+                        indices[static_cast<size_t>(i)] = static_cast<uint16_t>(src[i]);
+                    }
+                }
+            }
+        }
+    }
+
+    if (indices.empty()) {
+        indices.resize(vertex_count);
+        for (uint32_t i = 0; i < vertex_count; ++i) {
+            indices[i] = static_cast<uint16_t>(i);
+        }
+    }
+
+    MeshGeometryInput input{};
+    input.vertex_count = vertex_count;
+    input.positions = positions.data();
+    input.normals = has_normals ? normals.data() : nullptr;
+    input.uvs = has_uvs ? uvs.data() : nullptr;
+    input.colors = has_colors ? colors.data() : nullptr;
+    input.indices = indices.data();
+    input.index_count = static_cast<uint32_t>(indices.size());
+    out_slice = GlobalGPUStorage::instance().append_mesh(input);
 
     OC_INFO_FORMAT(
-        "GltfAsyncLoader::load_vertex_attributes: geometry key={:#x}, {} vertices, {:.3f} ms",
+        "GltfAsyncLoader::append_primitive_geometry: geometry key={:#x}, {} vertices, {:.3f} ms",
         geometry_key,
-        position_vertex_count(vb),
+        vertex_count,
         elapsed_ms(start));
 
     return local_bounds;
-}
-
-IndexBuffer* GltfAsyncLoader::load_index_buffer(const tinygltf::Primitive& primitive, const tinygltf::Model& model) {
-    const int accessor_index = primitive.indices;
-    if (accessor_index < 0 || accessor_index >= static_cast<int>(model.accessors.size())) {
-        return nullptr;
-    }
-
-    const auto cached = index_buffer_cache_.find(accessor_index);
-    if (cached != index_buffer_cache_.end()) {
-        OC_INFO_FORMAT(
-            "GltfAsyncLoader::load_index_buffer: cache hit accessor {} (0.000 ms)",
-            accessor_index);
-        return cached->second;
-    }
-
-    const auto start = std::chrono::steady_clock::now();
-
-    const tinygltf::Accessor& accessor = model.accessors[accessor_index];
-    if (accessor.bufferView < 0 || accessor.bufferView >= static_cast<int>(model.bufferViews.size())) {
-        return nullptr;
-    }
-
-    const tinygltf::BufferView& buffer_view = model.bufferViews[accessor.bufferView];
-    if (buffer_view.buffer < 0 || buffer_view.buffer >= static_cast<int>(model.buffers.size())) {
-        return nullptr;
-    }
-
-    const tinygltf::Buffer& buffer = model.buffers[buffer_view.buffer];
-    const unsigned char* data = buffer.data.data() + buffer_view.byteOffset + accessor.byteOffset;
-    const int count = accessor.count;
-    const int component_type = accessor.componentType;
-
-    IndexBuffer* index_buffer = nullptr;
-    if (component_type == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-        index_buffer = device_->create_index_buffer(reinterpret_cast<const void*>(data), static_cast<uint32_t>(count), true);
-    } else if (component_type == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
-        std::vector<uint16_t> indices(static_cast<size_t>(count));
-        const auto* src = reinterpret_cast<const uint32_t*>(data);
-        for (int i = 0; i < count; ++i) {
-            indices[static_cast<size_t>(i)] = static_cast<uint16_t>(src[i]);
-        }
-        index_buffer = device_->create_index_buffer(indices.data(), static_cast<uint32_t>(count), true);
-    } else {
-        OC_WARNING_FORMAT("Unsupported glTF index component type: {}", component_type);
-        return nullptr;
-    }
-
-    index_buffer_cache_.emplace(accessor_index, index_buffer);
-    OC_INFO_FORMAT(
-        "GltfAsyncLoader::load_index_buffer: accessor {}, {} indices, {:.3f} ms",
-        accessor_index,
-        count,
-        elapsed_ms(start));
-    return index_buffer;
 }
 
 Texture* GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::Model& model) {

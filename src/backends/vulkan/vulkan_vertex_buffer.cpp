@@ -15,11 +15,6 @@ VulkanVertexBuffer::VulkanVertexBuffer(VulkanDevice *device) : VertexBuffer(devi
 
 VulkanVertexBuffer::~VulkanVertexBuffer()
 {
-    //for (auto it : vertex_bindings_)
-    //{
-    //    ocarina::delete_with_allocator(it.second);
-    //}
-
     for (size_t i = 0; i < (size_t)VertexAttributeType::Enum::Count; ++i)
     {
         if (vertex_streams_[(uint8_t)i].data)

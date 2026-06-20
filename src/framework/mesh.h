@@ -3,36 +3,31 @@
 #include "core/header.h"
 #include "core/stl.h"
 #include "bounding_box.h"
-#include "rhi/graphics_descriptions.h"
+#include "mesh_geometry.h"
 
 namespace ocarina {
 
-class VertexBuffer;
-class IndexBuffer;
 class Device;
 
 class Mesh {
 public:
     Mesh() = default;
-    virtual ~Mesh();
+    virtual ~Mesh() = default;
 
-    OC_MAKE_MEMBER_GETTER(vertex_buffer, )
-    OC_MAKE_MEMBER_GETTER(index_buffer, )
-    
-    static Mesh* create_quad(Device* device);
-    static Mesh* create_cube(Device* device);
-    static Mesh* create_sphere(Device* device);
-    void set_vertex_buffer(VertexBuffer* vertex_buffer) { vertex_buffer_ = vertex_buffer; }
-    void set_index_buffer(IndexBuffer* index_buffer) { index_buffer_ = index_buffer; }
+    static Mesh* create_quad();
+    static Mesh* create_cube();
+    static Mesh* create_sphere();
+
+    void set_geometry_slice(const MeshGeometrySlice& slice) { geometry_slice_ = slice; }
+    [[nodiscard]] const MeshGeometrySlice& geometry_slice() const { return geometry_slice_; }
 
     void set_local_bounds(const float3& min_point, const float3& max_point) noexcept;
     [[nodiscard]] bool has_local_bounds() const noexcept { return local_bounds_.valid; }
     [[nodiscard]] const BoundingBox& get_local_bounds() const noexcept { return local_bounds_; }
 
 protected:
-    VertexBuffer* vertex_buffer_ = nullptr;
-    IndexBuffer* index_buffer_ = nullptr;
     BoundingBox local_bounds_;
+    MeshGeometrySlice geometry_slice_{};
 };
 
 constexpr uint32_t MAX_BUILDIN_MESH = 3;
@@ -55,11 +50,7 @@ public:
     }
 
     void create_buildin_mesh(Device* device);
-
     void cleanup();
-    VertexBuffer* vertex_buffer_[MAX_BUILDIN_MESH] = { nullptr };
-    IndexBuffer* index_buffer_[MAX_BUILDIN_MESH] = { nullptr };
-
     bool is_created() const { return is_created_; }
 private:
     bool is_created_ = false;
@@ -67,19 +58,19 @@ private:
 
 class Quad : public Mesh {
 public:
-    Quad(Device* device);
+    Quad();
     ~Quad();
 };
 
 class Cube : public Mesh {
 public:
-    explicit Cube(Device* device);
+    Cube();
     ~Cube();
 };
 
 class Sphere : public Mesh {
 public:
-    explicit Sphere(Device* device, uint32_t slice_count = 32, uint32_t stack_count = 16);
+    explicit Sphere(uint32_t slice_count = 32, uint32_t stack_count = 16);
     ~Sphere();
 };
 

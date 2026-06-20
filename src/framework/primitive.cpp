@@ -17,18 +17,10 @@ namespace ocarina {
 
 
 Primitive::~Primitive() {
-    //if (vertex_buffer_) {
-    //    ocarina::delete_with_allocator<VertexBuffer>(vertex_buffer_);
-    //}
-
-    //if (index_buffer_) {
-    //    ocarina::delete_with_allocator<IndexBuffer>(index_buffer_);
-    //}
-
-    if (item_.push_constant_data)
+    if (push_constant_data_)
     {
-        ocarina::deallocate(item_.push_constant_data);
-        item_.push_constant_data = nullptr;
+        ocarina::deallocate(push_constant_data_);
+        push_constant_data_ = nullptr;
     }
 }
 
@@ -41,15 +33,6 @@ void Primitive::set_geometry_data_setup(Device *device, GeometryDataSetup setup)
     update_descriptor_sets(device);
 }
 
-//void Primitive::set_vertex_buffer(VertexBuffer *vertex_buffer) {
-//    vertex_buffer_ = vertex_buffer;
-//    pipeline_state_.vertex_buffer = vertex_buffer;
-//}
-//
-//void Primitive::set_index_buffer(IndexBuffer *index_buffer) {
-//    index_buffer_ = index_buffer;
-//}
-
 void Primitive::add_descriptor_set(DescriptorSet *descriptor_set) {
     auto it = std::find(descriptor_sets_.begin(), descriptor_sets_.end(), descriptor_set);
     if (it == descriptor_sets_.end()) {
@@ -57,49 +40,45 @@ void Primitive::add_descriptor_set(DescriptorSet *descriptor_set) {
     }
 }
 
-DrawCallItem Primitive::get_draw_call_item(Device *device, RHIRenderPass *render_pass) {
+void Primitive::update_render_component(Device* device, RenderComponent& render_component, TransformComponent& transform) {
     if (update_push_constant_function_ != nullptr) {
-        update_push_constant_function_(*this);
+        update_push_constant_function_(*this, transform);
     }
-    
+
+    render_component.geometry = {};
+    render_component.descriptor_sets.clear();
+    render_component.pipeline = nullptr;
+    render_component.push_constant_data = nullptr;
+    render_component.push_constant_size = 0;
+
     if (material_ == nullptr) {
-        return item_;
+        return;
     }
 
     if (descriptor_sets_dirty_ || descriptor_sets_material_ != material_) {
         update_descriptor_sets(device);
     }
 
-    item_.vertex_buffer = mesh_->vertex_buffer();
-    item_.index_buffer = mesh_->index_buffer();
+    if (mesh_ != nullptr) {
+        render_component.geometry = mesh_->geometry_slice();
+    }
 
     RHIPipeline* pipeline = material_->get_pipeline();
     if (pipeline == nullptr) {
-        return item_;
+        return;
     }
 
-    uint32_t push_constant_size = pipeline->push_constant_size;
+    const uint32_t push_constant_size = pipeline->push_constant_size;
     if (push_constant_data_ == nullptr && push_constant_size > 0) {
         push_constant_data_ = ocarina::allocate(push_constant_size);
         memset(push_constant_data_, 0, push_constant_size);
     }
 
-    item_.push_constant_size = pipeline->push_constant_size;
-    if (item_.push_constant_size > 0) {
-        if (item_.push_constant_data == nullptr) {
-            item_.push_constant_data = ocarina::allocate(item_.push_constant_size);
-        }
-    }
-    if (item_.push_constant_data != nullptr) {
-        //memcpy(item_.push_constant_data, &world_matrix_, sizeof(float4x4));
-        memcpy(item_.push_constant_data, push_constant_data_, item_.push_constant_size);
-    }
-
-    item_.pre_render_function = drawcall_pre_draw_function_;
-
-    item_.pipeline = pipeline;
-
-    return item_;
+    render_component.push_constant_size = static_cast<uint8_t>(push_constant_size);
+    render_component.push_constant_data = push_constant_data_;
+    render_component.pipeline = pipeline;
+    render_component.descriptor_sets = descriptor_sets_;
+    render_component.first_set = first_descriptor_set_;
 }
 
 void Primitive::add_texture(uint64_t name_id, Texture *texture) {
@@ -146,7 +125,8 @@ void Primitive::update_descriptor_sets(Device *device) {
         ocarina::delete_with_allocator<DescriptorSet>(descriptor_set);
     }
     descriptor_sets_.clear();
-    item_.descriptor_sets.clear();
+    first_descriptor_set_ = 0;
+    bool first_set_assigned = false;
     
     const auto& descriptor_set_layouts = material_->descriptor_set_layouts();
     for (size_t i = 0; i < MAX_DESCRIPTOR_SETS_PER_SHADER; ++i) {
@@ -158,10 +138,10 @@ void Primitive::update_descriptor_sets(Device *device) {
         }
         DescriptorSet* descriptor_set = descriptor_set_layouts[i]->allocate_descriptor_set();
         add_descriptor_set(descriptor_set);
-        if (item_.descriptor_sets.empty()) {
-            item_.first_set = static_cast<uint32_t>(i);
+        if (!first_set_assigned) {
+            first_descriptor_set_ = static_cast<uint32_t>(i);
+            first_set_assigned = true;
         }
-        item_.descriptor_sets.push_back(descriptor_set);
     }
 
     for (auto &descriptor_set : descriptor_sets_) {

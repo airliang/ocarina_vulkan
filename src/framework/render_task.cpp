@@ -14,6 +14,7 @@ namespace ocarina {
 namespace {
 
 void record_scene_drawing(
+    Renderer& renderer,
     Device* device,
     CommandBuffer* cmd,
     const std::list<RHIRenderPass*>& render_passes,
@@ -62,7 +63,7 @@ void record_scene_drawing(
             }
         }
 
-        render_pass->draw_items(*cmd);
+        renderer.draw_opaque(*cmd, render_pass);
 
         const bool leave_pass_open =
             leave_swapchain_pass_open_for_imgui && render_pass->is_swapchain_renderpass();
@@ -120,8 +121,8 @@ void RenderTask::execute_default_render_path() {
     CmdRecordTask record_task(
         device,
         cmd,
-        [render_passes = renderer_.render_passes_, imgui_pending](Device* dev, CommandBuffer* cb) {
-            record_scene_drawing(dev, cb, render_passes, imgui_pending);
+        [renderer = &renderer_, render_passes = renderer_.render_passes_, imgui_pending](Device* dev, CommandBuffer* cb) {
+            record_scene_drawing(*renderer, dev, cb, render_passes, imgui_pending);
         });
     renderer_.task_scheduler_.AddTaskSetToPipe(&record_task);
     renderer_.task_scheduler_.WaitforTask(&record_task);

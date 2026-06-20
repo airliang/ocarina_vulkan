@@ -48,6 +48,15 @@ int main(int argc, char* argv[]) {
     Material* material = nullptr;
     GltfAsyncLoader* gltf_loader = nullptr;
 
+    Camera camera;
+    window->add_event_listener(&camera);
+    camera.set_aspect_ratio(1280.0f / 720.0f);
+    camera.set_position({0.0f, 0.05f, -0.45f});
+    camera.set_target({0.0f, 0.05f, 0.0f});
+
+    Renderer renderer(&device);
+    renderer.set_camera(&camera);
+
     AsyncLoader async_loader(&device, [&](Device* load_device) {
         std::set<string> options;
         handle_ty vertex_shader = load_device->create_shader_from_file(
@@ -67,22 +76,16 @@ int main(int argc, char* argv[]) {
         gltf_loader->Execute();
     });
 
-    Camera camera;
-    window->add_event_listener(&camera);
-    camera.set_aspect_ratio(1280.0f / 720.0f);
-    camera.set_position({0.0f, 0.05f, -0.45f});
-    camera.set_target({0.0f, 0.05f, 0.0f});
-
     const uint64_t model_matrix_name_id = hash64("modelMatrix");
     const uint64_t albedo_index_name_id = hash64("albedoIndex");
     const uint64_t albedo_sampler_index_name_id = hash64("albedoSamplerIndex");
     const uint64_t albedo_texture_name_id = hash64("albedo");
     constexpr uint32_t kAlbedoSamplerIndex = 0; // linear wrap
-    auto update_push_constant = [&](Primitive& primitive) {
+    auto update_push_constant = [&](Primitive& primitive, TransformComponent& transform) {
         primitive.set_push_constant_variable(
             model_matrix_name_id,
-            reinterpret_cast<std::byte*>(const_cast<void*>(static_cast<const void*>(&primitive.get_world_matrix()))),
-            sizeof(primitive.get_world_matrix()));
+            reinterpret_cast<std::byte*>(const_cast<void*>(static_cast<const void*>(&transform.get_world_matrix()))),
+            sizeof(transform.get_world_matrix()));
 
         const Primitive::TextureHandle albedo_handle = primitive.get_texture_handle(albedo_texture_name_id);
         primitive.set_push_constant_variable(
@@ -101,8 +104,6 @@ int main(int argc, char* argv[]) {
     render_pass_creation.swapchain_clear_stencil = 0;
     RHIRenderPass* render_pass = device.create_render_pass(render_pass_creation);
 
-    Renderer renderer(&device);
-    renderer.set_camera(&camera);
     renderer.set_async_loader(&async_loader, nullptr, [&]() {
         if (gltf_loader == nullptr) {
             return;
@@ -135,10 +136,15 @@ int main(int argc, char* argv[]) {
         render_pass->clear_draw_call_items();
         if (gltf_loader != nullptr) {
             Scene& scene = gltf_loader->get_scene();
+            renderer.ensure_render_components(scene.primitive_count());
             for (uint32_t primitive_index : scene.visible_primitive_indices()) {
                 Primitive& primitive = scene.primitive(primitive_index);
-                DrawCallItem draw_item = primitive.get_draw_call_item(&device, render_pass);
-                render_pass->add_draw_call(draw_item);
+                primitive.update_render_component(
+                    &device,
+                    renderer.ecs().render_component(primitive_index),
+                    scene.transform_component(primitive_index));
+                RenderComponent& render_component = renderer.ecs().render_component(primitive_index);
+                render_pass->add_draw_call(primitive_index, render_component.pipeline);
             }
         }
     });

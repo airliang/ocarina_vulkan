@@ -1,7 +1,5 @@
 #include "mesh.h"
-#include "rhi/device.h"
-#include "rhi/vertex_buffer.h"
-#include "rhi/index_buffer.h"
+#include "global_gpu_storage.h"
 #include "resource_manager.h"
 #include <cmath>
 
@@ -57,89 +55,68 @@ void Mesh::set_local_bounds(const float3& min_point, const float3& max_point) no
     local_bounds_.valid = true;
 }
 
-Mesh::~Mesh() {
-    if (vertex_buffer_) {
-        ocarina::delete_with_allocator<VertexBuffer>(vertex_buffer_);
-    }
-
-    if (index_buffer_) {
-        ocarina::delete_with_allocator<IndexBuffer>(index_buffer_);
-    }
-    vertex_buffer_ = nullptr;
-    index_buffer_ = nullptr;
-}
-
-Mesh* Mesh::create_quad(Device* device) {
+Mesh* Mesh::create_quad() {
     Mesh* mesh = ResourceManager::instance().get_mesh("quad");
     if (!mesh) {
-        mesh = ocarina::new_with_allocator<Quad>(device);
+        mesh = ocarina::new_with_allocator<Quad>();
         ResourceManager::instance().add_mesh("quad", mesh);
     }
     return mesh;
 }
 
-Mesh* Mesh::create_cube(Device* device) {
+Mesh* Mesh::create_cube() {
     Mesh* mesh = ResourceManager::instance().get_mesh("cube");
     if (!mesh) {
-        mesh = ocarina::new_with_allocator<Cube>(device);
+        mesh = ocarina::new_with_allocator<Cube>();
         ResourceManager::instance().add_mesh("cube", mesh);
     }
     return mesh;
 }
 
-Mesh* Mesh::create_sphere(Device* device) {
+Mesh* Mesh::create_sphere() {
     Mesh* mesh = ResourceManager::instance().get_mesh("sphere");
     if (!mesh) {
-        mesh = ocarina::new_with_allocator<Sphere>(device);
+        mesh = ocarina::new_with_allocator<Sphere>();
         ResourceManager::instance().add_mesh("sphere", mesh);
     }
     return mesh;
 }
 
 void BuildinMesh::create_buildin_mesh(Device* device) {
-    if (vertex_buffer_[0] == nullptr) {
-        vertex_buffer_[0] = device->create_vertex_buffer();
-        vertex_buffer_[1] = device->create_vertex_buffer();
-        vertex_buffer_[2] = device->create_vertex_buffer();
-    }
-    if (index_buffer_[0] == nullptr) {
-        index_buffer_[0] = device->create_index_buffer(nullptr, 0);
-        index_buffer_[1] = device->create_index_buffer(nullptr, 0);
-        index_buffer_[2] = device->create_index_buffer(nullptr, 0);
-    }
-
+    (void)device;
     is_created_ = true;
 }
 
 void BuildinMesh::cleanup() {
-    for (int i = 0; i < 3; ++i) {
-        ocarina::delete_with_allocator<VertexBuffer>(vertex_buffer_[i]);
-        vertex_buffer_[i] = nullptr;
-        ocarina::delete_with_allocator<IndexBuffer>(index_buffer_[i]);
-        index_buffer_[i] = nullptr;
-    }
-
     is_created_ = false;
 }
 
-Quad::Quad(Device* device) {
-    vertex_buffer_ = device->create_vertex_buffer();
-    Vector3 positions[4] = { {-1.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}, {1.0f, -1.0f, 0.0f}, {-1.0f, -1.0f, 0.0f} };
-    vertex_buffer_->add_vertex_stream(VertexAttributeType::Enum::Position, 4, sizeof(Vector3), (const void*)&positions[0]);
-    Vector2 uvs[4] = { {1.0f, 1.0f}, {0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f} };
-    vertex_buffer_->add_vertex_stream(VertexAttributeType::Enum::TexCoord0, 4, sizeof(Vector2), (const void*)&uvs[0]);
-    Vector4 colors[4] = { {1.0f, 1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f, 1.0f} };
-    vertex_buffer_->add_vertex_stream(VertexAttributeType::Enum::Color0, 4, sizeof(Vector4), (const void*)&colors[0]);
-    vertex_buffer_->upload_data();
+Quad::Quad() {
 
-    std::vector<uint16_t> indices{ 0, 1, 2, 2, 3, 0 };
-    index_buffer_ = device->create_index_buffer(indices.data(), static_cast<uint32_t>(indices.size()));
+    Vector3 positions[4] = { {-1.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}, {1.0f, -1.0f, 0.0f}, {-1.0f, -1.0f, 0.0f} };
+    Vector2 uvs[4] = { {1.0f, 1.0f}, {0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f} };
+    Vector4 colors[4] = {
+        {1.0f, 1.0f, 1.0f, 1.0f},
+        {1.0f, 1.0f, 1.0f, 1.0f},
+        {1.0f, 1.0f, 1.0f, 1.0f},
+        {1.0f, 1.0f, 1.0f, 1.0f},
+    };
+    const std::vector<uint16_t> indices{0, 1, 2, 2, 3, 0};
+
+    MeshGeometryInput input{};
+    input.vertex_count = 4;
+    input.positions = positions;
+    input.uvs = uvs;
+    input.colors = colors;
+    input.indices = indices.data();
+    input.index_count = static_cast<uint32_t>(indices.size());
+    set_geometry_slice(GlobalGPUStorage::instance().append_mesh(input));
 }
 
 Quad::~Quad() {
 }
 
-Cube::Cube(Device* device) {
+Cube::Cube() {
     constexpr float half_extent = 0.5f;
 
     std::vector<Vector3> positions;
@@ -195,30 +172,15 @@ Cube::Cube(Device* device) {
         Vector3(-half_extent, half_extent, -half_extent),
         Vector3(-1.0f, 0.0f, 0.0f));
 
-    vertex_buffer_ = device->create_vertex_buffer();
-    vertex_buffer_->add_vertex_stream(
-        VertexAttributeType::Enum::Position,
-        static_cast<uint32_t>(positions.size()),
-        sizeof(Vector3),
-        positions.data());
-    vertex_buffer_->add_vertex_stream(
-        VertexAttributeType::Enum::Normal,
-        static_cast<uint32_t>(normals.size()),
-        sizeof(Vector3),
-        normals.data());
-    vertex_buffer_->add_vertex_stream(
-        VertexAttributeType::Enum::TexCoord0,
-        static_cast<uint32_t>(uvs.size()),
-        sizeof(Vector2),
-        uvs.data());
-    vertex_buffer_->add_vertex_stream(
-        VertexAttributeType::Enum::Color0,
-        static_cast<uint32_t>(colors.size()),
-        sizeof(Vector4),
-        colors.data());
-    vertex_buffer_->upload_data();
-
-    index_buffer_ = device->create_index_buffer(indices.data(), static_cast<uint32_t>(indices.size()));
+    MeshGeometryInput input{};
+    input.vertex_count = static_cast<uint32_t>(positions.size());
+    input.positions = positions.data();
+    input.normals = normals.data();
+    input.uvs = uvs.data();
+    input.colors = colors.data();
+    input.indices = indices.data();
+    input.index_count = static_cast<uint32_t>(indices.size());
+    set_geometry_slice(GlobalGPUStorage::instance().append_mesh(input));
     set_local_bounds(
         make_float3(-half_extent, -half_extent, -half_extent),
         make_float3(half_extent, half_extent, half_extent));
@@ -227,7 +189,7 @@ Cube::Cube(Device* device) {
 Cube::~Cube() {
 }
 
-Sphere::Sphere(Device* device, uint32_t slice_count, uint32_t stack_count) {
+Sphere::Sphere(uint32_t slice_count, uint32_t stack_count) {
     std::vector<Vector3> positions;
     std::vector<Vector3> normals;
     std::vector<Vector2> uvs;
@@ -277,30 +239,15 @@ Sphere::Sphere(Device* device, uint32_t slice_count, uint32_t stack_count) {
         }
     }
 
-    vertex_buffer_ = device->create_vertex_buffer();
-    vertex_buffer_->add_vertex_stream(
-        VertexAttributeType::Enum::Position,
-        static_cast<uint32_t>(positions.size()),
-        sizeof(Vector3),
-        positions.data());
-    vertex_buffer_->add_vertex_stream(
-        VertexAttributeType::Enum::Normal,
-        static_cast<uint32_t>(normals.size()),
-        sizeof(Vector3),
-        normals.data());
-    vertex_buffer_->add_vertex_stream(
-        VertexAttributeType::Enum::TexCoord0,
-        static_cast<uint32_t>(uvs.size()),
-        sizeof(Vector2),
-        uvs.data());
-    vertex_buffer_->add_vertex_stream(
-        VertexAttributeType::Enum::Color0,
-        static_cast<uint32_t>(colors.size()),
-        sizeof(Vector4),
-        colors.data());
-    vertex_buffer_->upload_data();
-
-    index_buffer_ = device->create_index_buffer(indices.data(), static_cast<uint32_t>(indices.size()));
+    MeshGeometryInput input{};
+    input.vertex_count = static_cast<uint32_t>(positions.size());
+    input.positions = positions.data();
+    input.normals = normals.data();
+    input.uvs = uvs.data();
+    input.colors = colors.data();
+    input.indices = indices.data();
+    input.index_count = static_cast<uint32_t>(indices.size());
+    set_geometry_slice(GlobalGPUStorage::instance().append_mesh(input));
     set_local_bounds(make_float3(-1.0f, -1.0f, -1.0f), make_float3(1.0f, 1.0f, 1.0f));
 }
 

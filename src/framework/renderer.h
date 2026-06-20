@@ -14,6 +14,7 @@
 #include "render_task.h"
 #include "frustum.h"
 #include "renderer_primitive_cull_task.h"
+#include "entity_component_system.h"
 #include "ext/enkiTS/src/TaskScheduler.h"
 
 namespace enki { class TaskScheduler; struct ITaskSet; }
@@ -75,8 +76,14 @@ public:
         render_passes_.remove(render_pass);
     }
 
-    void set_scene(Scene* scene) noexcept { scene_ = scene; }
+    void set_scene(Scene* scene) noexcept;
     void set_camera(Camera* camera) noexcept { camera_ = camera; }
+
+    void ensure_render_components(size_t count);
+    [[nodiscard]] EntityComponentSystem& ecs() noexcept { return ecs_; }
+    [[nodiscard]] const EntityComponentSystem& ecs() const noexcept { return ecs_; }
+
+    void draw_opaque(CommandBuffer& cmd, RHIRenderPass* render_pass);
 
     void set_frustum_culling_enabled(bool enabled) noexcept { frustum_culling_enabled_ = enabled; }
     [[nodiscard]] bool frustum_culling_enabled() const noexcept { return frustum_culling_enabled_; }
@@ -103,6 +110,7 @@ protected:
 
     Scene* scene_ = nullptr;
     Camera* camera_ = nullptr;
+    EntityComponentSystem ecs_;
     RendererPrimitiveCullTask primitive_cull_task_;
     bool frustum_culling_enabled_ = true;
 

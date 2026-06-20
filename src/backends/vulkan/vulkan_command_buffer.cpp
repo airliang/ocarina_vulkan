@@ -124,10 +124,25 @@ void VulkanCommandBuffer::bind_descriptor_sets(DescriptorSet** descriptor_sets, 
     }
 }
 
-void VulkanCommandBuffer::draw_indexed(IndexBuffer* index_buffer, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance) {
+void VulkanCommandBuffer::set_index_buffer(IndexBuffer* index_buffer, uint32_t first_index) {
     VulkanIndexBuffer* vk_index_buffer = static_cast<VulkanIndexBuffer*>(index_buffer);
-    vkCmdBindIndexBuffer(vulkan_command_buffer_, vk_index_buffer->buffer_handle(), 0, index_buffer->is_16_bit() ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
-    vkCmdDrawIndexed(vulkan_command_buffer_, index_buffer->get_index_count(), 1, 0, 0, 0);
+    const VkDeviceSize byte_offset = static_cast<VkDeviceSize>(first_index)
+        * (index_buffer->is_16_bit() ? sizeof(uint16_t) : sizeof(uint32_t));
+    vkCmdBindIndexBuffer(
+        vulkan_command_buffer_,
+        vk_index_buffer->buffer_handle(),
+        byte_offset,
+        index_buffer->is_16_bit() ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
+}
+
+void VulkanCommandBuffer::draw_indexed(uint32_t index_count, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance) {
+    vkCmdDrawIndexed(
+        vulkan_command_buffer_,
+        index_count,
+        instance_count,
+        first_index,
+        vertex_offset,
+        first_instance);
 }
 
 void VulkanCommandBuffer::push_constants(const void* data, uint32_t offset, uint32_t size) {
@@ -141,7 +156,7 @@ void VulkanCommandBuffer::draw_indirect(handle_ty indirect_buffer, uint32_t draw
 void VulkanCommandBuffer::draw_indexed_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) {
 }
 
-void VulkanCommandBuffer::set_vertex_buffer(VertexBuffer* vertex_buffer) {
+void VulkanCommandBuffer::set_vertex_buffer(VertexBuffer* vertex_buffer, uint32_t base_vertex) {
     OC_ASSERT(current_pipeline_ != nullptr);
     const VulkanVertexStreamBinding* vertex_stream_binding = current_pipeline_->vertex_stream_binding();
     if (vertex_stream_binding == nullptr || vertex_stream_binding->attribute_descriptions_.empty()) {
@@ -154,7 +169,8 @@ void VulkanCommandBuffer::set_vertex_buffer(VertexBuffer* vertex_buffer) {
         if (vertex_stream == nullptr || vertex_stream->buffer == 0) {
             continue;
         }
-        VkDeviceSize offset = vertex_stream_binding->offsets_[i];
+        VkDeviceSize offset = vertex_stream_binding->offsets_[i]
+            + static_cast<VkDeviceSize>(base_vertex) * vertex_stream->stride;
         VulkanBuffer* vk_buffer = reinterpret_cast<VulkanBuffer*>(vertex_stream->buffer);
         VkBuffer buffer_handle = vk_buffer->buffer_handle();
         vkCmdBindVertexBuffers(vulkan_command_buffer_, static_cast<uint32_t>(i), 1, &buffer_handle, &offset);

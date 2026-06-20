@@ -7,8 +7,6 @@
 #include "rhi/common.h"
 #include "rhi/context.h"
 #include <windows.h>
-#include "rhi/vertex_buffer.h"
-#include "rhi/index_buffer.h"
 #include "rhi/resources/buffer.h"
 #include "framework/window_factory.h"
 #include "framework/sdl_window.h"
@@ -24,6 +22,7 @@
 #include "framework/material.h"
 #include "framework/async_loader.h"
 #include "framework/frame_resources.h"
+#include "framework/global_gpu_storage.h"
 
 using namespace ocarina;
 
@@ -32,38 +31,27 @@ struct GlobalUniformBuffer {
     math3d::Matrix4 view_matrix;
 };
 
-static Mesh* create_triangle_mesh(Device* device) {
+static Mesh* create_triangle_mesh() {
     Mesh* mesh = ocarina::new_with_allocator<Mesh>();
-
-    VertexBuffer* vertex_buffer = device->create_vertex_buffer();
     Vector3 positions[3] = {
         {-1.0f, 1.0f, 0.0f},
         {1.0f, 1.0f, 0.0f},
         {0.0f, -1.0f, 0.0f},
     };
-    vertex_buffer->add_vertex_stream(
-        VertexAttributeType::Enum::Position,
-        3,
-        sizeof(Vector3),
-        static_cast<const void*>(positions));
-
     Vector4 colors[3] = {
         {1.0f, 0.0f, 0.0f, 1.0f},
         {0.0f, 1.0f, 0.0f, 1.0f},
         {0.0f, 0.0f, 1.0f, 1.0f},
     };
-    vertex_buffer->add_vertex_stream(
-        VertexAttributeType::Enum::Color0,
-        3,
-        sizeof(Vector4),
-        static_cast<const void*>(colors));
-    vertex_buffer->upload_data();
-
     const std::vector<uint16_t> indices{0, 1, 2};
-    IndexBuffer* index_buffer = device->create_index_buffer(indices.data(), static_cast<uint32_t>(indices.size()));
 
-    mesh->set_vertex_buffer(vertex_buffer);
-    mesh->set_index_buffer(index_buffer);
+    MeshGeometryInput input{};
+    input.vertex_count = 3;
+    input.positions = positions;
+    input.colors = colors;
+    input.indices = indices.data();
+    input.index_count = static_cast<uint32_t>(indices.size());
+    mesh->set_geometry_slice(GlobalGPUStorage::instance().append_mesh(input));
     return mesh;
 }
 
@@ -84,6 +72,8 @@ int main(int argc, char *argv[]) {
     Material* material = nullptr;
     Mesh* triangle_mesh = nullptr;
 
+    Renderer renderer(&device);
+
     AsyncLoader async_loader(&device, [&material, &triangle_mesh](Device* device) {
         std::set<string> options;
         const fs::path source_dir = fs::path(__FILE__).parent_path();
@@ -100,7 +90,7 @@ int main(int argc, char *argv[]) {
             options);
 
         material = ResourceManager::instance().create_material(device, vertex_shader, pixel_shader);
-        triangle_mesh = create_triangle_mesh(device);
+        triangle_mesh = create_triangle_mesh();
         ResourceManager::instance().add_mesh("triangle", triangle_mesh);
     });
 
@@ -115,18 +105,14 @@ int main(int argc, char *argv[]) {
     camera.set_position({0.0f, 0.0f, -2.5f});
     camera.set_target({0.0f, 0.0f, 0.0f});
 
-    auto pre_render_draw_item = [&](const DrawCallItem& item) {
-    };
-
     uint64_t model_matrix_name_id = hash64("modelMatrix");
-    auto update_push_constant = [&](Primitive& primitive) {
+    auto update_push_constant = [&](Primitive& primitive, TransformComponent& transform) {
         primitive.set_push_constant_variable(
             model_matrix_name_id,
-            reinterpret_cast<std::byte*>(const_cast<void*>(static_cast<const void*>(&primitive.get_world_matrix()))),
-            sizeof(primitive.get_world_matrix()));
+            reinterpret_cast<std::byte*>(const_cast<void*>(static_cast<const void*>(&transform.get_world_matrix()))),
+            sizeof(transform.get_world_matrix()));
     };
 
-    triangle.set_draw_call_pre_render_function(pre_render_draw_item);
     triangle.set_update_push_constant_function(update_push_constant);
 
     RenderPassCreation render_pass_creation;
@@ -135,7 +121,6 @@ int main(int argc, char *argv[]) {
     render_pass_creation.swapchain_clear_stencil = 0;
     RHIRenderPass* render_pass = device.create_render_pass(render_pass_creation);
 
-    Renderer renderer(&device);
     renderer.set_async_loader(&async_loader, nullptr, [&]() {
         triangle.set_geometry_data_setup(&device, [&](Primitive& triangle) {
             setup_triangle(triangle);
@@ -153,8 +138,13 @@ int main(int argc, char *argv[]) {
             camera.get_view_matrix().transpose()};
         global_descriptor_set->update_buffer(hash64("global_ubo"), &global_ubo_data, sizeof(GlobalUniformBuffer));
         render_pass->clear_draw_call_items();
-        auto draw_item = triangle.get_draw_call_item(&device, render_pass);
-        render_pass->add_draw_call(draw_item);
+        renderer.ensure_render_components(1);
+        triangle.update_render_component(
+            &device,
+            renderer.ecs().render_component(0),
+            renderer.ecs().transform_component(0));
+        RenderComponent& render_component = renderer.ecs().render_component(0);
+        render_pass->add_draw_call(0, render_component.pipeline);
     });
 
     renderer.add_render_pass(render_pass);

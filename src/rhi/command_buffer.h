@@ -27,11 +27,12 @@ public:
         virtual void end_render_pass() = 0;
         virtual void bind_pipeline(const RHIPipeline* pipeline) = 0;
         virtual void bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t first_set, uint32_t descriptor_set_count, handle_ty pipeline_layout) = 0;
-        virtual void draw_indexed(IndexBuffer* index_buffer, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance) = 0;
+        virtual void draw_indexed(uint32_t index_count, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance) = 0;
         virtual void push_constants(const void* data, uint32_t offset, uint32_t size) = 0;
         virtual void draw_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) = 0;
         virtual void draw_indexed_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) = 0;
-        virtual void set_vertex_buffer(VertexBuffer* vertex_buffer) = 0;
+        virtual void set_vertex_buffer(VertexBuffer* vertex_buffer, uint32_t base_vertex = 0) = 0;
+        virtual void set_index_buffer(IndexBuffer* index_buffer, uint32_t first_index = 0) = 0;
         virtual void submit_to_queue(QueueType queue_type, Fence* fence) = 0;
         virtual void begin() = 0;
         virtual void end() = 0;
@@ -105,9 +106,9 @@ public:
         return impl_;
     }
 
-    void draw_indexed(IndexBuffer* index_buffer, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance)
+    void draw_indexed(uint32_t index_count, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance)
     {
-        impl_->draw_indexed(index_buffer, instance_count, first_index, vertex_offset, first_instance);
+        impl_->draw_indexed(index_count, instance_count, first_index, vertex_offset, first_instance);
     }
 
     void draw_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride)
@@ -118,9 +119,13 @@ public:
     {
         //impl_->draw_indexed_indirect(indirect_buffer, draw_count, stride);
     }
-    void set_vertex_buffer(VertexBuffer* vertex_buffer)
+    void set_vertex_buffer(VertexBuffer* vertex_buffer, uint32_t base_vertex = 0)
     {
-        impl_->set_vertex_buffer(vertex_buffer);
+        impl_->set_vertex_buffer(vertex_buffer, base_vertex);
+    }
+    void set_index_buffer(IndexBuffer* index_buffer, uint32_t first_index = 0)
+    {
+        impl_->set_index_buffer(index_buffer, first_index);
     }
     void push_constants(const void* data, uint32_t offset, uint32_t size)
     {
