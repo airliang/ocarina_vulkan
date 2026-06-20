@@ -1,9 +1,3 @@
-//
-// Created by Zero on 06/06/2022.
-//
-
-#pragma once
-
 #include "renderer.h"
 #include "render_task.h"
 #include "resource_manager.h"

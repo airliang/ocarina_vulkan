@@ -1,5 +1,3 @@
-#pragma once
-
 #include "resource_manager.h"
 #include "core/logging.h"
 #include "material.h"
