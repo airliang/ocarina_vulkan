@@ -39,7 +39,6 @@ public:
         const TextureSampler& sampler, uint4 default_color, const void* data);
     void load_cpu_data(Image *image);
     void load_cpu_data(const void* data, size_t size_in_bytes);
-    void generate_mipmaps();
     void create_image_view(const TextureViewCreation &texture_view);
     void create_sampler(const TextureSampler& sampler_creation);
     [[nodiscard]] uint3 resolution() const noexcept override { return res_; }

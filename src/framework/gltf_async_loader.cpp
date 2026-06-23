@@ -1,4 +1,5 @@
 #include "gltf_async_loader.h"
+#include "enki_task_debug.h"
 
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION

@@ -8,6 +8,7 @@
 #include "transform_component.h"
 #include "mesh.h"
 #include "simd_frustum_cull.h"
+#include "enki_task_debug.h"
 #include "ext/enkiTS/src/TaskScheduler.h"
 #include <atomic>
 
@@ -50,6 +51,8 @@ public:
     [[nodiscard]] uint32_t visible_count() const noexcept {
         return visible_counts_.load(std::memory_order_relaxed);
     }
+
+    [[nodiscard]] uint64_t execute_thread_id() const noexcept { return execute_thread_id_; }
 
     void ExecuteRange(enki::TaskSetPartition range, uint32_t threadnum) override {
         if (primitives_ == nullptr || transform_components_ == nullptr || primitive_cull_batch_ == nullptr || frustum_ == nullptr) {
@@ -167,6 +170,7 @@ private:
 
     std::vector<uint32_t> primitive_cull_batch_results_;
     std::atomic<uint32_t> visible_counts_{0};
+    uint64_t execute_thread_id_ = 0;
 };
 
 }// namespace ocarina

@@ -1,5 +1,6 @@
 #include "render_task.h"
 #include "renderer.h"
+#include "enki_task_debug.h"
 #include "camera.h"
 #include "cmd_record_task.h"
 #include "rhi/device.h"

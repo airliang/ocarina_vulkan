@@ -12,6 +12,7 @@
 #include "rhi/graphics_descriptions.h"
 #include "rhi/command_buffer.h"
 #include "render_task.h"
+#include "loading_imgui_task.h"
 #include "frustum.h"
 #include "renderer_primitive_cull_task.h"
 #include "entity_component_system.h"
@@ -29,6 +30,7 @@ class Camera;
 
 class Renderer : public concepts::Noncopyable {
     friend class RenderTask;
+    friend class LoadingImguiTask;
 
 public:
     explicit Renderer(Device *device);
@@ -37,6 +39,7 @@ public:
     using RenderCallback = ocarina::function<void(double)>;
     using UpdateDescriptorPerObjectCallback = ocarina::function<void(Primitive&)>;
     using RenderGUIImplCallback = ocarina::function<void(const CommandBuffer& cmd_buffer)>;
+    using LoadingGUIImplCallback = ocarina::function<void(const CommandBuffer& cmd_buffer, double dt)>;
     using RenderTaskEndCallback = ocarina::function<void()>;
     using AsyncLoaderCompleteCallback = ocarina::function<void()>;
 
@@ -44,6 +47,10 @@ public:
     void set_render_gui_impl_callback(RenderGUIImplCallback cb)
     {
         render_gui_impl_ = cb;
+    }
+    void set_loading_gui_impl_callback(LoadingGUIImplCallback cb)
+    {
+        loading_gui_impl_ = std::move(cb);
     }
     void set_render_task_end_callback(RenderTaskEndCallback cb)
     {
@@ -66,6 +73,7 @@ public:
     // Stops the render thread. Call before any main-thread Vulkan idle/teardown (e.g. ImGui shutdown).
     void shutdown();
     [[nodiscard]] double dt() const noexcept { return render_task_.last_dt(); }
+    [[nodiscard]] double loading_dt() const noexcept { return loading_imgui_task_.last_dt(); }
     void add_render_pass(RHIRenderPass *render_pass)
     {
         render_passes_.emplace_back(render_pass);
@@ -94,8 +102,10 @@ public:
 private:
     RenderCallback render = nullptr;
     RenderGUIImplCallback render_gui_impl_ = nullptr;
+    LoadingGUIImplCallback loading_gui_impl_ = nullptr;
     float4 clear_color = {0, 0, 0, 1};
 
+    LoadingImguiTask loading_imgui_task_;
     RenderTask render_task_;
 
 protected:

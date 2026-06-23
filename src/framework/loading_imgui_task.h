@@ -3,32 +3,29 @@
 #include "core/header.h"
 #include "core/stl.h"
 #include "core/util.h"
+#include "rhi/command_buffer.h"
 #include "ext/enkiTS/src/TaskScheduler.h"
 
 namespace ocarina {
 
 class Renderer;
 
-class RenderTask : public enki::IPinnedTask {
+class LoadingImguiTask : public enki::IPinnedTask {
 public:
-    using EndCallback = ocarina::function<void()>;
+    explicit LoadingImguiTask(Renderer& renderer) noexcept;
 
-    explicit RenderTask(Renderer& renderer) noexcept;
+    void configure(const enki::ICompletable* loader_task) noexcept;
 
     void Execute() override;
-
-    void set_end_callback(EndCallback cb) noexcept { end_callback_ = std::move(cb); }
 
     [[nodiscard]] double last_dt() const noexcept { return dt_; }
     [[nodiscard]] uint64_t execute_thread_id() const noexcept { return execute_thread_id_; }
 
 private:
-    void render_one_frame();
-
-    void execute_default_render_path();
+    void render_loading_frame();
 
     Renderer& renderer_;
-    EndCallback end_callback_;
+    const enki::ICompletable* loader_task_ = nullptr;
     Clock clock_;
     double dt_ = 0.0;
     uint64_t execute_thread_id_ = 0;

@@ -1,12 +1,11 @@
 #pragma once
 
 #include "async_loader.h"
+#include "enki_task_debug.h"
 
 namespace ocarina {
 
 void AsyncLoader::ExecuteRange(enki::TaskSetPartition range, uint32_t threadnum) {
-    (void)range;
-    (void)threadnum;
     if (task_) {
         try {
             task_(device_);

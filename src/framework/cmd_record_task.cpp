@@ -1,12 +1,11 @@
 #pragma once
 
 #include "cmd_record_task.h"
+#include "enki_task_debug.h"
 
 namespace ocarina {
 
 void CmdRecordTask::ExecuteRange(enki::TaskSetPartition range, uint32_t threadnum) {
-    (void)range;
-    (void)threadnum;
     if (task_) {
         try {
             task_(device_, cmd_buffer_);

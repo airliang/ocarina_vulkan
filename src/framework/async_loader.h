@@ -30,9 +30,12 @@ public:
 
     void ExecuteRange(enki::TaskSetPartition range, uint32_t threadnum) override;
 
+    [[nodiscard]] uint64_t execute_thread_id() const noexcept { return execute_thread_id_; }
+
 private:
     Device* device_;
     ocarina::function<void(Device*)> task_ = nullptr;
+    uint64_t execute_thread_id_ = 0;
 };
 
 }// namespace ocarina

@@ -55,6 +55,7 @@ void VulkanIndexBuffer::load_from_cpu(const void* cpu_data, uint32_t byte_offset
     Fence fence = device_->create_fence();
     cmd.submit_to_queue(QueueType::Copy, &fence);
     fence.wait();
+    static_cast<VulkanDevice*>(device_)->release_command_buffer(cmd);
 }
 
 }// namespace ocarina

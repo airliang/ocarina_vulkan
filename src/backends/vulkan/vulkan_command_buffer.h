@@ -32,6 +32,7 @@ public:
     void submit_to_queue(QueueType queue_type, Fence* fence) override;
     void begin() override;
     void end() override;
+    void set_record_gpu_timestamps(bool enabled) noexcept { record_gpu_timestamps_ = enabled; }
     OC_MAKE_MEMBER_GETTER(vulkan_command_buffer, )
     //OC_MAKE_MEMBER_GETTER_SETTER(pipeline_stage_flags, )
     VkPipelineStageFlags2 pipeline_stage_flags() const { return pipeline_stage_flags_; }
@@ -39,9 +40,11 @@ public:
     void reset();
     void copy_buffer(VulkanBuffer* src, VulkanBuffer* dst);
     void copy_image(VulkanBuffer* src, VulkanTexture* dst);
+    void copy_image(VulkanBuffer* src, VulkanTexture* dst, const VkBufferImageCopy* regions, uint32_t region_count);
     /// Records vkCmdPipelineBarrier for a color image layout transition (subset of layouts used by texture upload).
     void image_layout_barrier(VulkanTexture* texture, VkImageLayout old_layout, VkImageLayout new_layout);
     QueueType queue_type() const noexcept { return queue_type_; }
+    [[nodiscard]] VkCommandPool vulkan_command_pool() const noexcept { return command_pool_; }
 private:
     VulkanDevice *device_ = nullptr;
     VkCommandPool command_pool_ = VK_NULL_HANDLE;
@@ -50,6 +53,7 @@ private:
     VulkanPipeline* current_pipeline_ = nullptr;
     CommandBufferState state_;
     QueueType queue_type_ = QueueType::Graphics;
+    bool record_gpu_timestamps_ = true;
 };
 
 }// namespace ocarina

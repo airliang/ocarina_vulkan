@@ -56,6 +56,7 @@ void VulkanVertexBuffer::upload_attribute_data(VertexAttributeType::Enum type, c
     Fence fence = device_->create_fence();
     cmd.submit_to_queue(QueueType::Copy, &fence);
     fence.wait();
+    static_cast<VulkanDevice*>(device_)->release_command_buffer(cmd);
 }
 
 }// namespace ocarina

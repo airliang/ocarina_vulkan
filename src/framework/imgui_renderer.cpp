@@ -90,6 +90,44 @@ void ImguiRenderer::process_sdl_event(const SDL_Event& event) noexcept {
     ImGui_ImplSDL3_ProcessEvent(&event);
 }
 
+void ImguiRenderer::render_loading(const CommandBuffer& command_buffer, double time_seconds) noexcept {
+    if (!initialized_) {
+        return;
+    }
+
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+
+    const ImVec2 display_size = ImGui::GetIO().DisplaySize;
+    ImGui::SetNextWindowPos(
+        ImVec2(display_size.x * 0.5f, display_size.y * 0.5f),
+        ImGuiCond_Always,
+        ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowBgAlpha(0.9f);
+    ImGui::Begin(
+        "Loading",
+        nullptr,
+        ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+
+    ImGui::TextUnformatted("Loading");
+    const int dot_count = static_cast<int>(time_seconds * 2.0) % 4;
+    char dots[5] = "....";
+    dots[dot_count] = '\0';
+    ImGui::SameLine();
+    ImGui::TextUnformatted(dots);
+
+    ImGui::Spacing();
+    ImGui::ProgressBar(-1.0f, ImVec2(220.0f, 0.0f));
+
+    ImGui::End();
+
+    ImGui::Render();
+    ImGui_ImplVulkan_RenderDrawData(
+        ImGui::GetDrawData(),
+        reinterpret_cast<VkCommandBuffer>(command_buffer.command_buffer));
+}
+
 void ImguiRenderer::render(const CommandBuffer& command_buffer) noexcept {
     if (!initialized_ || !frame_callback_) {
         return;

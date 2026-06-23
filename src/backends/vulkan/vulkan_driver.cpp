@@ -102,55 +102,6 @@ VulkanShader* VulkanDriver::get_shader(handle_ty shader) const
     return vulkan_shader_manager->get_shader(shader);
 }
 
-VkCommandBuffer VulkanDriver::begin_one_time_command_buffer()
-{
-    return begin_one_time_command_buffer(QueueType::Graphics);
-}
-
-VkCommandBuffer VulkanDriver::begin_one_time_command_buffer(QueueType queue_type)
-{
-    VkCommandBufferAllocateInfo cmd_buffer_allocate{};
-    cmd_buffer_allocate.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cmd_buffer_allocate.commandPool = command_pools_[(size_t)queue_type];
-    cmd_buffer_allocate.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cmd_buffer_allocate.commandBufferCount = 1;
-
-    VkCommandBuffer cmd_buffer = VK_NULL_HANDLE;
-    VK_CHECK_RESULT(vkAllocateCommandBuffers(device(), &cmd_buffer_allocate, &cmd_buffer));
-
-    VkCommandBufferBeginInfo cmd_buffer_begin{};
-    cmd_buffer_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    vkBeginCommandBuffer(cmd_buffer, &cmd_buffer_begin);
-
-    return cmd_buffer;
-}
-
-void VulkanDriver::end_one_time_command_buffer(VkCommandBuffer cmd) {
-    end_one_time_command_buffer(cmd, QueueType::Graphics);
-}
-
-void VulkanDriver::end_one_time_command_buffer(VkCommandBuffer cmd, QueueType queue_type) {
-    vkEndCommandBuffer(cmd);
-
-    // Submit + wait on the appropriate queue.
-    VkQueue queue = get_queue(queue_type);
-    VkFenceCreateInfo fence_info{};
-    fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fence_info.flags = 0;
-    VkFence fence = VK_NULL_HANDLE;
-    VK_CHECK_RESULT(vkCreateFence(device(), &fence_info, nullptr, &fence));
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &cmd;
-    VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, fence));
-    VK_CHECK_RESULT(vkWaitForFences(device(), 1, &fence, VK_TRUE, std::numeric_limits<uint64_t>::max()));
-    vkDestroyFence(device(), fence, nullptr);
-
-    vkFreeCommandBuffers(device(), command_pools_[(size_t)queue_type], 1, &cmd);
-}
-
 void VulkanDriver::setup_frame_buffer()
 {
     VulkanSwapchain *swapchain = vulkan_device_->get_swapchain();
@@ -345,9 +296,6 @@ void VulkanDriver::create_command_buffers()
 }
 
 void VulkanDriver::release_command_buffers() {
-    //vkFreeCommandBuffers(device(), command_pool_, static_cast<uint32_t>(draw_cmd_buffers_.size()), draw_cmd_buffers_.data());
-    //draw_cmd_buffers_.clear();
-
     for (auto& per_queue_pools : command_buffer_pools_) {
         for (size_t q = 0; q < (size_t)QueueType::NumQueueType; ++q) {
             auto& pool = per_queue_pools[q];
@@ -584,37 +532,6 @@ void VulkanDriver::destroy_render_pass(VulkanRenderPass* render_pass) {
     ocarina::delete_with_allocator<VulkanRenderPass>(render_pass);
 }
 
-VkResult VulkanDriver::copy_buffer(VulkanBuffer* src, VulkanBuffer* dst)
-{
-    VkCommandBuffer cmd_buffer = begin_one_time_command_buffer(QueueType::Copy);
-
-    VkBufferCopy buffer_copy{};
-
-    buffer_copy.size = src->size();
-
-
-    vkCmdCopyBuffer(cmd_buffer, src->buffer_handle(), dst->buffer_handle(), 1, &buffer_copy);
-
-    end_one_time_command_buffer(cmd_buffer, QueueType::Copy);
-
-    return VK_SUCCESS;
-}
-
-VkResult VulkanDriver::copy_buffer(VulkanBuffer* src, VkBuffer dst)
-{
-    VkCommandBuffer cmd_buffer = begin_one_time_command_buffer(QueueType::Copy);
-
-    VkBufferCopy buffer_copy{};
-
-    buffer_copy.size = src->size();
-
-    vkCmdCopyBuffer(cmd_buffer, src->buffer_handle(), dst, 1, &buffer_copy);
-
-    end_one_time_command_buffer(cmd_buffer, QueueType::Copy);
-
-    return VK_SUCCESS;
-}
-
 void VulkanDriver::draw_triangles(VkCommandBuffer cmd, VulkanIndexBuffer* index_buffer) {
     //VkCommandBuffer current_buffer = get_current_command_buffer();
     vkCmdBindIndexBuffer(cmd, index_buffer->buffer_handle(), 0, index_buffer->is_16_bit() ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
@@ -695,6 +612,8 @@ VkDescriptorPool VulkanDriver::get_imgui_descriptor_pool()
 }
 
 VulkanCommandBuffer* VulkanDriver::get_command_buffer(QueueType queue_type) {
+    std::lock_guard<std::mutex> lock(command_buffer_pool_mutex_);
+
     auto& pool = command_buffer_pools_[current_frame_][(size_t)queue_type];
     if (pool.empty()) {
         VkCommandBufferAllocateInfo allocateInfo{};
@@ -705,15 +624,16 @@ VulkanCommandBuffer* VulkanDriver::get_command_buffer(QueueType queue_type) {
         VkCommandBuffer cmd_buffer = VK_NULL_HANDLE;
         VK_CHECK_RESULT(vkAllocateCommandBuffers(device(), &allocateInfo, &cmd_buffer));
         return ocarina::new_with_allocator<ocarina::VulkanCommandBuffer>(vulkan_device_, command_pools_[(size_t)queue_type], cmd_buffer, queue_type);
-    } else {
-        VulkanCommandBuffer* cmd_buffer = pool.front();
-        pool.pop();
-        return cmd_buffer;
     }
+
+    VulkanCommandBuffer* cmd_buffer = pool.front();
+    pool.pop();
+    return cmd_buffer;
 }
 
 void VulkanDriver::release_command_buffer(VulkanCommandBuffer* cmd_buffer)
 {
+    std::lock_guard<std::mutex> lock(command_buffer_pool_mutex_);
     cmd_buffer->reset();
     command_buffer_pools_[current_frame_][(size_t)cmd_buffer->queue_type()].push(cmd_buffer);
 }

@@ -161,6 +161,9 @@ int main(int argc, char *argv[]) {
         window->widgets()->pop_window();
     });
 
+    renderer.set_loading_gui_impl_callback([&](const CommandBuffer& cmd_buffer, double dt) {
+        imgui_renderer.render_loading(cmd_buffer, dt);
+    });
     renderer.set_render_gui_impl_callback([&](const CommandBuffer& cmd_buffer) {
         imgui_renderer.render(cmd_buffer);
     });

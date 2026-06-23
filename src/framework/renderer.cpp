@@ -20,6 +20,7 @@ namespace ocarina {
 
 Renderer::Renderer(Device *device)
     : device_(device),
+      loading_imgui_task_(*this),
       render_task_(*this)
 {
     GlobalGPUStorage::instance().initialize(device);
@@ -235,7 +236,11 @@ void Renderer::run()
             async_wait_fn_();
         }
 
+        loading_imgui_task_.configure(async_loader_task_);
+        task_scheduler_.AddPinnedTask(&loading_imgui_task_);
+
         task_scheduler_.WaitforTask(async_loader_task_);
+        task_scheduler_.WaitforTask(&loading_imgui_task_);
 
         if (async_complete_fn_) {
             async_complete_fn_();
@@ -246,10 +251,6 @@ void Renderer::run()
         async_loader_task_ = nullptr;
         async_wait_fn_ = nullptr;
         async_complete_fn_ = nullptr;
-    }
-
-    if (scene_ != nullptr && camera_ != nullptr) {
-        cull_scene();
     }
 
     task_scheduler_.AddPinnedTask(&render_task_);

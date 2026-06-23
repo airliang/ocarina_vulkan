@@ -6,6 +6,8 @@
 #include <vulkan/vulkan.h>
 #include "vulkan_pipeline.h"
 #include <array>
+#include <mutex>
+#include <queue>
 
 namespace ocarina {
 class VulkanPipelineManager;
@@ -63,11 +65,6 @@ public:
     //    return draw_cmd_buffers_[current_buffer_];
     //}
 
-    VkCommandBuffer begin_one_time_command_buffer();
-    void end_one_time_command_buffer(VkCommandBuffer cmd);
-    VkCommandBuffer begin_one_time_command_buffer(QueueType queue_type);
-    void end_one_time_command_buffer(VkCommandBuffer cmd, QueueType queue_type);
-
     VulkanPipeline* get_pipeline(const PipelineState &pipeline_state, VkRenderPass render_pass);
 
     void begin_frame();
@@ -88,9 +85,6 @@ public:
     {
         return frame_buffers[index];
     }
-
-    VkResult copy_buffer(VulkanBuffer* src, VulkanBuffer* dst);
-    VkResult copy_buffer(VulkanBuffer *src, VkBuffer dst);
 
     void draw_triangles(VkCommandBuffer cmd, VulkanIndexBuffer* index_buffer);
 
@@ -188,13 +182,14 @@ private:
     VkQueue compute_queue{VK_NULL_HANDLE};
     VkQueue copy_queue{ VK_NULL_HANDLE };
 
-    /** @brief Command pools per queue family */
+    /** @brief Command pools per queue family (graphics / compute / copy) */
     std::array<VkCommandPool, (size_t)QueueType::NumQueueType> command_pools_ = {};
     // Command buffers used for rendering
     //std::vector<VkCommandBuffer> draw_cmd_buffers_;
 
     using CommandBufferPoolPerQueue = std::array<std::queue<VulkanCommandBuffer*>, (size_t)QueueType::NumQueueType>;
     std::vector<CommandBufferPoolPerQueue> command_buffer_pools_;
+    std::mutex command_buffer_pool_mutex_;
     // Swapchain image index from the latest acquire
     uint32_t current_buffer_ = 0;
     // Ring index for per-frame CPU/GPU sync (fences, semaphores, command-buffer pools)

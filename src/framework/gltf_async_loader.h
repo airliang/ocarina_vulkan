@@ -34,6 +34,7 @@ public:
 
     [[nodiscard]] Scene& get_scene() noexcept { return scene_; }
     [[nodiscard]] const Scene& get_scene() const noexcept { return scene_; }
+    [[nodiscard]] uint64_t execute_thread_id() const noexcept { return execute_thread_id_; }
 
 private:
     void build_scene_clusters();
@@ -56,6 +57,7 @@ private:
     std::unordered_map<uint64_t, Mesh*> geometry_meshes_;
     Scene scene_;
     bool is_loaded_ = false;
+    uint64_t execute_thread_id_ = 0;
 };
 
 }// namespace ocarina

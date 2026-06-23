@@ -201,19 +201,21 @@ void VulkanCommandBuffer::submit_to_queue(QueueType queue_type, Fence* fence) {
 }
 
 void VulkanCommandBuffer::begin() {
+    VK_CHECK_RESULT(vkResetCommandBuffer(vulkan_command_buffer_, 0));
+
     VkCommandBufferBeginInfo begin_info{};
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT; // Adjust as needed
-    begin_info.pInheritanceInfo = nullptr; // Only relevant for secondary command buffers
+    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    begin_info.pInheritanceInfo = nullptr;
     VK_CHECK_RESULT(vkBeginCommandBuffer(vulkan_command_buffer_, &begin_info));
 
-    if (queue_type_ == QueueType::Graphics) {
+    if (record_gpu_timestamps_ && queue_type_ == QueueType::Graphics) {
         VulkanDriver::instance().write_gpu_timestamp_begin(vulkan_command_buffer_);
     }
 }
 
 void VulkanCommandBuffer::end() {
-    if (queue_type_ == QueueType::Graphics) {
+    if (record_gpu_timestamps_ && queue_type_ == QueueType::Graphics) {
         VulkanDriver::instance().write_gpu_timestamp_end(vulkan_command_buffer_);
     }
     VK_CHECK_RESULT(vkEndCommandBuffer(vulkan_command_buffer_));
@@ -250,6 +252,11 @@ void VulkanCommandBuffer::copy_image(VulkanBuffer* src, VulkanTexture* dst)
     region.imageOffset = {0, 0, 0};
     region.imageExtent = {dst->resolution().x, dst->resolution().y, 1};
 
+    copy_image(src, dst, &region, 1);
+}
+
+void VulkanCommandBuffer::copy_image(VulkanBuffer* src, VulkanTexture* dst, const VkBufferImageCopy* regions, uint32_t region_count)
+{
     VkImage image = reinterpret_cast<VkImage>(dst->tex_handle());
 
     vkCmdCopyBufferToImage(
@@ -257,8 +264,8 @@ void VulkanCommandBuffer::copy_image(VulkanBuffer* src, VulkanTexture* dst)
         src->buffer_handle(),
         image,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        1,
-        &region);
+        region_count,
+        regions);
 }
 
 void VulkanCommandBuffer::image_layout_barrier(VulkanTexture* texture, VkImageLayout old_layout, VkImageLayout new_layout)
@@ -286,9 +293,15 @@ void VulkanCommandBuffer::image_layout_barrier(VulkanTexture* texture, VkImageLa
         destination_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
     } else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
         source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        if (queue_type_ == QueueType::Copy) {
+            // Transfer queues only support transfer-stage access flags; layout change is enough here.
+            barrier.dstAccessMask = 0;
+            destination_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+        } else {
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        }
     } else {
         throw std::runtime_error("VulkanCommandBuffer::image_layout_barrier: unsupported layout transition");
     }
