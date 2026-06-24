@@ -5,6 +5,7 @@
 #include "framework/window_factory.h"
 #include "framework/sdl_window.h"
 #include "framework/imgui_renderer.h"
+#include "framework/framework_ui.h"
 #include "framework/renderer.h"
 #include "framework/primitive.h"
 #include "framework/camera.h"
@@ -13,6 +14,7 @@
 #include "framework/async_loader.h"
 #include "framework/frame_resources.h"
 #include "framework/gltf_async_loader.h"
+#include "framework/loading_progress_listener.h"
 #include "framework/scene.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/renderpass.h"
@@ -47,6 +49,7 @@ int main(int argc, char* argv[]) {
 
     Material* material = nullptr;
     GltfAsyncLoader* gltf_loader = nullptr;
+    LoadingProgressListener loading_progress;
 
     Camera camera;
     window->add_event_listener(&camera);
@@ -56,6 +59,7 @@ int main(int argc, char* argv[]) {
 
     Renderer renderer(&device);
     renderer.set_camera(&camera);
+    renderer.set_loading_progress_listener(&loading_progress);
 
     AsyncLoader async_loader(&device, [&](Device* load_device) {
         std::set<string> options;
@@ -72,7 +76,8 @@ int main(int argc, char* argv[]) {
         gltf_loader = ocarina::new_with_allocator<GltfAsyncLoader>(
             fs::absolute(gltf_path).string(),
             load_device,
-            material);
+            material,
+            &loading_progress);
         gltf_loader->Execute();
     });
 
@@ -104,6 +109,18 @@ int main(int argc, char* argv[]) {
     render_pass_creation.swapchain_clear_stencil = 0;
     RHIRenderPass* render_pass = device.create_render_pass(render_pass_creation);
 
+    ImguiRenderer imgui_renderer(*window);
+    imgui_renderer.init(device);
+    const string window_name = "FlightHelmet glTF";
+    FrameInfoContext frame_info;
+    frame_info.renderer = &renderer;
+    frame_info.device = &device;
+    frame_info.window_title = window_name;
+    window->widgets()->set_frame_info_context(&frame_info);
+    imgui_renderer.set_frame_callback([&]() {
+        display_loading_progress(*window->widgets(), &loading_progress, renderer.loading_dt());
+    });
+
     renderer.set_async_loader(&async_loader, nullptr, [&]() {
         if (gltf_loader == nullptr) {
             return;
@@ -121,6 +138,10 @@ int main(int argc, char* argv[]) {
             });
         }
         renderer.set_scene(&scene);
+
+        imgui_renderer.set_frame_callback([&]() {
+            display_frame_info(*window->widgets());
+        });
     });
 
     FrameResources::instance().set_update_callback([&](FrameResources&, double dt) {
@@ -151,31 +172,8 @@ int main(int argc, char* argv[]) {
 
     renderer.add_render_pass(render_pass);
 
-    ImguiRenderer imgui_renderer(*window);
-    imgui_renderer.init(device);
-    const string window_name = "FlightHelmet glTF";
-    imgui_renderer.set_frame_callback([&]() {
-        window->widgets()->push_window(window_name);
-        window->widgets()->text("FPS: %.2f", 1.0f / renderer.dt());
-        const math3d::Vector3D& cam_position = camera.get_position();
-        const math3d::Vector3D cam_forward = math3d::normalize(
-            math3d::operator-(camera.get_target(), cam_position));
-        window->widgets()->text(
-            "Camera position: (%.3f, %.3f, %.3f)",
-            cam_position[0], cam_position[1], cam_position[2]);
-        window->widgets()->text(
-            "Camera forward: (%.3f, %.3f, %.3f)",
-            cam_forward[0], cam_forward[1], cam_forward[2]);
-        if (gltf_loader != nullptr) {
-            const Scene& scene = gltf_loader->get_scene();
-            window->widgets()->text("Primitives: %zu", scene.primitives().size());
-            window->widgets()->text("Visible primitives: %zu", scene.visible_primitive_indices().size());
-        }
-        window->widgets()->pop_window();
-    });
-
-    renderer.set_loading_gui_impl_callback([&](const CommandBuffer& cmd_buffer, double dt) {
-        imgui_renderer.render_loading(cmd_buffer, dt);
+    renderer.set_loading_gui_impl_callback([&](const CommandBuffer& cmd_buffer) {
+        imgui_renderer.render(cmd_buffer);
     });
     renderer.set_render_gui_impl_callback([&](const CommandBuffer& cmd_buffer) {
         imgui_renderer.render(cmd_buffer);

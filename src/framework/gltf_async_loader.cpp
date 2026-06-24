@@ -1,5 +1,6 @@
 #include "gltf_async_loader.h"
 #include "enki_task_debug.h"
+#include "loading_progress_listener.h"
 
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
@@ -136,6 +137,14 @@ uint64_t make_vertex_attributes_key(const tinygltf::Primitive& primitive) {
     return key;
 }
 
+uint32_t count_gltf_primitives(const tinygltf::Model& model) {
+    uint32_t count = 0;
+    for (const tinygltf::Mesh& mesh : model.meshes) {
+        count += static_cast<uint32_t>(mesh.primitives.size());
+    }
+    return count;
+}
+
 [[nodiscard]] BoundingBox bounds_from_position_accessor(const tinygltf::Accessor& accessor) {
     BoundingBox bounds;
     if (accessor.minValues.size() >= 3 && accessor.maxValues.size() >= 3) {
@@ -158,11 +167,16 @@ uint64_t GltfAsyncLoader::make_geometry_key(const tinygltf::Primitive& primitive
     return make_vertex_attributes_key(primitive);
 }
 
-GltfAsyncLoader::GltfAsyncLoader(const std::string& gltf_file, Device* device, Material* shared_material)
+GltfAsyncLoader::GltfAsyncLoader(
+    const std::string& gltf_file,
+    Device* device,
+    Material* shared_material,
+    LoadingProgressListener* progress_listener)
     : gltf_file_(gltf_file)
     , gltf_directory_(fs::path(gltf_file).parent_path())
     , device_(device)
-    , shared_material_(shared_material) {}
+    , shared_material_(shared_material)
+    , progress_listener_(progress_listener) {}
 
 GltfAsyncLoader::~GltfAsyncLoader() noexcept {
     for (Mesh* mesh : mesh_storage_) {
@@ -178,6 +192,11 @@ void GltfAsyncLoader::Execute() {
 }
 
 bool GltfAsyncLoader::load_gltf_file() {
+    if (progress_listener_ != nullptr) {
+        progress_listener_->begin(fs::path(gltf_file_).filename().string());
+        progress_listener_->set_phase("Parsing glTF");
+    }
+
     tinygltf::Model gltf_model;
     tinygltf::TinyGLTF gltf_context;
     std::string error;
@@ -189,6 +208,9 @@ bool GltfAsyncLoader::load_gltf_file() {
         : gltf_context.LoadASCIIFromFile(&gltf_model, &error, &warning, gltf_file_);
 
     if (!file_loaded) {
+        if (progress_listener_ != nullptr) {
+            progress_listener_->fail(error.empty() ? "Failed to load glTF file" : error);
+        }
         OC_WARNING_FORMAT(
             "Failed to load glTF file: {}, Error: {}, Warning: {}",
             gltf_file_.c_str(),
@@ -202,8 +224,20 @@ bool GltfAsyncLoader::load_gltf_file() {
     }
 
     if (gltf_model.scenes.empty()) {
+        if (progress_listener_ != nullptr) {
+            progress_listener_->fail("glTF file has no scenes");
+        }
         OC_WARNING_FORMAT("glTF file has no scenes: {}", gltf_file_.c_str());
         return false;
+    }
+
+    if (progress_listener_ != nullptr) {
+        const uint32_t primitive_count = count_gltf_primitives(gltf_model);
+        const uint32_t image_count = static_cast<uint32_t>(gltf_model.images.size());
+        const uint32_t total_steps = 1 + primitive_count + image_count + 1;
+        progress_listener_->set_total_steps(total_steps);
+        progress_listener_->advance();
+        progress_listener_->set_phase("Loading scene");
     }
 
     const float4x4 identity = Transform<float4x4>().mat4x4();
@@ -215,7 +249,16 @@ bool GltfAsyncLoader::load_gltf_file() {
         load_gltf_node(gltf_model.nodes[node_index], gltf_model, identity);
     }
 
+    if (progress_listener_ != nullptr) {
+        progress_listener_->set_phase("Building scene clusters");
+        progress_listener_->advance();
+    }
+
     build_scene_clusters();
+
+    if (progress_listener_ != nullptr) {
+        progress_listener_->complete();
+    }
     return true;
 }
 
@@ -275,6 +318,10 @@ void GltfAsyncLoader::load_gltf_node(
 
             if (gltf_primitive.material >= 0 && gltf_primitive.material < static_cast<int>(model.materials.size())) {
                 load_material(prim, model.materials[gltf_primitive.material], model);
+            }
+
+            if (progress_listener_ != nullptr) {
+                progress_listener_->advance();
             }
         }
     }
@@ -440,6 +487,10 @@ Texture* GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::Model
         return cached->second;
     }
 
+    if (progress_listener_ != nullptr) {
+        progress_listener_->set_phase("Loading textures");
+    }
+
     const auto start = std::chrono::steady_clock::now();
 
     const tinygltf::Image& gltf_image = model.images[image_index];
@@ -476,6 +527,9 @@ Texture* GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::Model
     }
 
     image_textures_.emplace(image_index, texture);
+    if (progress_listener_ != nullptr) {
+        progress_listener_->advance();
+    }
     OC_INFO_FORMAT(
         "GltfAsyncLoader::load_gltf_image: image_index {} ({}), {:.3f} ms",
         image_index,

@@ -45,6 +45,7 @@ bool resize_mip_level(const uint8_t* src, uint32_t src_w, uint32_t src_h, uint8_
 }
 
 CpuMipChain build_cpu_mip_chain(const void* base_pixels, uint32_t width, uint32_t height, uint32_t mip_levels, PixelStorage format) {
+    PROFILE_SCOPE();
     const uint32_t channels = static_cast<uint32_t>(channel_num(format));
     const uint8_t* base = static_cast<const uint8_t*>(base_pixels);
 
@@ -139,6 +140,7 @@ void submit_texture_mip_chain_upload(VulkanDevice* device, VulkanBuffer* staging
 
 void upload_texture_pixels(VulkanDevice* device, VulkanTexture* texture, const void* pixels, size_t base_level_bytes, uint32_t mip_levels, PixelStorage format)
 {
+    PROFILE_SCOPE();
     if (mip_levels <= 1) {
         VulkanBuffer staging_buffer(device, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
             base_level_bytes, pixels);
@@ -172,6 +174,7 @@ VulkanTexture::VulkanTexture(VulkanDevice *device, uint32_t width, uint32_t heig
 
 void VulkanTexture::init_from_pixels(uint32_t width, uint32_t height, uint32_t depth, PixelStorage format, const TextureViewCreation &texture_view,
     const TextureSampler& sampler, uint4 default_color, const void* data) {
+    PROFILE_SCOPE();
     res_.x = width;
     res_.y = height;
     res_.z = depth;

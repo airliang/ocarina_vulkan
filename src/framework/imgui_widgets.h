@@ -53,6 +53,8 @@ public:
     void text(const char *format, ...) noexcept override;
     bool input_text(const std::string &label, char *buf, size_t buf_size) noexcept override;
     void text_wrapped(const char *format, ...) noexcept override;
+    void progress_bar(float fraction, uint2 size) noexcept override;
+    bool push_centered_window(const string &label, float bg_alpha) noexcept override;
     bool check_box(const string &label, bool *val) noexcept override;
 
     bool slider_float(const string &label, float *val, float min, float max) noexcept override;

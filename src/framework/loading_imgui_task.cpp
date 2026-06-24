@@ -11,8 +11,9 @@ LoadingImguiTask::LoadingImguiTask(Renderer& renderer) noexcept
     : enki::IPinnedTask(1),
       renderer_(renderer) {}
 
-void LoadingImguiTask::configure(const enki::ICompletable* loader_task) noexcept {
+void LoadingImguiTask::configure(const enki::ICompletable* loader_task, LoadingProgressListener* progress_listener) noexcept {
     loader_task_ = loader_task;
+    progress_listener_ = progress_listener;
 }
 
 void LoadingImguiTask::render_loading_frame() {
@@ -45,7 +46,7 @@ void LoadingImguiTask::render_loading_frame() {
         cmd.begin_render_pass(swapchain_pass);
 
         if (renderer_.loading_gui_impl_) {
-            renderer_.loading_gui_impl_(cmd, dt_);
+            renderer_.loading_gui_impl_(cmd);
         }
 
         cmd.end_render_pass();
@@ -71,6 +72,7 @@ void LoadingImguiTask::Execute() {
     }
 
     loader_task_ = nullptr;
+    progress_listener_ = nullptr;
 }
 
 }// namespace ocarina

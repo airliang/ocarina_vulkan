@@ -157,6 +157,23 @@ void ImGuiWidgets::text_wrapped(const char *format, ...) noexcept {
     va_end(args);
 }
 
+void ImGuiWidgets::progress_bar(float fraction, uint2 size) noexcept {
+    ImGui::ProgressBar(fraction, to_ImVec2(size));
+}
+
+bool ImGuiWidgets::push_centered_window(const string &label, float bg_alpha) noexcept {
+    const ImVec2 display_size = ImGui::GetIO().DisplaySize;
+    ImGui::SetNextWindowPos(
+        ImVec2(display_size.x * 0.5f, display_size.y * 0.5f),
+        ImGuiCond_Always,
+        ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowBgAlpha(bg_alpha);
+    return ImGui::Begin(
+        label.c_str(),
+        nullptr,
+        ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+}
+
 bool ImGuiWidgets::check_box(const string &label, bool *val) noexcept {
     return ImGui::Checkbox(label.c_str(), val);
 }

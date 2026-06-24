@@ -6,6 +6,7 @@
 #include "framework/window_factory.h"
 #include "framework/sdl_window.h"
 #include "framework/imgui_renderer.h"
+#include "framework/framework_ui.h"
 #include "framework/renderer.h"
 #include "framework/primitive.h"
 #include "framework/camera.h"
@@ -140,6 +141,41 @@ int main(int argc, char* argv[]) {
 
     renderer.set_camera(&camera);
     renderer.set_frustum_culling_enabled(frustum_culling_enabled);
+
+    ImguiRenderer imgui_renderer(*window);
+    imgui_renderer.init(device);
+    const string window_name = "Culling Test";
+    FrameInfoContext frame_info;
+    frame_info.renderer = &renderer;
+    frame_info.device = &device;
+    frame_info.window_title = window_name;
+    frame_info.extra = [&](Widgets& widgets) {
+        widgets.check_box("Frustum culling", &frustum_culling_enabled);
+        if (scene != nullptr) {
+            widgets.text("Total grids: %u", scene->grid_cell_count());
+            widgets.text("Visible grids: %u", scene->visible_grid_count());
+            const auto& visible_grids = scene->visible_grid_indices();
+            const uint32_t sample_count = static_cast<uint32_t>(std::min<size_t>(visible_grids.size(), 12));
+            for (uint32_t i = 0; i < sample_count; ++i) {
+                const uint32_t flat = visible_grids[i];
+                const auto [cx, cz] = scene->grid_cell_coords(flat);
+                widgets.text(
+                    "Grid[%u] cell=(%d,%d) prim=%u",
+                    flat,
+                    cx,
+                    cz,
+                    scene->grid_cell_primitive_count(flat));
+            }
+            widgets.text(
+                "Culling: %s",
+                frustum_culling_enabled ? "enabled" : "disabled");
+        }
+    };
+    window->widgets()->set_frame_info_context(&frame_info);
+    imgui_renderer.set_frame_callback([&]() {
+        display_loading_progress(*window->widgets(), nullptr, renderer.loading_dt());
+    });
+
     renderer.set_async_loader(&async_loader, nullptr, [&]() {
         if (scene == nullptr) {
             return;
@@ -156,6 +192,10 @@ int main(int argc, char* argv[]) {
             });
         }
         renderer.set_scene(scene);
+
+        imgui_renderer.set_frame_callback([&]() {
+            display_frame_info(*window->widgets());
+        });
     });
 
     FrameResources::instance().set_update_callback([&](FrameResources&, double dt) {
@@ -188,40 +228,8 @@ int main(int argc, char* argv[]) {
 
     renderer.add_render_pass(render_pass);
 
-    ImguiRenderer imgui_renderer(*window);
-    imgui_renderer.init(device);
-    const string window_name = "Culling Test";
-    imgui_renderer.set_frame_callback([&]() {
-        window->widgets()->push_window(window_name);
-        window->widgets()->text("FPS: %.2f", 1.0f / renderer.dt());
-        window->widgets()->text("GPU frame: %.3f ms", device.gpu_frame_time_ms());
-        window->widgets()->check_box("Frustum culling", &frustum_culling_enabled);
-        if (scene != nullptr) {
-            window->widgets()->text("Total cubes: %u", scene->primitive_count());
-            window->widgets()->text("Visible cubes: %zu", scene->visible_primitive_indices().size());
-            window->widgets()->text("Total grids: %u", scene->grid_cell_count());
-            window->widgets()->text("Visible grids: %u", scene->visible_grid_count());
-            const auto& visible_grids = scene->visible_grid_indices();
-            const uint32_t sample_count = static_cast<uint32_t>(std::min<size_t>(visible_grids.size(), 12));
-            for (uint32_t i = 0; i < sample_count; ++i) {
-                const uint32_t flat = visible_grids[i];
-                const auto [cx, cz] = scene->grid_cell_coords(flat);
-                window->widgets()->text(
-                    "Grid[%u] cell=(%d,%d) prim=%u",
-                    flat,
-                    cx,
-                    cz,
-                    scene->grid_cell_primitive_count(flat));
-            }
-            window->widgets()->text(
-                "Culling: %s",
-                frustum_culling_enabled ? "enabled" : "disabled");
-        }
-        window->widgets()->pop_window();
-    });
-
-    renderer.set_loading_gui_impl_callback([&](const CommandBuffer& cmd_buffer, double dt) {
-        imgui_renderer.render_loading(cmd_buffer, dt);
+    renderer.set_loading_gui_impl_callback([&](const CommandBuffer& cmd_buffer) {
+        imgui_renderer.render(cmd_buffer);
     });
     renderer.set_render_gui_impl_callback([&](const CommandBuffer& cmd_buffer) {
         imgui_renderer.render(cmd_buffer);

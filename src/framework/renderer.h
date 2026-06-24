@@ -12,6 +12,7 @@
 #include "rhi/graphics_descriptions.h"
 #include "rhi/command_buffer.h"
 #include "render_task.h"
+#include "loading_progress_listener.h"
 #include "loading_imgui_task.h"
 #include "frustum.h"
 #include "renderer_primitive_cull_task.h"
@@ -39,7 +40,7 @@ public:
     using RenderCallback = ocarina::function<void(double)>;
     using UpdateDescriptorPerObjectCallback = ocarina::function<void(Primitive&)>;
     using RenderGUIImplCallback = ocarina::function<void(const CommandBuffer& cmd_buffer)>;
-    using LoadingGUIImplCallback = ocarina::function<void(const CommandBuffer& cmd_buffer, double dt)>;
+    using LoadingGUIImplCallback = ocarina::function<void(const CommandBuffer& cmd_buffer)>;
     using RenderTaskEndCallback = ocarina::function<void()>;
     using AsyncLoaderCompleteCallback = ocarina::function<void()>;
 
@@ -51,6 +52,10 @@ public:
     void set_loading_gui_impl_callback(LoadingGUIImplCallback cb)
     {
         loading_gui_impl_ = std::move(cb);
+    }
+    void set_loading_progress_listener(LoadingProgressListener* listener) noexcept
+    {
+        loading_progress_listener_ = listener;
     }
     void set_render_task_end_callback(RenderTaskEndCallback cb)
     {
@@ -86,6 +91,8 @@ public:
 
     void set_scene(Scene* scene) noexcept;
     void set_camera(Camera* camera) noexcept { camera_ = camera; }
+    [[nodiscard]] Scene* scene() const noexcept { return scene_; }
+    [[nodiscard]] Camera* camera() const noexcept { return camera_; }
 
     void ensure_render_components(size_t count);
     [[nodiscard]] EntityComponentSystem& ecs() noexcept { return ecs_; }
@@ -103,6 +110,7 @@ private:
     RenderCallback render = nullptr;
     RenderGUIImplCallback render_gui_impl_ = nullptr;
     LoadingGUIImplCallback loading_gui_impl_ = nullptr;
+    LoadingProgressListener* loading_progress_listener_ = nullptr;
     float4 clear_color = {0, 0, 0, 1};
 
     LoadingImguiTask loading_imgui_task_;

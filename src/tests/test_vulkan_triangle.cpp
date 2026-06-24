@@ -11,6 +11,7 @@
 #include "framework/window_factory.h"
 #include "framework/sdl_window.h"
 #include "framework/imgui_renderer.h"
+#include "framework/framework_ui.h"
 #include "framework/renderer.h"
 #include "framework/primitive.h"
 #include "rhi/descriptor_set.h"
@@ -121,12 +122,28 @@ int main(int argc, char *argv[]) {
     render_pass_creation.swapchain_clear_stencil = 0;
     RHIRenderPass* render_pass = device.create_render_pass(render_pass_creation);
 
+    ImguiRenderer imgui_renderer(*window);
+    imgui_renderer.init(device);
+    const string window_name = "Vulkan Triangle Test";
+    FrameInfoContext frame_info;
+    frame_info.renderer = &renderer;
+    frame_info.device = &device;
+    frame_info.window_title = window_name;
+    window->widgets()->set_frame_info_context(&frame_info);
+    imgui_renderer.set_frame_callback([&]() {
+        display_loading_progress(*window->widgets(), nullptr, renderer.loading_dt());
+    });
+
     renderer.set_async_loader(&async_loader, nullptr, [&]() {
         triangle.set_geometry_data_setup(&device, [&](Primitive& triangle) {
             setup_triangle(triangle);
             if (material != nullptr) {
                 material->set_target_render_pass(render_pass);
             }
+        });
+
+        imgui_renderer.set_frame_callback([&]() {
+            display_frame_info(*window->widgets());
         });
     });
 
@@ -151,18 +168,9 @@ int main(int argc, char *argv[]) {
 
     auto image_io = Image::pure_color(make_float4(1, 0, 0, 1), ColorSpace::LINEAR, make_uint2(500));
     window->set_background(image_io.pixel_ptr<float4>(), make_uint2(800, 600));
-    ImguiRenderer imgui_renderer(*window);
-    imgui_renderer.init(device);
-    string window_name = "Vulkan Triangle Test";
-    imgui_renderer.set_frame_callback([&]() {
-        window->widgets()->push_window(window_name);
-        window->widgets()->text("FPS: %.2f", 1.0f / renderer.dt());
-        window->widgets()->text("GPU frame: %.3f ms", device.gpu_frame_time_ms());
-        window->widgets()->pop_window();
-    });
 
-    renderer.set_loading_gui_impl_callback([&](const CommandBuffer& cmd_buffer, double dt) {
-        imgui_renderer.render_loading(cmd_buffer, dt);
+    renderer.set_loading_gui_impl_callback([&](const CommandBuffer& cmd_buffer) {
+        imgui_renderer.render(cmd_buffer);
     });
     renderer.set_render_gui_impl_callback([&](const CommandBuffer& cmd_buffer) {
         imgui_renderer.render(cmd_buffer);

@@ -6,6 +6,7 @@
 #include "math/basic_types.h"
 #include "scene.h"
 #include "mesh_geometry.h"
+#include "loading_progress_listener.h"
 #include "ext/enkiTS/src/TaskScheduler.h"
 #include "rhi/device.h"
 
@@ -23,10 +24,15 @@ class Material;
 class Mesh;
 class Texture;
 class Primitive;
+class LoadingProgressListener;
 
 class GltfAsyncLoader : public enki::IPinnedTask {
 public:
-    GltfAsyncLoader(const std::string& gltf_file, Device* device, Material* shared_material);
+    GltfAsyncLoader(
+        const std::string& gltf_file,
+        Device* device,
+        Material* shared_material,
+        LoadingProgressListener* progress_listener = nullptr);
 
     ~GltfAsyncLoader() noexcept;
 
@@ -52,6 +58,7 @@ private:
     fs::path gltf_directory_;
     Device* device_ = nullptr;
     Material* shared_material_ = nullptr;
+    LoadingProgressListener* progress_listener_ = nullptr;
     std::vector<Mesh*> mesh_storage_;
     std::unordered_map<int, Texture*> image_textures_;
     std::unordered_map<uint64_t, Mesh*> geometry_meshes_;

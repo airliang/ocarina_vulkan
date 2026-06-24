@@ -32,10 +32,12 @@ enum WindowFlag {
 };
 
 class SDLWindow;
+struct FrameInfoContext;
 
 class OC_FRAMEWORK_API Widgets {
 private:
     SDLWindow *window_{nullptr};
+    FrameInfoContext *frame_info_context_{nullptr};
 
 public:
     explicit Widgets(SDLWindow *window = nullptr) : window_(window) {}
@@ -79,6 +81,9 @@ public:
     }
 
     OC_MAKE_MEMBER_GETTER(window, )
+
+    void set_frame_info_context(FrameInfoContext* context) noexcept { frame_info_context_ = context; }
+    [[nodiscard]] FrameInfoContext* frame_info_context() const noexcept { return frame_info_context_; }
 
     template<typename Func>
     void use_tool_tip(Func &&func) noexcept {
@@ -193,6 +198,8 @@ public:
         text(str.c_str());
     }
     virtual void text_wrapped(const char *format, ...) noexcept = 0;
+    virtual void progress_bar(float fraction, uint2 size = make_uint2(220, 0)) noexcept = 0;
+    virtual bool push_centered_window(const string &label, float bg_alpha = 0.9f) noexcept = 0;
     virtual bool check_box(const string &label, bool *val) noexcept = 0;
 
     virtual bool slider_float(const string &label, float *val, float min, float max) noexcept = 0;

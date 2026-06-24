@@ -4,17 +4,19 @@
 #include "core/stl.h"
 #include "core/util.h"
 #include "rhi/command_buffer.h"
+#include "loading_progress_listener.h"
 #include "ext/enkiTS/src/TaskScheduler.h"
 
 namespace ocarina {
 
 class Renderer;
+class LoadingProgressListener;
 
 class LoadingImguiTask : public enki::IPinnedTask {
 public:
     explicit LoadingImguiTask(Renderer& renderer) noexcept;
 
-    void configure(const enki::ICompletable* loader_task) noexcept;
+    void configure(const enki::ICompletable* loader_task, LoadingProgressListener* progress_listener = nullptr) noexcept;
 
     void Execute() override;
 
@@ -26,6 +28,7 @@ private:
 
     Renderer& renderer_;
     const enki::ICompletable* loader_task_ = nullptr;
+    LoadingProgressListener* progress_listener_ = nullptr;
     Clock clock_;
     double dt_ = 0.0;
     uint64_t execute_thread_id_ = 0;
