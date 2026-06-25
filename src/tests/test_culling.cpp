@@ -15,9 +15,11 @@
 #include "framework/async_loader.h"
 #include "framework/frame_resources.h"
 #include "framework/scene.h"
+#include "framework/transform.h"
 #include "framework/mesh.h"
 #include "framework/internal_textures.h"
 #include "framework/bindless_texture_registry.h"
+#include "rhi/bindless_sampler.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/renderpass.h"
 
@@ -37,6 +39,24 @@ constexpr float kGridSpacing = 2.0f;
 constexpr uint32_t kTotalCubes = kGridCount * kGridCount * kGridCount;
 
 }// namespace
+
+static void apply_mesh_material_defaults(Primitive& primitive) {
+    primitive.set_material_parameter("baseColorFactor", make_float4(1.f, 1.f, 1.f, 1.f));
+    primitive.set_material_parameter("roughness", 1.f);
+    primitive.set_material_parameter("metallic", 0.f);
+    primitive.set_material_parameter("ao", 1.f);
+    primitive.set_material_parameter("normalIndex", 0u);
+    primitive.set_material_parameter("normalSamplerIndex", 0u);
+}
+
+static void apply_mesh_bindless_indices(Primitive& primitive) {
+    const Primitive::TextureHandle albedo_handle = primitive.get_texture_handle(hash64("albedo"));
+    primitive.set_material_parameter("albedoIndex", albedo_handle.bindless_index_);
+    OC_ASSERT(albedo_handle.texture_ != nullptr);
+    primitive.set_material_parameter(
+        "albedoSamplerIndex",
+        get_bindless_sampler_index(*albedo_handle.texture_));
+}
 
 int main(int argc, char* argv[]) {
     RHIContext& context = RHIContext::instance();
@@ -92,8 +112,10 @@ int main(int argc, char* argv[]) {
                         static_cast<float>(row) * kGridSpacing));
                     primitive.set_mesh(cube_mesh);
                     primitive.set_material(material);
+                    apply_mesh_material_defaults(primitive);
                     primitive.add_bindless_texture(hash64("albedo"), white_texture);
                     primitive.add_sampler(hash64("sampler_albedo"), *white_texture->get_sampler_pointer());
+                    apply_mesh_bindless_indices(primitive);
                 }
             }
         }
@@ -110,25 +132,18 @@ int main(int argc, char* argv[]) {
     camera.set_target({99.0f, 99.0f, 99.0f});
 
     const uint64_t model_matrix_name_id = hash64("modelMatrix");
-    const uint64_t albedo_index_name_id = hash64("albedoIndex");
-    const uint64_t albedo_sampler_index_name_id = hash64("albedoSamplerIndex");
-    const uint64_t albedo_texture_name_id = hash64("albedo");
-    constexpr uint32_t kAlbedoSamplerIndex = 0; // linear wrap
+    const uint64_t model_matrix_inverse_name_id = hash64("modelMatrixInverse");
     auto update_push_constant = [&](Primitive& primitive, TransformComponent& transform) {
+        const float4x4 world_matrix = transform.get_world_matrix();
+        const float4x4 world_matrix_inverse = inverse(world_matrix);
         primitive.set_push_constant_variable(
             model_matrix_name_id,
-            reinterpret_cast<std::byte*>(const_cast<void*>(static_cast<const void*>(&transform.get_world_matrix()))),
-            sizeof(transform.get_world_matrix()));
-
-        const Primitive::TextureHandle albedo_handle = primitive.get_texture_handle(albedo_texture_name_id);
+            reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix)),
+            sizeof(world_matrix));
         primitive.set_push_constant_variable(
-            albedo_index_name_id,
-            reinterpret_cast<std::byte*>(const_cast<uint32_t*>(&albedo_handle.bindless_index_)),
-            sizeof(albedo_handle.bindless_index_));
-        primitive.set_push_constant_variable(
-            albedo_sampler_index_name_id,
-            reinterpret_cast<std::byte*>(const_cast<uint32_t*>(&kAlbedoSamplerIndex)),
-            sizeof(kAlbedoSamplerIndex));
+            model_matrix_inverse_name_id,
+            reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix_inverse)),
+            sizeof(world_matrix_inverse));
     };
 
     RenderPassCreation render_pass_creation;

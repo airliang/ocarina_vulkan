@@ -181,6 +181,11 @@ public:
     {
         return vertex_stream_binding_;
     }
+
+    [[nodiscard]] bool get_uniform_buffer_members(
+        const char* buffer_name,
+        std::vector<RHIShader::UniformBufferMember>& members,
+        uint32_t& buffer_size) const override;
 };
 
 struct ShaderKey {

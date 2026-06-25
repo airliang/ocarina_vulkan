@@ -17,6 +17,7 @@ using namespace Microsoft::WRL;
 #endif
 
 #include "dxc_compiler.h"
+#include <cstring>
 
 namespace ocarina {
 
@@ -323,6 +324,39 @@ void VulkanShaderManager::clear(VulkanDevice* device)
     }
     vulkan_shaders_.clear();
     vulkan_shader_entries_.clear();
+}
+
+bool VulkanShader::get_uniform_buffer_members(
+    const char* buffer_name,
+    std::vector<RHIShader::UniformBufferMember>& members,
+    uint32_t& buffer_size) const {
+    members.clear();
+    buffer_size = 0;
+    if (buffer_name == nullptr) {
+        return false;
+    }
+
+    for (const VulkanShaderVariableBinding& binding : variables_) {
+        if (binding.type != VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
+            continue;
+        }
+        if (std::strcmp(binding.name, buffer_name) != 0) {
+            continue;
+        }
+
+        buffer_size = binding.size;
+        members.reserve(binding.shader_variables_.size());
+        for (const ShaderReflection::ShaderVariable& variable : binding.shader_variables_) {
+            RHIShader::UniformBufferMember member;
+            member.name = variable.name;
+            member.type = variable.variable_type;
+            member.size = variable.size;
+            member.offset = variable.offset;
+            members.push_back(std::move(member));
+        }
+        return true;
+    }
+    return false;
 }
 
 }// namespace ocarina

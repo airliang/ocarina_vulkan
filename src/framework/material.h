@@ -2,22 +2,31 @@
 
 #include "core/header.h"
 #include "core/stl.h"
+#include "core/hash.h"
 #include "rhi/graphics_descriptions.h"
 #include "rhi/pipeline_state.h"
+#include "rhi/shader_base.h"
 #include "rhi/resources/texture.h"
 
 namespace ocarina {
 class DescriptorSetLayout;
 class DescriptorSet;
 struct RHIPipeline;
-template <class T>
-class Shader;
 class TextureSampler;
 class Device;
 class RHIRenderPass;
 
 class Material {
 public:
+    static constexpr const char* kMaterialUniformBufferName = "material_ubo";
+
+    struct MaterialProperty {
+        string name;
+        ShaderVariableType type = ShaderVariableType::FLOAT;
+        uint32_t size = 0;
+        uint32_t offset = 0;
+    };
+
     Material(Device* device, handle_ty vertex_shader, handle_ty pixel_shader);
     ~Material() {}
 
@@ -94,9 +103,29 @@ public:
     [[nodiscard]] RHIRenderPass* target_render_pass() const { return render_pass_; }
     [[nodiscard]] bool is_pipeline_dirty() const { return pipeline_dirty_; }
     [[nodiscard]] bool has_built_pipeline() const { return pipeline_ != nullptr; }
+
+    [[nodiscard]] bool has_material_uniform_buffer() const noexcept {
+        return material_uniform_buffer_size_ > 0;
+    }
+
+    [[nodiscard]] uint32_t material_uniform_buffer_size() const noexcept {
+        return material_uniform_buffer_size_;
+    }
+
+    [[nodiscard]] uint64_t material_uniform_buffer_name_id() const noexcept {
+        return material_uniform_buffer_name_id_;
+    }
+
+    [[nodiscard]] const std::vector<MaterialProperty>& material_properties() const noexcept {
+        return material_properties_;
+    }
+
+    [[nodiscard]] const MaterialProperty* find_material_property(uint64_t name_id) const noexcept;
+
 private:
     void try_build_pipeline();
     void create_global_descriptor_sets();
+    void init_material_properties(handle_ty pixel_shader);
 
     static uint32_t find_bindless_descriptor_set_index(
         const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>& layouts);
@@ -114,6 +143,11 @@ private:
 
     Device* device_ = nullptr;
     std::mutex pipeline_mutex_;
+
+    uint64_t material_uniform_buffer_name_id_ = 0;
+    uint32_t material_uniform_buffer_size_ = 0;
+    std::vector<MaterialProperty> material_properties_;
+    std::unordered_map<uint64_t, size_t> material_property_indices_;
 };
 
 }// namespace ocarina

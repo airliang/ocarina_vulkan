@@ -1,4 +1,5 @@
 #include "vulkan_driver.h"
+#include "rhi/bindless_sampler.h"
 #include "vulkan_device.h"
 #include "util.h"
 #include "vulkan_pipeline.h"
@@ -437,14 +438,7 @@ VkSampler VulkanDriver::get_vulkan_sampler(const TextureSampler& sampler) {
 }
 
 VkSampler VulkanDriver::get_bindless_sampler(uint32_t index) {
-    static const TextureSampler bindless_sampler_configs[] = {
-        {TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT},
-        {TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::CLAMP},
-        {TextureSampler::Filter::POINT, TextureSampler::Address::REPEAT},
-        {TextureSampler::Filter::POINT, TextureSampler::Address::CLAMP},
-    };
-    OC_ASSERT(index < 4);
-    return get_vulkan_sampler(bindless_sampler_configs[index]);
+    return get_vulkan_sampler(bindless_sampler_config(index));
 }
 
 VulkanPipeline* VulkanDriver::get_pipeline(const PipelineState &pipeline_state, VkRenderPass render_pass) {

@@ -1,13 +1,9 @@
 // Copyright 2020 Google LLC
 #include "common.hlsl"
-#include "push_constant.hlsl"
+#include "material.hlsl"
 
-// No PER_OBJECT_SET in this shader: bindless is set 2 (GLOBAL=0, MATERIAL=1).
 [[vk::binding(0, MATERIAL_SET)]]Texture2D g_textures[];
 [[vk::binding(1, MATERIAL_SET)]]SamplerState samplers[];
-
-[[vk::push_constant]]
-PushConstants pushConstants;
 
 struct VSOutput
 {
@@ -17,7 +13,7 @@ struct VSOutput
 
 float4 main(VSOutput input) : SV_TARGET
 {
-	float4 color = g_textures[pushConstants.albedoIndex].Sample(samplers[pushConstants.albedoSamplerIndex], input.UV);
+	float4 color = g_textures[material.albedoIndex].Sample(samplers[material.albedoSamplerIndex], input.UV);
 
 	return float4(color.rgb, 1.0);
 }

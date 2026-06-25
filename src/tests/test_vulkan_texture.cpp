@@ -24,6 +24,7 @@
 #include "framework/mesh.h"
 #include "framework/resource_manager.h"
 #include "framework/material.h"
+#include "framework/transform.h"
 #include "framework/async_loader.h"
 #include "framework/frame_resources.h"
 
@@ -100,11 +101,18 @@ int main(int argc, char *argv[]) {
     camera.set_target({0.0f, 0.0f, 0.0f});
 
     uint64_t model_matrix_name_id = hash64("modelMatrix");
+    uint64_t model_matrix_inverse_name_id = hash64("modelMatrixInverse");
     auto update_push_constant = [&](Primitive& primitive, TransformComponent& transform) {
+        const float4x4 world_matrix = transform.get_world_matrix();
+        const float4x4 world_matrix_inverse = inverse(world_matrix);
         primitive.set_push_constant_variable(
             model_matrix_name_id,
-            reinterpret_cast<std::byte*>(const_cast<void*>(static_cast<const void*>(&transform.get_world_matrix()))),
-            sizeof(transform.get_world_matrix()));
+            reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix)),
+            sizeof(world_matrix));
+        primitive.set_push_constant_variable(
+            model_matrix_inverse_name_id,
+            reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix_inverse)),
+            sizeof(world_matrix_inverse));
     };
 
     quad.set_update_push_constant_function(update_push_constant);

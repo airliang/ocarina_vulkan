@@ -31,11 +31,11 @@ VSOutput main(VSInput input)
 	float4 viewPos = mul(viewMatrix, worldPos);
 	output.Pos = mul(projectionMatrix, viewPos);
 
-	float3x3 normalMatrix = mul((float3x3)viewMatrix, (float3x3)pushConstants.modelMatrix);
+	float3x3 normalMatrix = transpose((float3x3)pushConstants.modelMatrixInverse);
 	output.Normal = normalize(mul(normalMatrix, input.Normal));
 	output.Color = input.Color.rgb;
 	output.UV = input.UV;
-	output.LightVec = lightPos.xyz - viewPos.xyz;
-	output.ViewVec = cameraPos.xyz - viewPos.xyz;
+	output.LightVec = lightPos.xyz - worldPos.xyz;
+	output.ViewVec = cameraPos.xyz - worldPos.xyz;
 	return output;
 }

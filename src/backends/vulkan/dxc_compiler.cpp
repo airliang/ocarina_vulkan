@@ -293,32 +293,49 @@ void DXCCompiler::run_spriv_reflection(const std::vector<uint32_t> &spriv, Shade
         ubo.name = spirvmodule.get_name(resource.id);
         ubo.size = size;
         ubo.binding = binding;
+        ubo.descriptor_set = static_cast<uint8_t>(set);
 
-        std::vector<uint32_t> push_constan_offsets;
-        push_constan_offsets.reserve(8);
-        uint32_t push_constant_size = 0;
-        // Now loop through all members
-        for (uint32_t i = 0; i < type.member_types.size(); ++i) {
-            ShaderReflection::ShaderVariable shader_variable{};
-            shader_variable.name = spirvmodule.get_member_name(resource.base_type_id, i);
-            shader_variable.size = spirvmodule.get_declared_struct_member_size(type, i);
-            
-            shader_variable.offset = spirvmodule.type_struct_member_offset(type, i);
-            auto it = std::find(push_constan_offsets.begin(), push_constan_offsets.end(), shader_variable.offset);
-            if (it != push_constan_offsets.end()) {
-                //already exist, skip
-                OC_ASSERT(false);
-                std::cout << "Push Constant[" <<shader_variable.name<<"] offset[ "<< shader_variable.offset <<" ] error! The offset should be [ "<< push_constant_size << " ].\n\n";
+        auto append_leaf_uniform_members =
+            [&](auto&& self, spirv_cross::TypeID struct_type_id, uint32_t base_offset) -> void {
+            const spirv_cross::SPIRType& struct_type = spirvmodule.get_type(struct_type_id);
+            for (uint32_t member_index = 0; member_index < struct_type.member_types.size(); ++member_index) {
+                const spirv_cross::SPIRType& leaf_type =
+                    spirvmodule.get_type(struct_type.member_types[member_index]);
+                const uint32_t member_offset =
+                    base_offset + spirvmodule.type_struct_member_offset(struct_type, member_index);
+
+                if (leaf_type.basetype == spirv_cross::SPIRType::Struct) {
+                    self(self, struct_type.member_types[member_index], member_offset);
+                    continue;
+                }
+
+                ShaderReflection::ShaderVariable shader_variable{};
+                shader_variable.name = spirvmodule.get_member_name(struct_type_id, member_index);
+                shader_variable.size = spirvmodule.get_declared_struct_member_size(struct_type, member_index);
+                shader_variable.offset = member_offset;
+                shader_variable.variable_type =
+                    get_shader_variable_type(leaf_type.vecsize, leaf_type.columns, leaf_type);
+                ubo.shader_variables.emplace_back(std::move(shader_variable));
             }
-            push_constan_offsets.push_back(shader_variable.offset);
-            const spirv_cross::SPIRType &member_type = spirvmodule.get_type(type.member_types[i]);
-            uint32_t vec_size = member_type.vecsize;// e.g. 4 for float4
-            uint32_t columns = member_type.columns; // 4 columns = matrix
-            uint32_t array_size = member_type.array.size() > 0 ? member_type.array[0] : 0;
+        };
 
-            shader_variable.variable_type = get_shader_variable_type(vec_size, columns, member_type);
-            ubo.shader_variables.emplace_back(std::move(shader_variable)); 
-            push_constant_size += shader_variable.size;
+        for (uint32_t member_index = 0; member_index < type.member_types.size(); ++member_index) {
+            const spirv_cross::SPIRType& member_type = spirvmodule.get_type(type.member_types[member_index]);
+            const uint32_t member_offset = spirvmodule.type_struct_member_offset(type, member_index);
+
+            if (member_type.basetype == spirv_cross::SPIRType::Struct) {
+                append_leaf_uniform_members(
+                    append_leaf_uniform_members, type.member_types[member_index], member_offset);
+                continue;
+            }
+
+            ShaderReflection::ShaderVariable shader_variable{};
+            shader_variable.name = spirvmodule.get_member_name(resource.base_type_id, member_index);
+            shader_variable.size = spirvmodule.get_declared_struct_member_size(type, member_index);
+            shader_variable.offset = member_offset;
+            shader_variable.variable_type =
+                get_shader_variable_type(member_type.vecsize, member_type.columns, member_type);
+            ubo.shader_variables.emplace_back(std::move(shader_variable));
         }
         shader_reflection.uniform_buffers.emplace_back(std::move(ubo));
     }

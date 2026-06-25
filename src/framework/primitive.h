@@ -8,6 +8,7 @@
 #include "core/stl.h"
 #include "core/concepts.h"
 #include "core/thread_pool.h"
+#include "core/hash.h"
 #include "rhi/graphics_descriptions.h"
 #include "rhi/pipeline_state.h"
 #include "render_component.h"
@@ -73,14 +74,32 @@ public:
         if (material_ != material) {
             material_ = material;
             descriptor_sets_dirty_ = true;
+            material_parameters_buffer_.clear();
+            material_parameters_dirty_ = true;
         }
     }
 
     Material* get_material() const {
         return material_;
     }
+
+    void set_material_parameter(uint64_t name_id, const void* data, size_t size);
+    void set_material_parameter(const char* name, const void* data, size_t size) {
+        set_material_parameter(hash64(name), data, size);
+    }
+
+    template<typename T>
+    void set_material_parameter(uint64_t name_id, const T& value) {
+        set_material_parameter(name_id, &value, sizeof(T));
+    }
+
+    template<typename T>
+    void set_material_parameter(const char* name, const T& value) {
+        set_material_parameter(hash64(name), value);
+    }
 private:
     void update_descriptor_sets(Device *device);
+    void upload_material_parameters();
 
     GeometryDataSetup geometry_data_setup_;
     UpdatePushConstant update_push_constant_function_ = nullptr;
@@ -97,6 +116,9 @@ private:
 
     Material* material_ = nullptr;
     Mesh* mesh_ = nullptr;
+
+    std::vector<uint8_t> material_parameters_buffer_;
+    bool material_parameters_dirty_ = true;
 };
 
 }// namespace ocarina

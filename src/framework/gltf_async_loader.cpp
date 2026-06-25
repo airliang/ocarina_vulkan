@@ -12,7 +12,7 @@
 #include "transform.h"
 #include "primitive.h"
 #include "mesh.h"
-#include "material.h"
+#include "math/basic_types.h"
 #include "scene.h"
 #include "global_gpu_storage.h"
 #include "bounding_box.h"
@@ -21,6 +21,7 @@
 #include "rhi/index_buffer.h"
 #include "rhi/resources/texture.h"
 #include "rhi/resources/texture_sampler.h"
+#include "rhi/bindless_sampler.h"
 #include <chrono>
 
 namespace ocarina {
@@ -543,6 +544,20 @@ void GltfAsyncLoader::load_material(Primitive& prim, const tinygltf::Material& m
         prim.set_material(shared_material_);
     }
 
+    const auto& pbr = material.pbrMetallicRoughness;
+    const float4 base_color_factor = make_float4(
+        static_cast<float>(pbr.baseColorFactor[0]),
+        static_cast<float>(pbr.baseColorFactor[1]),
+        static_cast<float>(pbr.baseColorFactor[2]),
+        static_cast<float>(pbr.baseColorFactor[3]));
+    const float roughness = static_cast<float>(pbr.roughnessFactor);
+    const float metallic = static_cast<float>(pbr.metallicFactor);
+    const float ao = 1.f;
+    prim.set_material_parameter("baseColorFactor", base_color_factor);
+    prim.set_material_parameter("roughness", roughness);
+    prim.set_material_parameter("metallic", metallic);
+    prim.set_material_parameter("ao", ao);
+
     if (material.pbrMetallicRoughness.baseColorTexture.index < 0) {
         return;
     }
@@ -560,6 +575,12 @@ void GltfAsyncLoader::load_material(Primitive& prim, const tinygltf::Material& m
 
     prim.add_bindless_texture(hash64("albedo"), texture);
     prim.add_sampler(hash64("sampler_albedo"), *texture->get_sampler_pointer());
+
+    const Primitive::TextureHandle albedo_handle = prim.get_texture_handle(hash64("albedo"));
+    prim.set_material_parameter("albedoIndex", albedo_handle.bindless_index_);
+    prim.set_material_parameter("albedoSamplerIndex", get_bindless_sampler_index(*texture));
+    prim.set_material_parameter("normalIndex", 0u);
+    prim.set_material_parameter("normalSamplerIndex", 0u);
 }
 
 }// namespace ocarina

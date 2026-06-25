@@ -1,8 +1,10 @@
 #include "material.h"
+#include "core/hash.h"
 #include "bindless_texture_registry.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/device.h"
 #include "rhi/renderpass.h"
+#include "rhi/shader_base.h"
 #include "framework/frame_resources.h"
 
 namespace ocarina {
@@ -35,7 +37,13 @@ uint32_t Material::find_global_ubo_descriptor_set_index(
     const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>& layouts) {
     for (size_t set_index = 0; set_index < layouts.size(); ++set_index) {
         DescriptorSetLayout* layout = layouts[set_index];
-        if (layout != nullptr && !layout->has_bindless_binding() && layout->has_uniform_buffer_binding()) {
+        if (layout == nullptr) {
+            continue;
+        }
+        if (layout->get_descriptor_set_index() != static_cast<uint32_t>(DescriptorSetIndex::GLOBAL_SET)) {
+            continue;
+        }
+        if (!layout->has_bindless_binding() && layout->has_uniform_buffer_binding()) {
             return layout->get_descriptor_set_index();
         }
     }
@@ -69,7 +77,44 @@ Material::Material(Device* device, handle_ty vertex_shader, handle_ty pixel_shad
         reinterpret_cast<void*>(pixel_shader)
     };
     descriptor_set_layouts_ = device_->create_descriptor_set_layout(shaders, 2);
+    init_material_properties(pixel_shader);
     create_global_descriptor_sets();
+}
+
+void Material::init_material_properties(handle_ty pixel_shader) {
+    const RHIShader* shader = reinterpret_cast<const RHIShader*>(pixel_shader);
+    if (shader == nullptr) {
+        return;
+    }
+
+    std::vector<RHIShader::UniformBufferMember> members;
+    uint32_t buffer_size = 0;
+    if (!shader->get_uniform_buffer_members(kMaterialUniformBufferName, members, buffer_size)) {
+        return;
+    }
+
+    material_uniform_buffer_name_id_ = hash64(kMaterialUniformBufferName);
+    material_uniform_buffer_size_ = buffer_size;
+    material_properties_.reserve(members.size());
+    material_property_indices_.clear();
+
+    for (const RHIShader::UniformBufferMember& member : members) {
+        MaterialProperty property;
+        property.name = member.name;
+        property.type = member.type;
+        property.size = member.size;
+        property.offset = member.offset;
+        material_property_indices_.emplace(hash64(property.name), material_properties_.size());
+        material_properties_.push_back(std::move(property));
+    }
+}
+
+const Material::MaterialProperty* Material::find_material_property(uint64_t name_id) const noexcept {
+    const auto it = material_property_indices_.find(name_id);
+    if (it == material_property_indices_.end()) {
+        return nullptr;
+    }
+    return &material_properties_[it->second];
 }
 
 void Material::create_global_descriptor_sets() {

@@ -27,7 +27,9 @@
 #include "framework/mesh.h"
 #include "framework/resource_manager.h"
 #include "framework/material.h"
+#include "framework/transform.h"
 #include "framework/async_loader.h"
+#include "rhi/bindless_sampler.h"
 #include "rhi/fence.h"
 #include "framework/frame_resources.h"
 
@@ -37,12 +39,6 @@ using namespace ocarina;
 struct GlobalUniformBuffer {
     math3d::Matrix4 projection_matrix;
     math3d::Matrix4 view_matrix;
-};
-
-struct PushConstants {
-    float4x4 world_matrix;
-    uint32_t albedo_index;
-    uint32_t albedo_sampler_index;
 };
 
 
@@ -119,6 +115,10 @@ int main(int argc, char *argv[]) {
         quad.add_bindless_texture(albedo_name_id, texture);
         uint64_t name_id = hash64("sampler_albedo");
         quad.add_sampler(name_id, *(texture->get_sampler_pointer()));
+
+        const Primitive::TextureHandle albedo_handle = quad.get_texture_handle(albedo_name_id);
+        quad.set_material_parameter("albedoIndex", albedo_handle.bindless_index_);
+        quad.set_material_parameter("albedoSamplerIndex", get_bindless_sampler_index(*texture));
     };
 
     Camera camera;
@@ -127,32 +127,19 @@ int main(int argc, char *argv[]) {
     camera.set_position({0.0f, 0.0f, -2.5f});
     camera.set_target({0.0f, 0.0f, 0.0f});
 
-    PushConstants push_constants_data = {};
-
     uint64_t name_id_world_matrix = hash64("modelMatrix");
-    uint64_t name_id_albedo_index = hash64("albedoIndex");
-    uint64_t name_id_albedo_sampler_index = hash64("albedoSamplerIndex");
-    uint64_t albedo_name_id = hash64("albedo");
-    constexpr uint32_t kAlbedoSamplerIndex = 0; // linear wrap
+    uint64_t name_id_world_matrix_inverse = hash64("modelMatrixInverse");
     auto update_push_constant = [&](Primitive &primitive, TransformComponent &transform) {
-        // Setup push constant data if needed
-        push_constants_data.world_matrix = transform.get_world_matrix();
+        const float4x4 world_matrix = transform.get_world_matrix();
+        const float4x4 world_matrix_inverse = inverse(world_matrix);
         primitive.set_push_constant_variable(
             name_id_world_matrix,
-            reinterpret_cast<std::byte *>(const_cast<void *>(static_cast<const void *>(&transform.get_world_matrix()))),
-            sizeof(transform.get_world_matrix()));
-        Primitive::TextureHandle albedo_texture_handle = primitive.get_texture_handle(albedo_name_id);
-        push_constants_data.albedo_index = albedo_texture_handle.bindless_index_;
-        push_constants_data.albedo_sampler_index = kAlbedoSamplerIndex;
-        //primitive.set_push_constant_data(reinterpret_cast<const std::byte *>(&push_constants_data));
+            reinterpret_cast<std::byte *>(const_cast<float4x4 *>(&world_matrix)),
+            sizeof(world_matrix));
         primitive.set_push_constant_variable(
-            name_id_albedo_index,
-            reinterpret_cast<std::byte *>(&albedo_texture_handle.bindless_index_),
-            sizeof(push_constants_data.albedo_index));
-        primitive.set_push_constant_variable(
-            name_id_albedo_sampler_index,
-            reinterpret_cast<std::byte *>(const_cast<uint32_t *>(&kAlbedoSamplerIndex)),
-            sizeof(kAlbedoSamplerIndex));
+            name_id_world_matrix_inverse,
+            reinterpret_cast<std::byte *>(const_cast<float4x4 *>(&world_matrix_inverse)),
+            sizeof(world_matrix_inverse));
     };
 
     quad.set_update_push_constant_function(update_push_constant);

@@ -4,6 +4,7 @@
 
 #include "primitive.h"
 #include "material.h"
+#include "core/hash.h"
 #include "rhi/vertex_buffer.h"
 #include "rhi/index_buffer.h"
 #include "rhi/device.h"
@@ -40,6 +41,44 @@ void Primitive::add_descriptor_set(DescriptorSet *descriptor_set) {
     }
 }
 
+void Primitive::set_material_parameter(uint64_t name_id, const void* data, size_t size) {
+    if (material_ == nullptr || data == nullptr || size == 0) {
+        return;
+    }
+
+    const Material::MaterialProperty* property = material_->find_material_property(name_id);
+    if (property == nullptr) {
+        return;
+    }
+
+    if (material_parameters_buffer_.size() != material_->material_uniform_buffer_size()) {
+        material_parameters_buffer_.assign(material_->material_uniform_buffer_size(), 0);
+    }
+
+    const size_t copy_size = std::min(size, static_cast<size_t>(property->size));
+    memcpy(material_parameters_buffer_.data() + property->offset, data, copy_size);
+    material_parameters_dirty_ = true;
+}
+
+void Primitive::upload_material_parameters() {
+    if (!material_parameters_dirty_ || material_ == nullptr || !material_->has_material_uniform_buffer()) {
+        return;
+    }
+    if (material_parameters_buffer_.empty()) {
+        return;
+    }
+
+    const uint64_t buffer_name_id = material_->material_uniform_buffer_name_id();
+    const uint32_t buffer_size = material_->material_uniform_buffer_size();
+    for (DescriptorSet* descriptor_set : descriptor_sets_) {
+        descriptor_set->update_buffer(
+            buffer_name_id,
+            material_parameters_buffer_.data(),
+            buffer_size);
+    }
+    material_parameters_dirty_ = false;
+}
+
 void Primitive::update_render_component(Device* device, RenderComponent& render_component, TransformComponent& transform) {
     if (update_push_constant_function_ != nullptr) {
         update_push_constant_function_(*this, transform);
@@ -58,6 +97,8 @@ void Primitive::update_render_component(Device* device, RenderComponent& render_
     if (descriptor_sets_dirty_ || descriptor_sets_material_ != material_) {
         update_descriptor_sets(device);
     }
+
+    upload_material_parameters();
 
     if (mesh_ != nullptr) {
         render_component.geometry = mesh_->geometry_slice();
@@ -152,6 +193,7 @@ void Primitive::update_descriptor_sets(Device *device) {
             descriptor_set->update_sampler(sampler_pair.first, sampler_pair.second);
         }
     }
+    upload_material_parameters();
     descriptor_sets_material_ = material_;
     descriptor_sets_dirty_ = false;
 }
