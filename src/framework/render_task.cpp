@@ -2,7 +2,6 @@
 #include "renderer.h"
 #include "enki_task_debug.h"
 #include "camera.h"
-#include "cmd_record_task.h"
 #include "rhi/device.h"
 #include "rhi/command_buffer.h"
 #include "rhi/pipeline_state.h"
@@ -14,64 +13,88 @@ namespace ocarina {
 
 namespace {
 
-void record_scene_drawing(
+void bind_global_descriptor_sets_for_pass(
+    CommandBuffer& cmd,
+    RHIRenderPass* render_pass) noexcept
+{
+    const auto& queues = render_pass->pipeline_render_queues();
+    if (queues.empty()) {
+        return;
+    }
+
+    RHIPipeline* pipeline = queues.begin()->first;
+    FrameResources& frame_resources = FrameResources::instance();
+    std::vector<DescriptorSet*> global_descriptor_sets =
+        frame_resources.global_descriptor_sets_array();
+
+    if (frame_resources.has_global_ubo_descriptor_set()) {
+        DescriptorSet* global_ubo_set = frame_resources.get_global_ubo_descriptor_set();
+        cmd.bind_descriptor_sets(
+            &global_ubo_set,
+            frame_resources.global_ubo_descriptor_set_index(),
+            1,
+            pipeline->pipeline_layout);
+    } else if (!global_descriptor_sets.empty()) {
+        cmd.bind_descriptor_sets(
+            global_descriptor_sets.data(),
+            static_cast<uint32_t>(DescriptorSetIndex::GLOBAL_SET),
+            static_cast<uint32_t>(global_descriptor_sets.size()),
+            pipeline->pipeline_layout);
+    }
+
+    if (frame_resources.has_bindless_descriptor_set()) {
+        DescriptorSet* bindless_set = frame_resources.get_bindless_descriptor_set();
+        cmd.bind_descriptor_sets(
+            &bindless_set,
+            frame_resources.bindless_descriptor_set_index(),
+            1,
+            pipeline->pipeline_layout);
+    }
+}
+
+void attach_swapchain_semaphores(Device* device, CommandBuffer& cmd) noexcept {
+    cmd.add_signal_semaphore(device->get_render_complete_semaphore());
+    cmd.add_wait_semaphore(device->get_present_complete_semaphore());
+}
+
+void record_render_pass(
     Renderer& renderer,
     Device* device,
-    CommandBuffer* cmd,
-    const std::list<RHIRenderPass*>& render_passes,
-    bool leave_swapchain_pass_open_for_imgui) noexcept
+    CommandBuffer& cmd,
+    RHIRenderPass* render_pass,
+    const Renderer::RenderGUIImplCallback& render_gui) noexcept
 {
-    cmd->begin();
+    if (render_pass->is_swapchain_renderpass()) {
+        attach_swapchain_semaphores(device, cmd);
+    }
 
-    std::vector<DescriptorSet*> global_descriptor_sets =
-        FrameResources::instance().global_descriptor_sets_array();
+    cmd.begin_render_pass(render_pass);
+    bind_global_descriptor_sets_for_pass(cmd, render_pass);
+    renderer.draw_opaque(cmd, render_pass);
+
+    if (render_gui) {
+        render_gui(cmd);
+    }
+
+    cmd.end_render_pass();
+}
+
+void record_frame_command_buffer(
+    Renderer& renderer,
+    Device* device,
+    CommandBuffer& cmd,
+    const std::list<RHIRenderPass*>& render_passes,
+    const Renderer::RenderGUIImplCallback& render_gui) noexcept
+{
+    cmd.begin();
 
     for (RHIRenderPass* render_pass : render_passes) {
-        if (render_pass->is_swapchain_renderpass()) {
-            cmd->add_signal_semaphore(device->get_render_complete_semaphore());
-            cmd->add_wait_semaphore(device->get_present_complete_semaphore());
-        }
-
-        cmd->begin_render_pass(render_pass);
-
-        const auto& queues = render_pass->pipeline_render_queues();
-        if (!queues.empty()) {
-            RHIPipeline* pipeline = queues.begin()->first;
-            FrameResources& frame_resources = FrameResources::instance();
-
-            if (frame_resources.has_global_ubo_descriptor_set()) {
-                DescriptorSet* global_ubo_set = frame_resources.get_global_ubo_descriptor_set();
-                cmd->bind_descriptor_sets(
-                    &global_ubo_set,
-                    frame_resources.global_ubo_descriptor_set_index(),
-                    1,
-                    pipeline->pipeline_layout);
-            } else if (!global_descriptor_sets.empty()) {
-                cmd->bind_descriptor_sets(
-                    global_descriptor_sets.data(),
-                    static_cast<uint32_t>(DescriptorSetIndex::GLOBAL_SET),
-                    static_cast<uint32_t>(global_descriptor_sets.size()),
-                    pipeline->pipeline_layout);
-            }
-
-            if (frame_resources.has_bindless_descriptor_set()) {
-                DescriptorSet* bindless_set = frame_resources.get_bindless_descriptor_set();
-                cmd->bind_descriptor_sets(
-                    &bindless_set,
-                    frame_resources.bindless_descriptor_set_index(),
-                    1,
-                    pipeline->pipeline_layout);
-            }
-        }
-
-        renderer.draw_opaque(*cmd, render_pass);
-
-        const bool leave_pass_open =
-            leave_swapchain_pass_open_for_imgui && render_pass->is_swapchain_renderpass();
-        if (!leave_pass_open) {
-            cmd->end_render_pass();
-        }
+        const Renderer::RenderGUIImplCallback& pass_render_gui =
+            render_pass->is_swapchain_renderpass() ? render_gui : Renderer::RenderGUIImplCallback{};
+        record_render_pass(renderer, device, cmd, render_pass, pass_render_gui);
     }
+
+    cmd.end();
 }
 
 }// namespace
@@ -114,26 +137,17 @@ void RenderTask::render_one_frame() {
 
 void RenderTask::execute_default_render_path() {
     Device* device = renderer_.device_;
-    const bool imgui_pending = renderer_.render_gui_impl_ != nullptr;
 
     device->begin_frame();
     CommandBuffer cmd = device->get_command_buffer();
 
-    CmdRecordTask record_task(
+    record_frame_command_buffer(
+        renderer_,
         device,
         cmd,
-        [renderer = &renderer_, render_passes = renderer_.render_passes_, imgui_pending](Device* dev, CommandBuffer* cb) {
-            record_scene_drawing(*renderer, dev, cb, render_passes, imgui_pending);
-        });
-    renderer_.task_scheduler_.AddTaskSetToPipe(&record_task);
-    renderer_.task_scheduler_.WaitforTask(&record_task);
+        renderer_.render_passes_,
+        renderer_.render_gui_impl_);
 
-    if (imgui_pending) {
-        renderer_.render_gui_impl_(cmd);
-        cmd.end_render_pass();
-    }
-
-    cmd.end();
     device->execute_command_buffers(&cmd, 1);
     device->release_command_buffer(cmd);
     device->end_frame();
