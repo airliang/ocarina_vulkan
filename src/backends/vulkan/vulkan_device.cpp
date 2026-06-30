@@ -505,6 +505,12 @@ Semaphore VulkanDevice::get_render_complete_semaphore() noexcept
     return Semaphore{ reinterpret_cast<handle_ty>(VulkanDriver::instance().get_render_complete_semaphore()) };
 }
 
+void VulkanDevice::attach_swapchain_semaphores(CommandBuffer& cmd) noexcept
+{
+    cmd.add_signal_semaphore(get_render_complete_semaphore());
+    cmd.add_wait_semaphore(get_present_complete_semaphore());
+}
+
 Fence VulkanDevice::create_fence() noexcept
 {
     Fence::UniqueImplPtr impl(ocarina::new_with_allocator<ocarina::VulkanFence>(this));

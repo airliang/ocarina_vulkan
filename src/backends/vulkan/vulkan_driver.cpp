@@ -344,13 +344,30 @@ void VulkanDriver::create_frame_sync()
 
     frame_sync_.resize(frames_in_flight_);
     VkSemaphoreCreateInfo semaphore_info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+
+#if OCARINA_VULKAN_FRAME_SYNC_TIMELINE
+    if (frame_timeline_sync_.timeline_semaphore == VK_NULL_HANDLE) {
+        VkSemaphoreTypeCreateInfo timeline_type{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
+        timeline_type.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+        timeline_type.initialValue = 0;
+        semaphore_info.pNext = &timeline_type;
+        VK_CHECK_RESULT(vkCreateSemaphore(device(), &semaphore_info, nullptr, &frame_timeline_sync_.timeline_semaphore));
+        semaphore_info.pNext = nullptr;
+    }
+    frame_timeline_sync_.frame_number = 0;
+#else
     VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+#endif
 
     for (uint32_t i = 0; i < frames_in_flight_; ++i) {
         VK_CHECK_RESULT(vkCreateSemaphore(device(), &semaphore_info, nullptr, &frame_sync_[i].image_available));
         VK_CHECK_RESULT(vkCreateSemaphore(device(), &semaphore_info, nullptr, &frame_sync_[i].render_finished));
+#if OCARINA_VULKAN_FRAME_SYNC_TIMELINE
+        frame_sync_[i].in_flight_fence = VK_NULL_HANDLE;
+#else
         VK_CHECK_RESULT(vkCreateFence(device(), &fence_info, nullptr, &frame_sync_[i].in_flight_fence));
+#endif
     }
     current_frame_ = 0;
 }
@@ -365,11 +382,21 @@ void VulkanDriver::destroy_frame_sync()
         vkDeviceWaitIdle(device());
     }
 
-    for (auto &frame : frame_sync_) {
+#if OCARINA_VULKAN_FRAME_SYNC_TIMELINE
+    if (frame_timeline_sync_.timeline_semaphore != VK_NULL_HANDLE) {
+        vkDestroySemaphore(device(), frame_timeline_sync_.timeline_semaphore, nullptr);
+        frame_timeline_sync_.timeline_semaphore = VK_NULL_HANDLE;
+    }
+    frame_timeline_sync_.frame_number = 0;
+#endif
+
+    for (auto& frame : frame_sync_) {
+#if !OCARINA_VULKAN_FRAME_SYNC_TIMELINE
         if (frame.in_flight_fence != VK_NULL_HANDLE) {
             vkDestroyFence(device(), frame.in_flight_fence, nullptr);
             frame.in_flight_fence = VK_NULL_HANDLE;
         }
+#endif
         if (frame.image_available != VK_NULL_HANDLE) {
             vkDestroySemaphore(device(), frame.image_available, nullptr);
             frame.image_available = VK_NULL_HANDLE;
@@ -445,15 +472,55 @@ VulkanPipeline* VulkanDriver::get_pipeline(const PipelineState &pipeline_state, 
     return vulkan_pipeline_manager->get_or_create_pipeline(pipeline_state, vulkan_device_, render_pass);
 }
 
+uint32_t VulkanDriver::frame_slot() const noexcept
+{
+#if OCARINA_VULKAN_FRAME_SYNC_TIMELINE
+    return static_cast<uint32_t>(frame_timeline_sync_.frame_number % frames_in_flight_);
+#else
+    return current_frame_;
+#endif
+}
+
+uint32_t VulkanDriver::current_frame() const noexcept
+{
+    return frame_slot();
+}
+
+VkSemaphore VulkanDriver::get_present_complete_semaphore() const
+{
+    return frame_sync_[frame_slot()].image_available;
+}
+
+VkSemaphore VulkanDriver::get_render_complete_semaphore() const
+{
+    return frame_sync_[frame_slot()].render_finished;
+}
+
 void VulkanDriver::begin_frame()
 {
-    FrameSync &frame = frame_sync_[current_frame_];
+#if OCARINA_VULKAN_FRAME_SYNC_TIMELINE
+    ++frame_timeline_sync_.frame_number;
+    if (frame_timeline_sync_.timeline_semaphore != VK_NULL_HANDLE &&
+        frame_timeline_sync_.frame_number > frames_in_flight_) {
+        const uint64_t wait_value = frame_timeline_sync_.frame_number - frames_in_flight_;
+        VkSemaphoreWaitInfo wait_info{};
+        wait_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
+        wait_info.semaphoreCount = 1;
+        wait_info.pSemaphores = &frame_timeline_sync_.timeline_semaphore;
+        wait_info.pValues = &wait_value;
+        VK_CHECK_RESULT(vkWaitSemaphores(device(), &wait_info, UINT64_MAX));
+    }
+#else
+    FrameSync& frame = frame_sync_[current_frame_];
     VK_CHECK_RESULT(vkWaitForFences(device(), 1, &frame.in_flight_fence, VK_TRUE, UINT64_MAX));
+#endif
 
-    // Resolve GPU timestamp for the last time we used this frame slot (fence already signaled => no stall).
+    const uint32_t slot = frame_slot();
+
+    // Resolve GPU timestamp for the last time we used this frame slot.
     if (gpu_timestamp_query_pool_ != VK_NULL_HANDLE) {
-        const uint32_t query_base = current_frame_ * 2;
-        if (current_frame_ < gpu_timestamp_written_.size() && gpu_timestamp_written_[current_frame_] != 0u) {
+        const uint32_t query_base = slot * 2;
+        if (slot < gpu_timestamp_written_.size() && gpu_timestamp_written_[slot] != 0u) {
             uint64_t timestamps[2] = {0, 0};
             const VkResult qr = vkGetQueryPoolResults(
                 device(),
@@ -469,25 +536,26 @@ void VulkanDriver::begin_frame()
                 const double ns = static_cast<double>(delta) * gpu_timestamp_period_ns_;
                 gpu_frame_time_ms_ = ns * 1e-6;
             }
-            gpu_timestamp_written_[current_frame_] = 0u;
+            gpu_timestamp_written_[slot] = 0u;
         }
 
         // IMPORTANT: We cannot call vkResetQueryPool() on host unless hostQueryReset is enabled.
         // Reset is recorded into the command buffer (vkCmdResetQueryPool) right before timestamps are written.
     }
 
-    VulkanSwapchain *swapchain = vulkan_device_->get_swapchain();
-    VkResult result = swapchain->aquire_next_image(frame.image_available, &current_buffer_);
+    VulkanSwapchain* swapchain = vulkan_device_->get_swapchain();
+    VkResult result = swapchain->aquire_next_image(frame_sync_[slot].image_available, &current_buffer_);
+#if !OCARINA_VULKAN_FRAME_SYNC_TIMELINE
+    VK_CHECK_RESULT(vkResetFences(device(), 1, &frame_sync_[current_frame_].in_flight_fence));
+#endif
     VK_CHECK_RESULT(result);
-
-    VK_CHECK_RESULT(vkResetFences(device(), 1, &frame.in_flight_fence));
 }
 
 void VulkanDriver::write_gpu_timestamp_begin(VkCommandBuffer cmd) noexcept {
     if (gpu_timestamp_query_pool_ == VK_NULL_HANDLE) {
         return;
     }
-    const uint32_t query_base = current_frame_ * 2;
+    const uint32_t query_base = frame_slot() * 2;
     // Reset both queries for this frame slot before writing timestamps (no hostQueryReset needed).
     vkCmdResetQueryPool(cmd, gpu_timestamp_query_pool_, query_base, 2);
     const uint32_t query = query_base + 0;
@@ -498,18 +566,21 @@ void VulkanDriver::write_gpu_timestamp_end(VkCommandBuffer cmd) noexcept {
     if (gpu_timestamp_query_pool_ == VK_NULL_HANDLE) {
         return;
     }
-    const uint32_t query = current_frame_ * 2 + 1;
+    const uint32_t slot = frame_slot();
+    const uint32_t query = slot * 2 + 1;
     vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_query_pool_, query);
-    if (current_frame_ < gpu_timestamp_written_.size()) {
-        gpu_timestamp_written_[current_frame_] = 1u;
+    if (slot < gpu_timestamp_written_.size()) {
+        gpu_timestamp_written_[slot] = 1u;
     }
 }
 
 void VulkanDriver::end_frame()
 {
     vulkan_device_->get_swapchain()->queue_present(
-        graphics_queue, current_buffer_, frame_sync_[current_frame_].render_finished);
+        graphics_queue, current_buffer_, frame_sync_[frame_slot()].render_finished);
+#if !OCARINA_VULKAN_FRAME_SYNC_TIMELINE
     current_frame_ = (current_frame_ + 1) % frames_in_flight_;
+#endif
 }
 
 VulkanRenderPass* VulkanDriver::create_render_pass(const RenderPassCreation& render_pass_creation) {
@@ -608,7 +679,8 @@ VkDescriptorPool VulkanDriver::get_imgui_descriptor_pool()
 VulkanCommandBuffer* VulkanDriver::get_command_buffer(QueueType queue_type) {
     std::lock_guard<std::mutex> lock(command_buffer_pool_mutex_);
 
-    auto& pool = command_buffer_pools_[current_frame_][(size_t)queue_type];
+    const uint32_t slot = frame_slot();
+    auto& pool = command_buffer_pools_[slot][(size_t)queue_type];
     if (pool.empty()) {
         VkCommandBufferAllocateInfo allocateInfo{};
         allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -629,7 +701,7 @@ void VulkanDriver::release_command_buffer(VulkanCommandBuffer* cmd_buffer)
 {
     std::lock_guard<std::mutex> lock(command_buffer_pool_mutex_);
     cmd_buffer->reset();
-    command_buffer_pools_[current_frame_][(size_t)cmd_buffer->queue_type()].push(cmd_buffer);
+    command_buffer_pools_[frame_slot()][(size_t)cmd_buffer->queue_type()].push(cmd_buffer);
 }
 
 void VulkanDriver::queue_submit(VkQueue queue, const VkSubmitInfo2* submit_info, uint32_t submit_count, VkFence fence)
@@ -639,87 +711,91 @@ void VulkanDriver::queue_submit(VkQueue queue, const VkSubmitInfo2* submit_info,
 
 void VulkanDriver::execute_command_buffers(CommandBuffer* cmd_buffers, uint32_t counts, VkFence fence)
 {
+#if !OCARINA_VULKAN_FRAME_SYNC_TIMELINE
     VkFence frame_fence = VK_NULL_HANDLE;
     if (fence == VK_NULL_HANDLE && !frame_sync_.empty()) {
         frame_fence = frame_sync_[current_frame_].in_flight_fence;
     }
+#endif
 
     std::array<VkCommandBufferSubmitInfo, MAX_COMMAND_BUFFERS_PER_SUBMIT> cmd_buffers_submit{};
-    std::array<VkPipelineStageFlags, MAX_COMMAND_BUFFERS_PER_SUBMIT> wait_stages;
-    std::array<uint64_t, MAX_COMMAND_BUFFERS_PER_SUBMIT> signal_values;
-    std::array<uint64_t, MAX_COMMAND_BUFFERS_PER_SUBMIT> wait_values;
     std::array<VkSemaphoreSubmitInfo, MAX_COMMAND_BUFFERS_PER_SUBMIT> signals{};
     std::array<VkSemaphoreSubmitInfo, MAX_COMMAND_BUFFERS_PER_SUBMIT> waits{};
-    VkTimelineSemaphoreSubmitInfo timeline_info{};
-    
+
     for (uint32_t i = 0; i < counts; ++i) {
         cmd_buffers_submit[i].sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
         cmd_buffers_submit[i].commandBuffer = reinterpret_cast<VkCommandBuffer>(cmd_buffers[i].command_buffer);
-        signals[i].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-        waits[i].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
     }
-    std::array < VkSubmitInfo2, MAX_COMMAND_BUFFERS_PER_SUBMIT> submits{};
+
     for (uint32_t i = 0; i < counts; ++i) {
-        bool need_timeline_semaphore = false;
         VulkanCommandBuffer* vulkan_cmd_buffer = static_cast<VulkanCommandBuffer*>(cmd_buffers[i].impl());
-        submits[i].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-        submits[i].commandBufferInfoCount = 1;
-        submits[i].pCommandBufferInfos = &cmd_buffers_submit[i];
-        submits[i].waitSemaphoreInfoCount = cmd_buffers[i].wait_semaphore_count();
-        //submits[i].pWaitSemaphoreInfos = cmd_buffers[i].wait_count > 0 ? waits.data() : nullptr;
-        submits[i].signalSemaphoreInfoCount = cmd_buffers[i].signal_semaphore_count();
-        
-        if (submits[i].waitSemaphoreInfoCount > 0)
-        {
-            for (uint32_t j = 0; j < cmd_buffers[i].wait_semaphore_count(); ++j)
-            {
-                Semaphore* semaphore = cmd_buffers[i].get_wait_semaphore(j);
-                waits[j].semaphore = reinterpret_cast<VkSemaphore>(semaphore->semaphore);
-                waits[j].value = semaphore->timeline_value;
-                waits[j].stageMask = vulkan_cmd_buffer->pipeline_stage_flags(); //TODO: support specifying stage mask
-            }
-            submits[i].pWaitSemaphoreInfos = waits.data();
+        const bool is_last_submit = (i + 1 == counts);
+
+#if OCARINA_VULKAN_FRAME_SYNC_TIMELINE
+        const bool signal_frame_timeline =
+            fence == VK_NULL_HANDLE && is_last_submit && frame_timeline_sync_.timeline_semaphore != VK_NULL_HANDLE;
+#endif
+
+        uint32_t wait_count = cmd_buffers[i].wait_semaphore_count();
+        uint32_t signal_count = cmd_buffers[i].signal_semaphore_count();
+#if OCARINA_VULKAN_FRAME_SYNC_TIMELINE
+        if (signal_frame_timeline) {
+            ++signal_count;
         }
-        else
-        {
-            submits[i].pWaitSemaphoreInfos = nullptr;
+#endif
+
+        for (uint32_t j = 0; j < wait_count; ++j) {
+            Semaphore* semaphore = cmd_buffers[i].get_wait_semaphore(j);
+            waits[j].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+            waits[j].semaphore = reinterpret_cast<VkSemaphore>(semaphore->semaphore);
+            // Swapchain acquire semaphores are binary; timeline value must be 0.
+            waits[j].value = semaphore->timeline_value;
+            waits[j].stageMask = vulkan_cmd_buffer->pipeline_stage_flags();
         }
 
-        if (submits[i].signalSemaphoreInfoCount > 0)
-        {
-            for (uint32_t j = 0; j < cmd_buffers[i].signal_semaphore_count(); ++j)
-            {
-                Semaphore* semaphore = cmd_buffers[i].get_signal_semaphore(j);
-                signals[j].semaphore = reinterpret_cast<VkSemaphore>(semaphore->semaphore);
-                signals[j].stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;//vulkan_cmd_buffer->pipeline_stage_flags();// VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; //TODO: support specifying stage mask
-                signals[j].value = semaphore->timeline_value;
-            }
-            submits[i].pSignalSemaphoreInfos = signals.data();
+        const uint32_t cmd_signal_count = cmd_buffers[i].signal_semaphore_count();
+        for (uint32_t j = 0; j < cmd_signal_count; ++j) {
+            Semaphore* semaphore = cmd_buffers[i].get_signal_semaphore(j);
+            signals[j].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+            signals[j].semaphore = reinterpret_cast<VkSemaphore>(semaphore->semaphore);
+            signals[j].value = semaphore->timeline_value;
+            signals[j].stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
         }
 
-        //submits[i].pWaitSemaphoreInfos = &semaphores.presentComplete; //TODO: support multiple wait semaphores
-        //submits[i].pSignalSemaphoreInfos = &semaphores.renderComplete; //TODO: support multiple signal semaphores
-        //VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-        //submits[i].flags = wait_stages;
-        need_timeline_semaphore = false;//cmd_buffers[i].wait_count > 0 || cmd_buffers[i].signal_count > 0;
-        
-        if (need_timeline_semaphore)
-        {
-            timeline_info.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
-            timeline_info.pWaitSemaphoreValues = wait_values.data();
-            timeline_info.waitSemaphoreValueCount = cmd_buffers[i].wait_semaphore_count();
-            timeline_info.pSignalSemaphoreValues = signal_values.data();
-            timeline_info.signalSemaphoreValueCount = cmd_buffers[i].signal_semaphore_count();
-
-            submits[i].pNext = &timeline_info;
+#if OCARINA_VULKAN_FRAME_SYNC_TIMELINE
+        if (signal_frame_timeline) {
+            signals[cmd_signal_count].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+            signals[cmd_signal_count].semaphore = frame_timeline_sync_.timeline_semaphore;
+            signals[cmd_signal_count].value = frame_timeline_sync_.frame_number;
+            signals[cmd_signal_count].stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
         }
-        const VkFence submit_fence = (fence != VK_NULL_HANDLE)
-                                         ? ((i + 1 == counts) ? fence : VK_NULL_HANDLE)
-                                         : ((i + 1 == counts) ? frame_fence : VK_NULL_HANDLE);
-        queue_submit(graphics_queue, &submits[i], 1, submit_fence);
+#endif
+
+        VkSubmitInfo2 submit{};
+        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+        submit.pNext = nullptr;
+        submit.commandBufferInfoCount = 1;
+        submit.pCommandBufferInfos = &cmd_buffers_submit[i];
+        submit.waitSemaphoreInfoCount = wait_count;
+        submit.pWaitSemaphoreInfos = wait_count > 0 ? waits.data() : nullptr;
+        submit.signalSemaphoreInfoCount = signal_count;
+        submit.pSignalSemaphoreInfos = signal_count > 0 ? signals.data() : nullptr;
+
+        VkFence submit_fence = VK_NULL_HANDLE;
+#if OCARINA_VULKAN_FRAME_SYNC_TIMELINE
+        if (fence != VK_NULL_HANDLE && is_last_submit) {
+            submit_fence = fence;
+        }
+#else
+        if (fence != VK_NULL_HANDLE) {
+            submit_fence = is_last_submit ? fence : VK_NULL_HANDLE;
+        } else {
+            submit_fence = is_last_submit ? frame_fence : VK_NULL_HANDLE;
+        }
+#endif
+
+        queue_submit(graphics_queue, &submit, 1, submit_fence);
     }
-
-    //queue_submit(graphics_queue, submits.data(), counts, fence);
 }
 
 Semaphore VulkanDriver::request_semaphore(VkSemaphoreType type, uint64_t timeline_value)

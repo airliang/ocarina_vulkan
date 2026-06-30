@@ -81,6 +81,10 @@ public:
         virtual void execute_command_buffers(CommandBuffer* cmd_buffer, uint32_t count) noexcept {}
         virtual Semaphore get_present_complete_semaphore() noexcept = 0;
         virtual Semaphore get_render_complete_semaphore() noexcept = 0;
+        virtual void attach_swapchain_semaphores(CommandBuffer& cmd) noexcept {
+            cmd.add_signal_semaphore(get_render_complete_semaphore());
+            cmd.add_wait_semaphore(get_present_complete_semaphore());
+        }
         virtual Fence create_fence() noexcept = 0;
         // Returns last completed frame GPU time in milliseconds (0 if unsupported).
         [[nodiscard]] virtual double gpu_frame_time_ms() const noexcept { return 0.0; }
@@ -194,6 +198,10 @@ public:
 
     Semaphore get_render_complete_semaphore() noexcept {
         return impl_->get_render_complete_semaphore();
+    }
+
+    void attach_swapchain_semaphores(CommandBuffer& cmd) noexcept {
+        impl_->attach_swapchain_semaphores(cmd);
     }
 
     Fence create_fence() const noexcept {

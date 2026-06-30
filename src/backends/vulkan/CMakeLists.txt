@@ -48,6 +48,13 @@ if(AUTO_LOCATE_VULKAN)
 
     ocarina_add_backend(vulkan SOURCES ${HEADER_FILES} ${SOURCE_FILES})
     target_link_libraries(ocarina-backend-vulkan PRIVATE Vulkan::Vulkan)
+
+    option(OCARINA_VULKAN_FRAME_SYNC_TIMELINE "Use Vulkan timeline semaphores for per-frame GPU sync" ON)
+    if(OCARINA_VULKAN_FRAME_SYNC_TIMELINE)
+        target_compile_definitions(ocarina-backend-vulkan PRIVATE OCARINA_VULKAN_FRAME_SYNC_TIMELINE=1)
+    else()
+        target_compile_definitions(ocarina-backend-vulkan PRIVATE OCARINA_VULKAN_FRAME_SYNC_TIMELINE=0)
+    endif()
 else()
 	message(STATUS "Attempting to locate Vulkan SDK using manual path......")
 	set(VULKAN_SDK "C:/VulkanSDK")

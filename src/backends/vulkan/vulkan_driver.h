@@ -1,4 +1,5 @@
 #pragma once
+#include "vulkan_frame_sync_config.h"
 #include "core/header.h"
 #include "core/concepts.h"
 #include "core/stl.h"
@@ -58,7 +59,7 @@ public:
                                 const std::string &entry_point);
     VulkanShader* get_shader(handle_ty shader) const;
     OC_MAKE_MEMBER_GETTER(current_buffer, )
-    [[nodiscard]] uint32_t current_frame() const noexcept { return current_frame_; }
+    [[nodiscard]] uint32_t current_frame() const noexcept;
     [[nodiscard]] uint32_t frames_in_flight() const noexcept { return frames_in_flight_; }
     //VkCommandBuffer get_current_command_buffer() const
     //{
@@ -132,13 +133,8 @@ public:
 
     void recycle_semaphore(const Semaphore& semaphore);
 
-    VkSemaphore get_present_complete_semaphore() const {
-        return frame_sync_[current_frame_].image_available;
-    }
-
-    VkSemaphore get_render_complete_semaphore() const {
-        return frame_sync_[current_frame_].render_finished;
-    }
+    VkSemaphore get_present_complete_semaphore() const;
+    VkSemaphore get_render_complete_semaphore() const;
 
     VkQueue get_queue(QueueType queue_type) const {
         if (queue_type == QueueType::Graphics) {
@@ -172,6 +168,12 @@ private:
         VkSemaphore render_finished = VK_NULL_HANDLE;
         VkFence in_flight_fence = VK_NULL_HANDLE;
     };
+
+    struct FrameTimelineSync {
+        VkSemaphore timeline_semaphore = VK_NULL_HANDLE;
+        /// 1-based frame counter; incremented at begin_frame, signaled on submit.
+        uint64_t frame_number = 0;
+    };
     VulkanDriver();
     VulkanDevice *vulkan_device_;
     std::unique_ptr<VulkanPipelineManager> vulkan_pipeline_manager;
@@ -196,6 +198,10 @@ private:
     uint32_t current_frame_ = 0;
     uint32_t frames_in_flight_ = 0;
     std::vector<FrameSync> frame_sync_;
+
+    OCARINA_VULKAN_FRAME_SYNC_TIMELINE_ONLY(FrameTimelineSync frame_timeline_sync_;)
+
+    [[nodiscard]] uint32_t frame_slot() const noexcept;
 
     // Timestamp queries: 2 per frame (begin/end).
     VkQueryPool gpu_timestamp_query_pool_ = VK_NULL_HANDLE;

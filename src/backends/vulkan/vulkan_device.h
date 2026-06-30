@@ -98,6 +98,7 @@ public:
     void execute_command_buffers(CommandBuffer* command_buffers, uint32_t counts) noexcept override;
     Semaphore get_present_complete_semaphore() noexcept override;
     Semaphore get_render_complete_semaphore() noexcept override;
+    void attach_swapchain_semaphores(CommandBuffer& cmd) noexcept override;
     Fence create_fence() noexcept override;
     [[nodiscard]] double gpu_frame_time_ms() const noexcept override;
  private:

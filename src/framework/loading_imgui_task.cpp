@@ -39,8 +39,7 @@ void LoadingImguiTask::render_loading_frame() {
 
     if (swapchain_pass != nullptr) {
         if (swapchain_pass->is_swapchain_renderpass()) {
-            cmd.add_signal_semaphore(device->get_render_complete_semaphore());
-            cmd.add_wait_semaphore(device->get_present_complete_semaphore());
+            device->attach_swapchain_semaphores(cmd);
         }
 
         cmd.begin_render_pass(swapchain_pass);

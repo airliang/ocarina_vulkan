@@ -53,8 +53,7 @@ void bind_global_descriptor_sets_for_pass(
 }
 
 void attach_swapchain_semaphores(Device* device, CommandBuffer& cmd) noexcept {
-    cmd.add_signal_semaphore(device->get_render_complete_semaphore());
-    cmd.add_wait_semaphore(device->get_present_complete_semaphore());
+    device->attach_swapchain_semaphores(cmd);
 }
 
 void record_render_pass(
