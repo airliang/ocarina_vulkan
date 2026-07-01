@@ -11,7 +11,7 @@
 #include "framework/camera.h"
 #include "framework/resource_manager.h"
 #include "framework/material.h"
-#include "framework/async_loader.h"
+#include "framework/shader_compile_task.h"
 #include "framework/frame_resources.h"
 #include "framework/gltf_async_loader.h"
 #include "framework/loading_progress_listener.h"
@@ -46,11 +46,9 @@ int main(int argc, char* argv[]) {
     const fs::path repo_root = src_root.parent_path();
     //const fs::path gltf_path = repo_root / "res/FlightHelmet/glTF/FlightHelmet.gltf";
     const fs::path gltf_path = repo_root / "res/Sponza/glTF/Sponza.gltf";
-    const fs::path shader_vert = src_root / "backends/vulkan/builtin/mesh.vert";
-    const fs::path shader_frag = src_root / "backends/vulkan/builtin/mesh.frag";
+    const fs::path shader_vert = repo_root / "res/shaderlibrary/builtin/mesh.vert";
+    const fs::path shader_frag = repo_root / "res/shaderlibrary/builtin/mesh.frag";
 
-    Material* material = nullptr;
-    GltfAsyncLoader* gltf_loader = nullptr;
     LoadingProgressListener loading_progress;
 
     Camera camera;
@@ -63,25 +61,17 @@ int main(int argc, char* argv[]) {
     renderer.set_camera(&camera);
     renderer.set_loading_progress_listener(&loading_progress);
 
-    AsyncLoader async_loader(&device, [&](Device* load_device) {
-        std::set<string> options;
-        handle_ty vertex_shader = load_device->create_shader_from_file(
-            fs::absolute(shader_vert).string(),
-            ShaderType::VertexShader,
-            options);
-        handle_ty pixel_shader = load_device->create_shader_from_file(
-            fs::absolute(shader_frag).string(),
-            ShaderType::PixelShader,
-            options);
+    std::vector<ShaderCompileTask::Entry> shader_entries(2);
+    shader_entries[0].file_path = fs::absolute(shader_vert).string();
+    shader_entries[0].shader_type = ShaderType::VertexShader;
+    shader_entries[1].file_path = fs::absolute(shader_frag).string();
+    shader_entries[1].shader_type = ShaderType::PixelShader;
 
-        material = ResourceManager::instance().create_material(load_device, vertex_shader, pixel_shader);
-        gltf_loader = ocarina::new_with_allocator<GltfAsyncLoader>(
-            fs::absolute(gltf_path).string(),
-            load_device,
-            material,
-            &loading_progress);
-        gltf_loader->Execute();
-    });
+    GltfAsyncLoader gltf_loader(
+        &renderer.task_scheduler(),
+        &device,
+        &shader_entries,
+        fs::absolute(gltf_path).string());
 
     const uint64_t model_matrix_name_id = hash64("modelMatrix");
     const uint64_t model_matrix_inverse_name_id = hash64("modelMatrixInverse");
@@ -116,12 +106,9 @@ int main(int argc, char* argv[]) {
         display_loading_progress(*window->widgets(), &loading_progress, renderer.loading_dt());
     });
 
-    renderer.set_async_loader(&async_loader, nullptr, [&]() {
-        if (gltf_loader == nullptr) {
-            return;
-        }
-
-        Scene& scene = gltf_loader->get_scene();
+    renderer.set_async_loader(&gltf_loader, nullptr, [&]() {
+        Scene& scene = gltf_loader.get_scene();
+        Material* material = gltf_loader.material();
         for (uint32_t index = 0; index < scene.primitive_count(); ++index) {
             Primitive& primitive = scene.primitive(index);
             primitive.set_update_push_constant_function(update_push_constant);
@@ -150,18 +137,16 @@ int main(int argc, char* argv[]) {
         global_descriptor_set->update_buffer(hash64("global_ubo"), &global_ubo_data, sizeof(GlobalUniformBuffer));
 
         render_pass->clear_draw_call_items();
-        if (gltf_loader != nullptr) {
-            Scene& scene = gltf_loader->get_scene();
-            renderer.ensure_render_components(scene.primitive_count());
-            for (uint32_t primitive_index : scene.visible_primitive_indices()) {
-                Primitive& primitive = scene.primitive(primitive_index);
-                primitive.update_render_component(
-                    &device,
-                    renderer.ecs().render_component(primitive_index),
-                    scene.transform_component(primitive_index));
-                RenderComponent& render_component = renderer.ecs().render_component(primitive_index);
-                render_pass->add_draw_call(primitive_index, render_component.pipeline);
-            }
+        Scene& scene = gltf_loader.get_scene();
+        renderer.ensure_render_components(scene.primitive_count());
+        for (uint32_t primitive_index : scene.visible_primitive_indices()) {
+            Primitive& primitive = scene.primitive(primitive_index);
+            primitive.update_render_component(
+                &device,
+                renderer.ecs().render_component(primitive_index),
+                scene.transform_component(primitive_index));
+            RenderComponent& render_component = renderer.ecs().render_component(primitive_index);
+            render_pass->add_draw_call(primitive_index, render_component.pipeline);
         }
     });
 
@@ -176,10 +161,6 @@ int main(int argc, char* argv[]) {
     renderer.set_render_task_end_callback([&]() {
         imgui_renderer.cleanup();
         window->remove_event_listener(&camera);
-        if (gltf_loader != nullptr) {
-            ocarina::delete_with_allocator<GltfAsyncLoader>(gltf_loader);
-            gltf_loader = nullptr;
-        }
     });
 
     renderer.run();

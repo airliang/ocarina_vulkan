@@ -29,6 +29,7 @@
 #include "framework/material.h"
 #include "framework/transform.h"
 #include "framework/async_loader.h"
+#include "framework/shader_compile_task.h"
 #include "rhi/bindless_sampler.h"
 #include "rhi/fence.h"
 #include "framework/frame_resources.h"
@@ -62,40 +63,37 @@ int main(int argc, char *argv[]) {
     Mesh* quad_mesh = nullptr;
     Texture* texture = nullptr;
     const fs::path source_dir = fs::path(__FILE__).parent_path();
-    const fs::path src_root = source_dir.parent_path();
-    const fs::path shader_vert = src_root / "backends/vulkan/builtin/texture.vert";
-    const fs::path shader_frag = src_root / "backends/vulkan/builtin/bindless_texture.frag";
-    const fs::path project_root = src_root.parent_path();
+    const fs::path project_root = source_dir.parent_path().parent_path();
+    const fs::path shader_vert = project_root / "res/shaderlibrary/builtin/texture.vert";
+    const fs::path shader_frag = project_root / "res/shaderlibrary/builtin/bindless_texture.frag";
     const fs::path texture_path = project_root / "res/textures/granite.png";
 
     Renderer renderer(&device);
 
-    AsyncLoader async_loader(&device, [&material, &quad_mesh, &texture, &shader_vert, &shader_frag, &texture_path](Device* local_device) {
-        // Your async task code here
-        //Shader
-        std::set<string> options;
-        handle_ty vertex_shader = local_device->create_shader_from_file(
-            fs::absolute(shader_vert).string(),
-            ShaderType::VertexShader,
-            options);
-        handle_ty pixel_shader = local_device->create_shader_from_file(
-            fs::absolute(shader_frag).string(),
-            ShaderType::PixelShader,
-            options);
+    std::vector<ShaderCompileTask::Entry> shader_entries(2);
+    shader_entries[0].file_path = fs::absolute(shader_vert).string();
+    shader_entries[0].shader_type = ShaderType::VertexShader;
+    shader_entries[1].file_path = fs::absolute(shader_frag).string();
+    shader_entries[1].shader_type = ShaderType::PixelShader;
 
-        material = ResourceManager::instance().create_material(local_device, vertex_shader, pixel_shader);
+    AsyncLoader async_loader(
+        &renderer.task_scheduler(),
+        &device,
+        &shader_entries,
+        [&material, &quad_mesh, &texture, &shader_entries, &texture_path](Device* local_device) {
+        material = ResourceManager::instance().create_material(
+            local_device,
+            shader_entries[0].shader,
+            shader_entries[1].shader);
 
         Image image = Image::load(texture_path, ColorSpace::SRGB);
         TextureViewCreation texture_view = {};
         texture_view.mip_level_count = 0;
         texture_view.usage = TextureUsageFlags::ShaderReadOnly;
         TextureSampler sampler{ TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT };
-        texture = ResourceManager::instance().create_texture(local_device, image, texture_view, sampler);//device.create_texture(&image, texture_view, sampler);
-
-        uint64_t albedo_name_id = hash64("albedo");
+        texture = ResourceManager::instance().create_texture(local_device, image, texture_view, sampler);
 
         quad_mesh = ResourceManager::instance().create_mesh("quad");
-        
     });
 
     auto setup_quad = [&](Primitive& quad) {

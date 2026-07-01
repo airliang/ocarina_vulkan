@@ -1,14 +1,12 @@
 #pragma once
 
-#include "core/header.h"
-#include "core/stl.h"
+#include "async_loader.h"
 #include "bounding_box.h"
 #include "math/basic_types.h"
 #include "scene.h"
 #include "mesh_geometry.h"
-#include "loading_progress_listener.h"
-#include "ext/enkiTS/src/TaskScheduler.h"
 #include "rhi/device.h"
+#include <memory>
 
 namespace tinygltf {
 class Model;
@@ -24,27 +22,30 @@ class Material;
 class Mesh;
 class Texture;
 class Primitive;
-class LoadingProgressListener;
 
-class GltfAsyncLoader : public enki::IPinnedTask {
+class GltfAsyncLoader : public AsyncLoader {
 public:
     GltfAsyncLoader(
-        const std::string& gltf_file,
+        enki::TaskScheduler* scheduler,
         Device* device,
-        Material* shared_material,
-        LoadingProgressListener* progress_listener = nullptr);
+        std::vector<ShaderCompileTask::Entry>* shader_entries,
+        const std::string& gltf_file);
 
     ~GltfAsyncLoader() noexcept;
 
-    void Execute() override;
-
     [[nodiscard]] Scene& get_scene() noexcept { return scene_; }
     [[nodiscard]] const Scene& get_scene() const noexcept { return scene_; }
-    [[nodiscard]] uint64_t execute_thread_id() const noexcept { return execute_thread_id_; }
+    [[nodiscard]] Material* material() const noexcept { return shared_material_; }
+
+protected:
+    void load(Device* device) override;
+    [[nodiscard]] uint32_t count_load_progress_steps() override;
 
 private:
-    void build_scene_clusters();
+    [[nodiscard]] bool ensure_gltf_parsed();
+    void begin_gltf_progress();
     bool load_gltf_file();
+    void build_scene_clusters();
     void load_gltf_node(const tinygltf::Node& node, const tinygltf::Model& model, const float4x4& parent_transform);
     [[nodiscard]] BoundingBox append_primitive_geometry(
         const tinygltf::Primitive& primitive,
@@ -56,15 +57,16 @@ private:
 
     std::string gltf_file_;
     fs::path gltf_directory_;
-    Device* device_ = nullptr;
+    std::unique_ptr<tinygltf::Model> gltf_model_;
+    bool gltf_model_parsed_ = false;
+    bool gltf_parse_success_ = false;
+    std::string gltf_parse_error_;
     Material* shared_material_ = nullptr;
-    LoadingProgressListener* progress_listener_ = nullptr;
     std::vector<Mesh*> mesh_storage_;
     std::unordered_map<int, Texture*> image_textures_;
     std::unordered_map<uint64_t, Mesh*> geometry_meshes_;
     Scene scene_;
     bool is_loaded_ = false;
-    uint64_t execute_thread_id_ = 0;
 };
 
 }// namespace ocarina

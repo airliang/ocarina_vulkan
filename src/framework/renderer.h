@@ -106,6 +106,9 @@ public:
     void cull_scene();
     void cull_visible_primitives_parallel(Scene& scene, const Frustum& frustum);
 
+    [[nodiscard]] enki::TaskScheduler& task_scheduler() noexcept { return task_scheduler_; }
+    [[nodiscard]] const enki::TaskScheduler& task_scheduler() const noexcept { return task_scheduler_; }
+
 private:
     RenderCallback render = nullptr;
     RenderGUIImplCallback render_gui_impl_ = nullptr;

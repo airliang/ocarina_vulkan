@@ -13,6 +13,7 @@
 #include "framework/resource_manager.h"
 #include "framework/material.h"
 #include "framework/async_loader.h"
+#include "framework/shader_compile_task.h"
 #include "framework/frame_resources.h"
 #include "framework/scene.h"
 #include "framework/transform.h"
@@ -71,9 +72,9 @@ int main(int argc, char* argv[]) {
     Device device = context.create_device("vulkan", instance_creation);
 
     const fs::path source_dir = fs::path(__FILE__).parent_path();
-    const fs::path src_root = source_dir.parent_path();
-    const fs::path shader_vert = src_root / "backends/vulkan/builtin/mesh.vert";
-    const fs::path shader_frag = src_root / "backends/vulkan/builtin/mesh.frag";
+    const fs::path project_root = source_dir.parent_path().parent_path();
+    const fs::path shader_vert = project_root / "res/shaderlibrary/builtin/mesh.vert";
+    const fs::path shader_frag = project_root / "res/shaderlibrary/builtin/mesh.frag";
 
     Material* material = nullptr;
     Mesh* cube_mesh = nullptr;
@@ -82,18 +83,21 @@ int main(int argc, char* argv[]) {
 
     Renderer renderer(&device);
 
-    AsyncLoader async_loader(&device, [&](Device* load_device) {
-        std::set<string> options;
-        handle_ty vertex_shader = load_device->create_shader_from_file(
-            fs::absolute(shader_vert).string(),
-            ShaderType::VertexShader,
-            options);
-        handle_ty pixel_shader = load_device->create_shader_from_file(
-            fs::absolute(shader_frag).string(),
-            ShaderType::PixelShader,
-            options);
+    std::vector<ShaderCompileTask::Entry> shader_entries(2);
+    shader_entries[0].file_path = fs::absolute(shader_vert).string();
+    shader_entries[0].shader_type = ShaderType::VertexShader;
+    shader_entries[1].file_path = fs::absolute(shader_frag).string();
+    shader_entries[1].shader_type = ShaderType::PixelShader;
 
-        material = ResourceManager::instance().create_material(load_device, vertex_shader, pixel_shader);
+    AsyncLoader async_loader(
+        &renderer.task_scheduler(),
+        &device,
+        &shader_entries,
+        [&](Device* load_device) {
+        material = ResourceManager::instance().create_material(
+            load_device,
+            shader_entries[0].shader,
+            shader_entries[1].shader);
         cube_mesh = Mesh::create_cube();
         white_texture = InternalTextures::instance().get_white_texture(load_device);
         BindlessTextureRegistry::instance().allocate_index(white_texture);

@@ -16,10 +16,93 @@
 using namespace Microsoft::WRL;
 #endif
 
+#include "core/logging.h"
 #include "dxc_compiler.h"
 #include <cstring>
+#include <fstream>
 
 namespace ocarina {
+
+namespace {
+
+std::string get_spv_path_for_shader(const std::string& shader_file_path) {
+    return shader_file_path + ".spv";
+}
+
+bool load_spirv_from_file(const std::string& spv_path, std::vector<uint32_t>& spirv_code) {
+    std::ifstream input(spv_path, std::ios::binary);
+    if (!input.is_open()) {
+        return false;
+    }
+
+    input.seekg(0, std::ios::end);
+    const std::streamsize file_size = input.tellg();
+    if (file_size <= 0 || (file_size % static_cast<std::streamsize>(sizeof(uint32_t))) != 0) {
+        return false;
+    }
+
+    input.seekg(0, std::ios::beg);
+    spirv_code.resize(static_cast<size_t>(file_size / static_cast<std::streamsize>(sizeof(uint32_t))));
+    input.read(reinterpret_cast<char*>(spirv_code.data()), file_size);
+    return input.good();
+}
+
+bool save_spirv_to_file(const std::string& spv_path, const std::vector<uint32_t>& spirv_code) {
+    if (spirv_code.empty()) {
+        return false;
+    }
+
+    std::ofstream output(spv_path, std::ios::binary | std::ios::trunc);
+    if (!output.is_open()) {
+        return false;
+    }
+
+    output.write(
+        reinterpret_cast<const char*>(spirv_code.data()),
+        static_cast<std::streamsize>(spirv_code.size() * sizeof(uint32_t)));
+    return output.good();
+}
+
+bool compile_hlsl_file_to_spirv(
+    const std::string& filename,
+    ShaderType shader_type,
+    const std::string& entry_point,
+    std::vector<uint32_t>& spirv_code)
+{
+    std::ifstream input(filename, std::ios::binary);
+    if (!input.is_open()) {
+        return false;
+    }
+
+    input.seekg(0, std::ios::end);
+    const size_t size = static_cast<size_t>(input.tellg());
+    input.seekg(0, std::ios::beg);
+    if (size == 0) {
+        return false;
+    }
+
+    std::string hlsl_source(size, '\0');
+    input.read(hlsl_source.data(), static_cast<std::streamsize>(size));
+    input.close();
+
+    CompileInput compile_input{
+        .hlsl = hlsl_source,
+        .entry = entry_point,
+        .full_file_path = filename,
+        .shader_type = shader_type,
+        .output_pdbs = false,
+    };
+
+    CompileResult compile_result;
+    if (!DXCCompiler::compile_hlsl_spriv(compile_input, compile_result)) {
+        return false;
+    }
+
+    spirv_code = std::move(compile_result.spriv_codes);
+    return !spirv_code.empty();
+}
+
+}// namespace
 
 VulkanShader::VulkanShader(VulkanDevice *device, std::span<uint32_t> shaderCode, const std::string_view &entryPoint, VkShaderStageFlagBits stage) : 
     entry_(entryPoint), device_(device), stage_(stage) {
@@ -43,59 +126,31 @@ VulkanShader* VulkanShader::create(Device::Impl* device,
 }
 
 VulkanShader *VulkanShader::create_from_HLSL(Device::Impl *device, ShaderType shader_type, const std::string &filename, const std::string &entry_point) {
-    std::ifstream is(filename.data());
-    VulkanShader *vulkan_shader = nullptr;
-    if (is.is_open()) {
-        is.seekg(0, std::ios::end);
-        size_t size = is.tellg();
-        is.seekg(0, std::ios::beg);
-        char *shaderCode = new char[size + 1];
-        memset(shaderCode, 0, size + 1);
-        is.read(shaderCode, size);
+    const std::string spv_path = get_spv_path_for_shader(filename);
+    std::vector<uint32_t> spirv_code;
 
-        is.close();
-
-        assert(size > 0);
-
-        VkShaderStageFlagBits stage = VulkanShader::convert_vulkan_shader_stage(shader_type);
-        std::string flattern_hlsl;
-        std::string full_directory = get_file_directory(filename);
-        std::vector<std::string> include_paths;
-        
-        
-        if (DXCCompiler::preprocess(shaderCode, size, filename, stage, include_paths, flattern_hlsl))
-        {
-            std::vector<uint32_t> spriv_code;
-            std::string errors;
+    if (!load_spirv_from_file(spv_path, spirv_code)) {
+        if (!compile_hlsl_file_to_spirv(filename, shader_type, entry_point, spirv_code)) {
+            return nullptr;
         }
-
-        CompileInput compile_input{
-            .hlsl = shaderCode,
-            .entry = entry_point,
-            .full_file_path = filename,
-            .shader_type = shader_type,
-            .output_pdbs = false,
-        };
-        delete[] shaderCode;
-        CompileResult compile_result;
-        bool compiled = DXCCompiler::compile_hlsl_spriv(compile_input, compile_result);
-
-        ShaderReflection reflection;
-        if (compiled)
-        {
-            DXCCompiler::run_spriv_reflection(compile_result.spriv_codes, compile_input.shader_type, reflection);
-
-            vulkan_shader = create(device, shader_type, compile_result.spriv_codes, entry_point);
-            vulkan_shader->get_shader_variables(reflection);
-            if (shader_type == ShaderType::VertexShader)
-            {
-                vulkan_shader->get_vertex_attributes(reflection);
-                vulkan_shader->create_vertex_stream_binding();
-            }
+        if (!save_spirv_to_file(spv_path, spirv_code)) {
+            OC_ERROR_FORMAT("Failed to write SPIR-V cache file: {}", spv_path.c_str());
         }
+    }
 
-    } 
+    ShaderReflection reflection;
+    DXCCompiler::run_spriv_reflection(spirv_code, shader_type, reflection);
 
+    VulkanShader* vulkan_shader = VulkanShader::create(device, shader_type, spirv_code, entry_point);
+    if (vulkan_shader == nullptr) {
+        return nullptr;
+    }
+
+    vulkan_shader->get_shader_variables(reflection);
+    if (shader_type == ShaderType::VertexShader) {
+        vulkan_shader->get_vertex_attributes(reflection);
+        vulkan_shader->create_vertex_stream_binding();
+    }
     return vulkan_shader;
 }
 
@@ -286,23 +341,32 @@ VulkanShader* VulkanShaderManager::get_or_create_from_HLSL(VulkanDevice *device,
 {
     ShaderKey shader_key{shader_type, filename, entry_point, options};
 
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = vulkan_shaders_.find(shader_key);
+        if (it != vulkan_shaders_.end()) {
+            return it->second;
+        }
+    }
+
+    VulkanShader* shader = VulkanShader::create_from_HLSL(device, shader_type, filename, entry_point);
+    if (shader == nullptr) {
+        return nullptr;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
     auto it = vulkan_shaders_.find(shader_key);
     if (it != vulkan_shaders_.end()) {
-        VulkanShaderEntry entry = get_shader_entry((handle_ty)it->second->shader_module());
+        ocarina::delete_with_allocator(shader);
+        return it->second;
     }
 
-    VulkanShader *shader = VulkanShader::create_from_HLSL(device, shader_type, filename, entry_point);
-
-    if (shader != nullptr)
-    {
-        shaders_.insert({(handle_ty)shader->shader_module(), shader });
-        vulkan_shaders_.insert(std::make_pair(shader_key, shader));
-        //VulkanShaderEntry entry{shader->shader_module(), shader->stage(), shader->get_entry_point()};
-        vulkan_shader_entries_.insert(std::make_pair((handle_ty)shader->shader_module(), VulkanShaderEntry{shader->shader_module(), shader->stage(), shader->get_entry_point()}));
-        return shader;
-    }
-
-    return nullptr;
+    shaders_.insert({reinterpret_cast<handle_ty>(shader->shader_module()), shader});
+    vulkan_shaders_.insert(std::make_pair(shader_key, shader));
+    vulkan_shader_entries_.insert(std::make_pair(
+        reinterpret_cast<handle_ty>(shader->shader_module()),
+        VulkanShaderEntry{shader->shader_module(), shader->stage(), shader->get_entry_point()}));
+    return shader;
 }
 
 VulkanShaderEntry VulkanShaderManager::get_shader_entry(handle_ty shader_handle) const
@@ -318,12 +382,14 @@ VulkanShaderEntry VulkanShaderManager::get_shader_entry(handle_ty shader_handle)
 
 void VulkanShaderManager::clear(VulkanDevice* device)
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     for (auto iter : vulkan_shaders_)
     {
         ocarina::delete_with_allocator(iter.second);
     }
     vulkan_shaders_.clear();
     vulkan_shader_entries_.clear();
+    shaders_.clear();
 }
 
 bool VulkanShader::get_uniform_buffer_members(

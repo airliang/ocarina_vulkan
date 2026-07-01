@@ -3,6 +3,7 @@
 //
 
 #include "vulkan_device.h"
+#include "vulkan_frame_sync_config.h"
 #include "rhi/context.h"
 #include "rhi/imgui_creation.h"
 #include "util.h"
@@ -146,32 +147,6 @@ void VulkanDevice::init_vulkan()
 
     support_bindless_ = verify_bindless_support(physicalDevice_);
 
-    indexing_features_.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
-    if (support_bindless_)
-    {
-        // Required to chain in vkGetPhysicalDeviceFeatures2
-        VkPhysicalDeviceFeatures2 deviceFeatures2{};
-        deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        deviceFeatures2.pNext = &indexing_features_;
-
-        vkGetPhysicalDeviceFeatures2(physicalDevice_, &deviceFeatures2);
-
-        // 2. Check and enable the specific bindless features you need
-        // (only enable those your GPU supports)
-        indexing_features_.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
-        indexing_features_.shaderStorageImageArrayNonUniformIndexing = VK_TRUE;
-        indexing_features_.shaderStorageTexelBufferArrayNonUniformIndexing = VK_TRUE;
-        indexing_features_.shaderStorageBufferArrayNonUniformIndexing = VK_TRUE;
-        indexing_features_.shaderUniformBufferArrayNonUniformIndexing = VK_TRUE;
-        indexing_features_.shaderUniformTexelBufferArrayNonUniformIndexing = VK_TRUE;
-        indexing_features_.runtimeDescriptorArray = VK_TRUE;
-
-        indexing_features_.descriptorBindingPartiallyBound = VK_TRUE;
-        indexing_features_.descriptorBindingVariableDescriptorCount = VK_TRUE;
-        indexing_features_.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
-        indexing_features_.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
-    }
-
     // Store properties (including limits), features and memory properties of the physical device (so that examples can check against them)
     vkGetPhysicalDeviceProperties(physicalDevice_, &m_deviceProperties);
     vkGetPhysicalDeviceFeatures(physicalDevice_, &m_deviceFeatures);
@@ -231,6 +206,56 @@ void VulkanDevice::init_vulkan()
     m_swapChain.create_swapchain(swapchain_creation, this);
 }
 
+namespace {
+
+void enable_bindless_vulkan12_features(
+    VkPhysicalDeviceVulkan12Features& enabled,
+    const VkPhysicalDeviceVulkan12Features& supported)
+{
+    if (!supported.descriptorIndexing) {
+        OC_ERROR_FORMAT("Physical device does not support descriptorIndexing required for bindless", "");
+        return;
+    }
+
+    enabled.descriptorIndexing = VK_TRUE;
+    enabled.shaderSampledImageArrayNonUniformIndexing = supported.shaderSampledImageArrayNonUniformIndexing;
+    enabled.shaderStorageImageArrayNonUniformIndexing = supported.shaderStorageImageArrayNonUniformIndexing;
+    enabled.shaderStorageTexelBufferArrayNonUniformIndexing = supported.shaderStorageTexelBufferArrayNonUniformIndexing;
+    enabled.shaderStorageBufferArrayNonUniformIndexing = supported.shaderStorageBufferArrayNonUniformIndexing;
+    enabled.shaderUniformBufferArrayNonUniformIndexing = supported.shaderUniformBufferArrayNonUniformIndexing;
+    enabled.shaderUniformTexelBufferArrayNonUniformIndexing = supported.shaderUniformTexelBufferArrayNonUniformIndexing;
+    enabled.runtimeDescriptorArray = supported.runtimeDescriptorArray;
+    enabled.descriptorBindingPartiallyBound = supported.descriptorBindingPartiallyBound;
+    enabled.descriptorBindingVariableDescriptorCount = supported.descriptorBindingVariableDescriptorCount;
+    enabled.descriptorBindingUniformBufferUpdateAfterBind = supported.descriptorBindingUniformBufferUpdateAfterBind;
+    enabled.descriptorBindingSampledImageUpdateAfterBind = supported.descriptorBindingSampledImageUpdateAfterBind;
+    enabled.descriptorBindingStorageImageUpdateAfterBind = supported.descriptorBindingStorageImageUpdateAfterBind;
+}
+
+void enable_bindless_indexing_features(
+    VkPhysicalDeviceDescriptorIndexingFeaturesEXT& enabled,
+    const VkPhysicalDeviceDescriptorIndexingFeaturesEXT& supported)
+{
+    if (!supported.shaderSampledImageArrayNonUniformIndexing) {
+        OC_ERROR_FORMAT("Physical device does not support shaderSampledImageArrayNonUniformIndexing required for bindless", "");
+        return;
+    }
+
+    enabled.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+    enabled.shaderStorageImageArrayNonUniformIndexing = supported.shaderStorageImageArrayNonUniformIndexing;
+    enabled.shaderStorageTexelBufferArrayNonUniformIndexing = supported.shaderStorageTexelBufferArrayNonUniformIndexing;
+    enabled.shaderStorageBufferArrayNonUniformIndexing = supported.shaderStorageBufferArrayNonUniformIndexing;
+    enabled.shaderUniformBufferArrayNonUniformIndexing = supported.shaderUniformBufferArrayNonUniformIndexing;
+    enabled.shaderUniformTexelBufferArrayNonUniformIndexing = supported.shaderUniformTexelBufferArrayNonUniformIndexing;
+    enabled.runtimeDescriptorArray = supported.runtimeDescriptorArray;
+    enabled.descriptorBindingPartiallyBound = supported.descriptorBindingPartiallyBound;
+    enabled.descriptorBindingVariableDescriptorCount = supported.descriptorBindingVariableDescriptorCount;
+    enabled.descriptorBindingUniformBufferUpdateAfterBind = supported.descriptorBindingUniformBufferUpdateAfterBind;
+    enabled.descriptorBindingSampledImageUpdateAfterBind = supported.descriptorBindingSampledImageUpdateAfterBind;
+}
+
+}// namespace
+
 void VulkanDevice::create_logical_device()
 {
     VkDeviceQueueCreateInfo queues[uint32_t(QueueType::NumQueueType)];
@@ -245,19 +270,20 @@ void VulkanDevice::create_logical_device()
     }
 
     void* next = nullptr;
-    
-    VkPhysicalDeviceVulkan13Features features13{};
-    features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-    
-    if (m_deviceProperties.apiVersion > VK_API_VERSION_1_2) {
-        //OC_LOG_FORMAT("Vulkan API version {}.{}.{}", VK_VERSION_MAJOR(m_deviceProperties.apiVersion), VK_VERSION_MINOR(m_deviceProperties.apiVersion), VK_VERSION_PATCH(m_deviceProperties.apiVersion));
-        features13.synchronization2 = VK_TRUE;
-        features13.pNext = &indexing_features_;
-        next = &features13;
+
+    if (m_deviceProperties.apiVersion >= VK_API_VERSION_1_2 &&
+        (vulkan12_features_.timelineSemaphore || vulkan12_features_.descriptorIndexing)) {
+        next = &vulkan12_features_;
+    } else if (support_bindless_) {
+        next = &indexing_features_;
     }
-    else
-    {
-        next = support_bindless_ ? &indexing_features_ : nullptr;
+
+    VkPhysicalDeviceVulkan13Features features13{};
+    if (m_deviceProperties.apiVersion >= VK_API_VERSION_1_3) {
+        features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+        features13.synchronization2 = VK_TRUE;
+        features13.pNext = next;
+        next = &features13;
     }
 
     VkDeviceCreateInfo info{};
@@ -276,7 +302,48 @@ void VulkanDevice::create_logical_device()
 }
 
 void VulkanDevice::get_enable_features() {
-    
+    if (m_deviceProperties.apiVersion >= VK_API_VERSION_1_2) {
+        VkPhysicalDeviceVulkan12Features supported{};
+        supported.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+
+        VkPhysicalDeviceFeatures2 features2{};
+        features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        features2.pNext = &supported;
+        vkGetPhysicalDeviceFeatures2(physicalDevice_, &features2);
+
+        vulkan12_features_ = {};
+        vulkan12_features_.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+
+#if OCARINA_VULKAN_FRAME_SYNC_TIMELINE
+        if (!supported.timelineSemaphore) {
+            OC_ERROR_FORMAT("Physical device does not support timeline semaphores required for frame sync", "");
+            return;
+        }
+        vulkan12_features_.timelineSemaphore = VK_TRUE;
+#endif
+
+        if (support_bindless_) {
+            enable_bindless_vulkan12_features(vulkan12_features_, supported);
+        }
+        return;
+    }
+
+    if (!support_bindless_) {
+        return;
+    }
+
+    indexing_features_ = {};
+    indexing_features_.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT;
+
+    VkPhysicalDeviceFeatures2 features2{};
+    features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    features2.pNext = &indexing_features_;
+    vkGetPhysicalDeviceFeatures2(physicalDevice_, &features2);
+
+    VkPhysicalDeviceDescriptorIndexingFeaturesEXT supported = indexing_features_;
+    indexing_features_ = {};
+    indexing_features_.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT;
+    enable_bindless_indexing_features(indexing_features_, supported);
 }
 
 void VulkanDevice::get_enable_extentions()
@@ -424,6 +491,40 @@ uint32_t VulkanDevice::get_memory_type(uint32_t typeBits, VkMemoryPropertyFlags 
 }
 
 bool VulkanDevice::verify_bindless_support(VkPhysicalDevice physical_device) const {
+    VkPhysicalDeviceProperties device_properties{};
+    vkGetPhysicalDeviceProperties(physical_device, &device_properties);
+
+    if (device_properties.apiVersion >= VK_API_VERSION_1_2) {
+        VkPhysicalDeviceVulkan12Features features12{};
+        features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+        VkPhysicalDeviceFeatures2 deviceFeatures2{};
+        deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        deviceFeatures2.pNext = &features12;
+        vkGetPhysicalDeviceFeatures2(physical_device, &deviceFeatures2);
+
+        if (!features12.descriptorIndexing) {
+            OC_ERROR_FORMAT("Physical device does not support descriptorIndexing required for bindless", "");
+            return false;
+        }
+        if (!features12.shaderSampledImageArrayNonUniformIndexing) {
+            OC_ERROR_FORMAT("Physical device does not support shaderSampledImageArrayNonUniformIndexing required for bindless", "");
+            return false;
+        }
+        if (!features12.shaderStorageImageArrayNonUniformIndexing) {
+            OC_ERROR_FORMAT("Physical device does not support shaderStorageImageArrayNonUniformIndexing required for bindless", "");
+            return false;
+        }
+        if (!features12.shaderStorageTexelBufferArrayNonUniformIndexing) {
+            OC_ERROR_FORMAT("Physical device does not support shaderStorageTexelBufferArrayNonUniformIndexing required for bindless", "");
+            return false;
+        }
+        if (!features12.shaderStorageBufferArrayNonUniformIndexing) {
+            OC_ERROR_FORMAT("Physical device does not support shaderStorageBufferArrayNonUniformIndexing required for bindless", "");
+            return false;
+        }
+        return true;
+    }
+
     VkPhysicalDeviceDescriptorIndexingFeaturesEXT indexingFeatures{};
     indexingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT;
     // Required to chain in vkGetPhysicalDeviceFeatures2

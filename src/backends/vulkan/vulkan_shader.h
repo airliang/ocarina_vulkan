@@ -12,6 +12,7 @@
 #include <vulkan/vulkan.h>
 #include "shader_reflection.h"
 #include <vector>
+#include <mutex>
 namespace ocarina {
 
 class VulkanDevice;
@@ -244,6 +245,7 @@ public:
         return nullptr;
     }
 private:
+    std::mutex mutex_;
     std::unordered_map<ShaderKey, VulkanShader*, HashShaderKeyFunction> vulkan_shaders_;
     std::unordered_map<handle_ty, VulkanShader*> shaders_;
     std::map<handle_ty, VulkanShaderEntry> vulkan_shader_entries_;

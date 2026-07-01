@@ -31,7 +31,9 @@ public:
     void reset() noexcept;
 
     void begin(const string& title, uint32_t total_steps = 0);
+    void set_title(const string& title);
     void set_total_steps(uint32_t total_steps);
+    void append_total_steps(uint32_t extra_steps);
     void set_phase(const string& phase);
     void set_message(const string& message);
     void set_step(uint32_t current_step, uint32_t total_steps);

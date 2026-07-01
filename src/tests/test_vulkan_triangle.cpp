@@ -22,6 +22,7 @@
 #include "framework/resource_manager.h"
 #include "framework/material.h"
 #include "framework/async_loader.h"
+#include "framework/shader_compile_task.h"
 #include "framework/frame_resources.h"
 #include "framework/global_gpu_storage.h"
 
@@ -75,22 +76,26 @@ int main(int argc, char *argv[]) {
 
     Renderer renderer(&device);
 
-    AsyncLoader async_loader(&device, [&material, &triangle_mesh](Device* device) {
-        std::set<string> options;
-        const fs::path source_dir = fs::path(__FILE__).parent_path();
-        const fs::path src_root = source_dir.parent_path();
-        const fs::path shader_vert = src_root / "backends/vulkan/builtin/triangle.vert";
-        const fs::path shader_frag = src_root / "backends/vulkan/builtin/triangle.frag";
-        handle_ty vertex_shader = device->create_shader_from_file(
-            fs::absolute(shader_vert).string(),
-            ShaderType::VertexShader,
-            options);
-        handle_ty pixel_shader = device->create_shader_from_file(
-            fs::absolute(shader_frag).string(),
-            ShaderType::PixelShader,
-            options);
+    const fs::path source_dir = fs::path(__FILE__).parent_path();
+    const fs::path project_root = source_dir.parent_path().parent_path();
+    const fs::path shader_vert = project_root / "res/shaderlibrary/builtin/triangle.vert";
+    const fs::path shader_frag = project_root / "res/shaderlibrary/builtin/triangle.frag";
 
-        material = ResourceManager::instance().create_material(device, vertex_shader, pixel_shader);
+    std::vector<ShaderCompileTask::Entry> shader_entries(2);
+    shader_entries[0].file_path = fs::absolute(shader_vert).string();
+    shader_entries[0].shader_type = ShaderType::VertexShader;
+    shader_entries[1].file_path = fs::absolute(shader_frag).string();
+    shader_entries[1].shader_type = ShaderType::PixelShader;
+
+    AsyncLoader async_loader(
+        &renderer.task_scheduler(),
+        &device,
+        &shader_entries,
+        [&material, &triangle_mesh, &shader_entries](Device* device) {
+        material = ResourceManager::instance().create_material(
+            device,
+            shader_entries[0].shader,
+            shader_entries[1].shader);
         triangle_mesh = create_triangle_mesh();
         ResourceManager::instance().add_mesh("triangle", triangle_mesh);
     });

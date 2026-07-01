@@ -169,15 +169,13 @@ uint64_t GltfAsyncLoader::make_geometry_key(const tinygltf::Primitive& primitive
 }
 
 GltfAsyncLoader::GltfAsyncLoader(
-    const std::string& gltf_file,
+    enki::TaskScheduler* scheduler,
     Device* device,
-    Material* shared_material,
-    LoadingProgressListener* progress_listener)
-    : gltf_file_(gltf_file)
-    , gltf_directory_(fs::path(gltf_file).parent_path())
-    , device_(device)
-    , shared_material_(shared_material)
-    , progress_listener_(progress_listener) {}
+    std::vector<ShaderCompileTask::Entry>* shader_entries,
+    const std::string& gltf_file)
+    : AsyncLoader(scheduler, device, shader_entries)
+    , gltf_file_(gltf_file)
+    , gltf_directory_(fs::path(gltf_file).parent_path()) {}
 
 GltfAsyncLoader::~GltfAsyncLoader() noexcept {
     for (Mesh* mesh : mesh_storage_) {
@@ -186,43 +184,77 @@ GltfAsyncLoader::~GltfAsyncLoader() noexcept {
     mesh_storage_.clear();
 }
 
-void GltfAsyncLoader::Execute() {
-    if (!is_loaded_) {
-        is_loaded_ = load_gltf_file();
+void GltfAsyncLoader::load(Device* device) {
+    if (is_loaded_) {
+        return;
     }
+
+    device_ = device;
+    if (shader_entries_ != nullptr && shader_entries_->size() >= 2) {
+        shared_material_ = ResourceManager::instance().create_material(
+            device,
+            (*shader_entries_)[0].shader,
+            (*shader_entries_)[1].shader);
+    }
+
+    is_loaded_ = load_gltf_file();
 }
 
-bool GltfAsyncLoader::load_gltf_file() {
-    if (progress_listener_ != nullptr) {
-        progress_listener_->begin(fs::path(gltf_file_).filename().string());
-        progress_listener_->set_phase("Parsing glTF");
+bool GltfAsyncLoader::ensure_gltf_parsed() {
+    if (gltf_model_parsed_) {
+        return gltf_parse_success_;
     }
 
-    tinygltf::Model gltf_model;
+    gltf_model_parsed_ = true;
+    if (!gltf_model_) {
+        gltf_model_ = std::make_unique<tinygltf::Model>();
+    }
+
     tinygltf::TinyGLTF gltf_context;
-    std::string error;
     std::string warning;
-
     const bool binary = fs::path(gltf_file_).extension() == ".glb";
-    const bool file_loaded = binary
-        ? gltf_context.LoadBinaryFromFile(&gltf_model, &error, &warning, gltf_file_)
-        : gltf_context.LoadASCIIFromFile(&gltf_model, &error, &warning, gltf_file_);
-
-    if (!file_loaded) {
-        if (progress_listener_ != nullptr) {
-            progress_listener_->fail(error.empty() ? "Failed to load glTF file" : error);
-        }
-        OC_WARNING_FORMAT(
-            "Failed to load glTF file: {}, Error: {}, Warning: {}",
-            gltf_file_.c_str(),
-            error.c_str(),
-            warning.c_str());
-        return false;
-    }
+    gltf_parse_success_ = binary
+        ? gltf_context.LoadBinaryFromFile(gltf_model_.get(), &gltf_parse_error_, &warning, gltf_file_)
+        : gltf_context.LoadASCIIFromFile(gltf_model_.get(), &gltf_parse_error_, &warning, gltf_file_);
 
     if (!warning.empty()) {
         OC_WARNING_FORMAT("glTF loader warning for {}: {}", gltf_file_.c_str(), warning.c_str());
     }
+
+    return gltf_parse_success_;
+}
+
+uint32_t GltfAsyncLoader::count_load_progress_steps() {
+    if (!ensure_gltf_parsed() || gltf_model_ == nullptr || gltf_model_->scenes.empty()) {
+        return 0;
+    }
+    return count_gltf_primitives(*gltf_model_);
+}
+
+void GltfAsyncLoader::begin_gltf_progress() {
+    if (progress_listener_ == nullptr) {
+        return;
+    }
+
+    progress_listener_->set_title(fs::path(gltf_file_).filename().string());
+    progress_listener_->set_phase("Loading scene");
+}
+
+bool GltfAsyncLoader::load_gltf_file() {
+    begin_gltf_progress();
+
+    if (!ensure_gltf_parsed()) {
+        if (progress_listener_ != nullptr) {
+            progress_listener_->fail(gltf_parse_error_.empty() ? "Failed to load glTF file" : gltf_parse_error_);
+        }
+        OC_WARNING_FORMAT(
+            "Failed to load glTF file: {}, Error: {}",
+            gltf_file_.c_str(),
+            gltf_parse_error_.c_str());
+        return false;
+    }
+
+    tinygltf::Model& gltf_model = *gltf_model_;
 
     if (gltf_model.scenes.empty()) {
         if (progress_listener_ != nullptr) {
@@ -230,15 +262,6 @@ bool GltfAsyncLoader::load_gltf_file() {
         }
         OC_WARNING_FORMAT("glTF file has no scenes: {}", gltf_file_.c_str());
         return false;
-    }
-
-    if (progress_listener_ != nullptr) {
-        const uint32_t primitive_count = count_gltf_primitives(gltf_model);
-        const uint32_t image_count = static_cast<uint32_t>(gltf_model.images.size());
-        const uint32_t total_steps = 1 + primitive_count + image_count + 1;
-        progress_listener_->set_total_steps(total_steps);
-        progress_listener_->advance();
-        progress_listener_->set_phase("Loading scene");
     }
 
     const float4x4 identity = Transform<float4x4>().mat4x4();
@@ -252,7 +275,6 @@ bool GltfAsyncLoader::load_gltf_file() {
 
     if (progress_listener_ != nullptr) {
         progress_listener_->set_phase("Building scene clusters");
-        progress_listener_->advance();
     }
 
     build_scene_clusters();
@@ -528,9 +550,6 @@ Texture* GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::Model
     }
 
     image_textures_.emplace(image_index, texture);
-    if (progress_listener_ != nullptr) {
-        progress_listener_->advance();
-    }
     OC_INFO_FORMAT(
         "GltfAsyncLoader::load_gltf_image: image_index {} ({}), {:.3f} ms",
         image_index,

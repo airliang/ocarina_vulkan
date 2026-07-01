@@ -119,6 +119,7 @@ public:
     std::vector<VkQueueFamilyProperties> queueFamilyProperties_;
     uint32_t queueFamilyCount_ = 0;
     VkPhysicalDeviceDescriptorIndexingFeaturesEXT indexing_features_{};
+    VkPhysicalDeviceVulkan12Features vulkan12_features_{};
     bool support_bindless_ = false;
 
     uint32_t getQueueFamilyIndex(uint32_t queueFlags) const;

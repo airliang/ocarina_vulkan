@@ -1,4 +1,5 @@
 #include "renderer.h"
+#include "async_loader.h"
 #include "render_task.h"
 #include "resource_manager.h"
 #include "scene.h"
@@ -230,6 +231,12 @@ void Renderer::cull_scene() {
 void Renderer::run()
 {
     if (async_loader_task_) {
+        if (loading_progress_listener_ != nullptr) {
+            if (auto* async_loader = dynamic_cast<AsyncLoader*>(async_loader_task_)) {
+                async_loader->set_progress_listener(loading_progress_listener_);
+            }
+        }
+
         task_scheduler_.AddTaskSetToPipe(async_loader_task_);
 
         if (async_wait_fn_) {

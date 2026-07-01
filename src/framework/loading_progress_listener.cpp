@@ -23,9 +23,25 @@ void LoadingProgressListener::begin(const string& title, uint32_t total_steps) {
     progress_.store(snapshot_.progress, std::memory_order_release);
 }
 
+void LoadingProgressListener::set_title(const string& title) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    snapshot_.title = title;
+}
+
 void LoadingProgressListener::set_total_steps(uint32_t total_steps) {
     std::lock_guard<std::mutex> lock(mutex_);
     snapshot_.total_steps = total_steps;
+    update_progress_locked();
+    progress_.store(snapshot_.progress, std::memory_order_release);
+}
+
+void LoadingProgressListener::append_total_steps(uint32_t extra_steps) {
+    if (extra_steps == 0) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    snapshot_.total_steps += extra_steps;
     update_progress_locked();
     progress_.store(snapshot_.progress, std::memory_order_release);
 }
