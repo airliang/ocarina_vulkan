@@ -6,12 +6,14 @@
 
 #include "core/header.h"
 #include "core/stl.h"
+#include "core/util.h"
 #include "graphics_descriptions.h"
 
 namespace ocarina {
 template<typename T>
 class Shader;
 class VertexBuffer;
+class DescriptorSetLayout;
 
 struct RasterState {
     CullingMode cull_mode : 2;
@@ -183,9 +185,48 @@ handle_ty shaders[MAX_SHADER_STAGE];
     }
 };
 
+struct PipelineStateHash {
+    size_t operator()(const PipelineState& state) const noexcept {
+        size_t hash = 0;
+        hash_combine(hash, state.shaders[0]);
+        hash_combine(hash, state.shaders[1]);
+        hash_combine(hash, state.descriptorset_layout);
+        hash_combine(hash, *reinterpret_cast<const uint32_t*>(&state.raster_state));
+        hash_combine(hash, *reinterpret_cast<const uint64_t*>(&state.blend_state));
+        hash_combine(hash, *reinterpret_cast<const uint32_t*>(&state.depth_stencil_state));
+        hash_combine(hash, *reinterpret_cast<const uint32_t*>(&state.multiple_sample_state));
+        hash_combine(hash, static_cast<uint32_t>(state.primitive_type));
+        return hash;
+    }
+};
+
 struct PushConstantVariable {
     size_t offset;
     size_t size;
+};
+
+struct PipelineLayoutPushConstantRange {
+    uint32_t offset = 0;
+    uint32_t size = 0;
+    uint32_t shader_stage_flags = 0;
+};
+
+struct PipelineLayoutDesc {
+    static constexpr uint8_t MAX_PUSH_CONSTANT_RANGES = 8;
+
+    handle_ty shaders[PipelineState::MAX_SHADER_STAGE] = {};
+    std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_layouts = {};
+    uint8_t descriptor_set_count = 0;
+    std::array<PipelineLayoutPushConstantRange, MAX_PUSH_CONSTANT_RANGES> push_constant_ranges = {};
+    uint8_t push_constant_count = 0;
+};
+
+struct RHIPipelineLayout {
+    handle_ty handle = InvalidUI64;
+    uint32_t push_constant_size = 0;
+    uint32_t push_constant_shader_stage_flags = 0;
+    std::unordered_map<uint64_t, PushConstantVariable> push_constant_variables_;
+    std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_layouts_ = {};
 };
 
 struct RHIPipeline

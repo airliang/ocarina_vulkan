@@ -98,7 +98,9 @@ public:
     [[nodiscard]] EntityComponentSystem& ecs() noexcept { return ecs_; }
     [[nodiscard]] const EntityComponentSystem& ecs() const noexcept { return ecs_; }
 
-    void draw_opaque(CommandBuffer& cmd, RHIRenderPass* render_pass);
+    void draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass);
+    void update_visible_render_components();
+    void populate_render_pass_queues(RHIRenderPass* render_pass);
 
     void set_frustum_culling_enabled(bool enabled) noexcept { frustum_culling_enabled_ = enabled; }
     [[nodiscard]] bool frustum_culling_enabled() const noexcept { return frustum_culling_enabled_; }

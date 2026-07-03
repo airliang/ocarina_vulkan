@@ -13,6 +13,7 @@
 #include "vulkan_vertex_buffer.h"
 #include "vulkan_index_buffer.h"
 #include "vulkan_renderpass.h"
+#include "vulkan_pipeline.h"
 #include "vulkan_descriptorset.h"
 #include "vulkan_descriptorset_writer.h"
 #include "vulkan_texture.h"
@@ -422,11 +423,34 @@ void VulkanDevice::bind_pipeline(const CommandBuffer& cmd_buffer, const handle_t
     VulkanDriver::instance().bind_pipeline(cmd, *vulkan_pipeline);
 }
 
-RHIPipeline *VulkanDevice::get_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass) noexcept {
+bool VulkanDevice::build_pipeline_layout_desc(
+    const handle_ty shaders[PipelineState::MAX_SHADER_STAGE],
+    PipelineLayoutDesc& out_desc) noexcept {
+    return build_vulkan_pipeline_layout_desc(shaders, out_desc);
+}
+
+RHIPipelineLayout* VulkanDevice::create_pipeline_layout(const PipelineLayoutDesc& desc) noexcept {
+    return create_vulkan_pipeline_layout(this, desc);
+}
+
+void VulkanDevice::destroy_pipeline_layout(RHIPipelineLayout* layout) noexcept {
+    destroy_vulkan_pipeline_layout(this, static_cast<VulkanPipelineLayout*>(layout));
+}
+
+RHIPipeline *VulkanDevice::create_pipeline(
+    const PipelineState &pipeline_state,
+    RHIRenderPass *render_pass,
+    RHIPipelineLayout* pipeline_layout) noexcept {
     VulkanRenderPass *vulkan_render_pass = static_cast<VulkanRenderPass *>(render_pass);
-    auto pipeline = VulkanDriver::instance().get_pipeline(pipeline_state, vulkan_render_pass->render_pass());
-    
-    return pipeline;
+    return create_vulkan_graphics_pipeline(
+        pipeline_state,
+        this,
+        vulkan_render_pass->render_pass(),
+        pipeline_layout);
+}
+
+void VulkanDevice::destroy_pipeline(RHIPipeline *pipeline) noexcept {
+    destroy_vulkan_graphics_pipeline(this, static_cast<VulkanPipeline *>(pipeline));
 }
 
 //DescriptorSet* VulkanDevice::get_global_descriptor_set(const string& name) noexcept {

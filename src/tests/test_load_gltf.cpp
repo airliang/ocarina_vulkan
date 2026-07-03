@@ -108,14 +108,10 @@ int main(int argc, char* argv[]) {
 
     renderer.set_async_loader(&gltf_loader, nullptr, [&]() {
         Scene& scene = gltf_loader.get_scene();
-        Material* material = gltf_loader.material();
         for (uint32_t index = 0; index < scene.primitive_count(); ++index) {
             Primitive& primitive = scene.primitive(index);
             primitive.set_update_push_constant_function(update_push_constant);
             primitive.set_geometry_data_setup(&device, [&](Primitive& prim) {
-                if (material != nullptr) {
-                    material->set_target_render_pass(render_pass);
-                }
                 (void)prim;
             });
         }
@@ -135,19 +131,6 @@ int main(int argc, char* argv[]) {
             make_float4(cam_position[0], cam_position[1], cam_position[2], 1.0f),
             make_float4(5.0f, 10.0f, 5.0f, 1.0f)};
         global_descriptor_set->update_buffer(hash64("global_ubo"), &global_ubo_data, sizeof(GlobalUniformBuffer));
-
-        render_pass->clear_draw_call_items();
-        Scene& scene = gltf_loader.get_scene();
-        renderer.ensure_render_components(scene.primitive_count());
-        for (uint32_t primitive_index : scene.visible_primitive_indices()) {
-            Primitive& primitive = scene.primitive(primitive_index);
-            primitive.update_render_component(
-                &device,
-                renderer.ecs().render_component(primitive_index),
-                scene.transform_component(primitive_index));
-            RenderComponent& render_component = renderer.ecs().render_component(primitive_index);
-            render_pass->add_draw_call(primitive_index, render_component.pipeline);
-        }
     });
 
     renderer.add_render_pass(render_pass);

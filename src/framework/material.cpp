@@ -3,7 +3,6 @@
 #include "bindless_texture_registry.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/device.h"
-#include "rhi/renderpass.h"
 #include "rhi/shader_base.h"
 #include "framework/frame_resources.h"
 
@@ -142,30 +141,6 @@ void Material::create_global_descriptor_sets() {
                 binding_name_ids,
                 [bindless_layout]() { return bindless_layout->allocate_descriptor_set(); });
         }
-    }
-}
-
-void Material::set_target_render_pass(RHIRenderPass* render_pass) {
-    if (render_pass_ != render_pass) {
-        render_pass_ = render_pass;
-        pipeline_dirty_ = true;
-    }
-    build_pipeline();
-}
-
-void Material::build_pipeline() {
-    if (!pipeline_dirty_ || render_pass_ == nullptr) {
-        return;
-    }
-
-    std::lock_guard<std::mutex> lock(pipeline_mutex_);
-    pipeline_ = device_->get_pipeline(pipeline_state_, render_pass_);
-    pipeline_dirty_ = false;
-}
-
-void Material::try_build_pipeline() {
-    if (render_pass_ != nullptr) {
-        build_pipeline();
     }
 }
 

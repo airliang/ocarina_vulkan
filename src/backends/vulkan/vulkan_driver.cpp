@@ -48,7 +48,6 @@ void VulkanDriver::terminate()
     }
     render_passes_.clear();
 
-    vulkan_pipeline_manager->clear(vulkan_device_);
     vulkan_descriptor_manager->clear();
     vulkan_shader_manager->clear(vulkan_device_);
     destroy_frame_sync();
@@ -312,7 +311,6 @@ void VulkanDriver::release_command_buffers() {
 
 void VulkanDriver::initialize()
 {
-    vulkan_pipeline_manager = std::make_unique<VulkanPipelineManager>();
     vulkan_shader_manager = std::make_unique<VulkanShaderManager>();
     vulkan_descriptor_manager = std::make_unique<VulkanDescriptorManager>(vulkan_device_);
     setup_frame_buffer();
@@ -466,10 +464,6 @@ VkSampler VulkanDriver::get_vulkan_sampler(const TextureSampler& sampler) {
 
 VkSampler VulkanDriver::get_bindless_sampler(uint32_t index) {
     return get_vulkan_sampler(bindless_sampler_config(index));
-}
-
-VulkanPipeline* VulkanDriver::get_pipeline(const PipelineState &pipeline_state, VkRenderPass render_pass) {
-    return vulkan_pipeline_manager->get_or_create_pipeline(pipeline_state, vulkan_device_, render_pass);
 }
 
 uint32_t VulkanDriver::frame_slot() const noexcept

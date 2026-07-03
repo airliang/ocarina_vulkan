@@ -1,6 +1,5 @@
 #pragma once
 #include "core/header.h"
-#include "core/concepts.h"
 #include "core/stl.h"
 #include "core/util.h"
 #include "rhi/graphics_descriptions.h"
@@ -8,6 +7,7 @@
 #include <vulkan/vulkan.h>
 #include <functional>
 #include "vulkan_buffer.h"
+
 namespace ocarina {
 
 class VulkanShader;
@@ -19,6 +19,10 @@ struct PushConstantRange
     uint32_t offset_ = 0;
     uint32_t size_ = 0;
     VkPipelineStageFlags shader_stages_ = 0;
+};
+
+struct VulkanPipelineLayout : public RHIPipelineLayout {
+    VkPipelineLayout layout_ = VK_NULL_HANDLE;
 };
 
 struct VulkanPipeline : public RHIPipeline {
@@ -37,7 +41,6 @@ struct VulkanPipeline : public RHIPipeline {
         return vertex_stream_binding_;
     }
 };
-
 
 struct VertexInputAttributeDescription {
     VertexInputAttributeDescription &operator=(const VkVertexInputAttributeDescription &that) {
@@ -64,7 +67,6 @@ struct VertexInputAttributeDescription {
     uint32_t offset = 0;
 };
 
-// Equivalent to VkVertexInputBindingDescription but not as big.
 struct VertexInputBindingDescription {
     VertexInputBindingDescription &operator=(const VkVertexInputBindingDescription &that) {
         binding = that.binding;
@@ -88,6 +90,7 @@ struct VertexInputBindingDescription {
     uint16_t inputRate = 0;
     uint32_t stride = 0;
 };
+
 struct PipelineKey
 {
     static constexpr uint16_t MAX_VERTEX_ATTRIBUTES = 16;
@@ -99,11 +102,10 @@ struct PipelineKey
     DepthStencilState depth_stencil_state = {};
     VkPipelineLayout pipeline_layout;
     VkPrimitiveTopology topology;
-    VertexInputAttributeDescription vertex_input_attributes[MAX_VERTEX_ATTRIBUTES];   //can be erased
-    VertexInputBindingDescription vertex_input_binding[MAX_VERTEX_ATTRIBUTES];        //can be erased, since the same Shader Module will have the same binding description.
+    VertexInputAttributeDescription vertex_input_attributes[MAX_VERTEX_ATTRIBUTES];
+    VertexInputBindingDescription vertex_input_binding[MAX_VERTEX_ATTRIBUTES];
     MultiSampleState multi_sample_state = {};
 
-    //we don't need to consider the vertex attribute here, because vertex attributes are assiociate to shader module.
     bool operator==(const PipelineKey &other) const {
         bool states_comp = *(int *)&raster_state == *(int *)&other.raster_state &&
                render_pass == other.render_pass &&
@@ -129,106 +131,16 @@ struct PipelineKey
     }
 };
 
-struct PipelineLayoutKey
-{
-    static constexpr uint8_t MAX_PUSH_CONSTANT_RANGES = 8;
-    std::array<VkDescriptorSetLayout, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_layouts = {VK_NULL_HANDLE};
-    uint8_t descriptor_set_count = 0;
-    std::array<VkPushConstantRange, MAX_PUSH_CONSTANT_RANGES> push_constant_ranges = {};
-    uint8_t push_constant_count = 0;
+VulkanPipelineLayout* create_vulkan_pipeline_layout(VulkanDevice* device, const PipelineLayoutDesc& desc);
+void destroy_vulkan_pipeline_layout(VulkanDevice* device, VulkanPipelineLayout* layout) noexcept;
+bool build_vulkan_pipeline_layout_desc(const handle_ty shaders[PipelineState::MAX_SHADER_STAGE], PipelineLayoutDesc& out_desc) noexcept;
 
-    bool operator==(const PipelineLayoutKey &other) const {
-        if (descriptor_set_count != other.descriptor_set_count ||
-            push_constant_count != other.push_constant_count) {
-            return false;
-        }
-        for (uint8_t i = 0; i < descriptor_set_count; ++i) {
-            if (descriptor_set_layouts[i] != other.descriptor_set_layouts[i]) {
-                return false;
-            }
-        }
-        for (uint8_t i = 0; i < push_constant_count; ++i) {
-            const VkPushConstantRange& lhs = push_constant_ranges[i];
-            const VkPushConstantRange& rhs = other.push_constant_ranges[i];
-            if (lhs.stageFlags != rhs.stageFlags ||
-                lhs.offset != rhs.offset ||
-                lhs.size != rhs.size) {
-                return false;
-            }
-        }
-        return true;
-    }
-};
+VulkanPipeline* create_vulkan_graphics_pipeline(
+    const PipelineState& pipeline_state,
+    VulkanDevice* device,
+    VkRenderPass render_pass,
+    RHIPipelineLayout* pipeline_layout);
 
-struct HashPipelineKeyFunction
-{
-    uint64_t operator()(const PipelineKey &pipeline_key) const {
-        std::size_t res = 0;
-        hash_combine(res, *((uint64_t*)&pipeline_key.raster_state));
-        hash_combine(res, *((uint64_t *)&pipeline_key.blend_state));
-        hash_combine(res, *((uint64_t *)&pipeline_key.depth_stencil_state));
-        hash_combine(res, pipeline_key.render_pass);
-        hash_combine(res, (uint64_t)pipeline_key.shaders[0] << 32 | (uint64_t)pipeline_key.shaders[1]);
-        hash_combine(res, pipeline_key.pipeline_layout);
-        hash_combine(res, pipeline_key.topology);
-        return res;
-    }
-};
+void destroy_vulkan_graphics_pipeline(VulkanDevice* device, VulkanPipeline* pipeline) noexcept;
 
-struct HashPipelineLayoutKeyFunction
-{
-    uint64_t operator()(const PipelineLayoutKey &pipeline_layout_key) const {
-        std::size_t res = 0;
-        hash_combine(res, pipeline_layout_key.descriptor_set_count);
-        for (uint8_t i = 0; i < pipeline_layout_key.descriptor_set_count; ++i) {
-            hash_combine(res, pipeline_layout_key.descriptor_set_layouts[i]);
-        }
-        hash_combine(res, pipeline_layout_key.push_constant_count);
-        for (uint8_t i = 0; i < pipeline_layout_key.push_constant_count; ++i) {
-            const VkPushConstantRange& range = pipeline_layout_key.push_constant_ranges[i];
-            hash_combine(res, range.stageFlags);
-            hash_combine(res, range.offset);
-            hash_combine(res, range.size);
-        }
-        return res;
-    }
-};
-
-struct VulkanVertexInfo {
-    std::vector<VkVertexInputBindingDescription> binding_descriptions;
-    std::vector<VkVertexInputAttributeDescription> attribute_descriptions;
-};
-
-class VulkanPipelineManager : public concepts::Noncopyable
-{
-public:
-    void bind_shader(VkShaderModule shader, int stage);
-    void bind_raster_state(const RasterState &raster_state);
-    void bind_blend_state(const BlendState &blend_state);
-    void bind_depth_stencil_state(const DepthStencilState &depth_stencil_state);
-    void bind_pipeline_layout(VkPipelineLayout pipeline_layout);
-    void bind_vertex_attributes(VkVertexInputAttributeDescription const *attributes,
-                                VkVertexInputBindingDescription const *binds, uint8_t attr_count, uint8_t bind_desc_count);
-    void bind_topology(PrimitiveType primitive_type);
-    void bind_render_pass(VkRenderPass render_pass) {
-        pipeline_key_cache_.render_pass = render_pass;
-    }
-    VulkanPipeline* get_or_create_pipeline(const PipelineState &pipeline_state, VulkanDevice *device, VkRenderPass render_pass);
-    void clear(VulkanDevice *device);
-
-    VkPipelineLayout create_pipeline_layout(VulkanDevice* device, VkDescriptorSetLayout* descriptset_layouts, uint8_t descriptset_layouts_count,
-        VkPushConstantRange* push_constants, uint32_t push_constant_array_size);
-
-    void get_push_constants_ranges(VulkanShader** shaders, std::array<VkPushConstantRange, 8> &out_ranges, uint32_t &out_range_count);
-
-private:
-    PipelineLayoutKey make_pipeline_layout_key(VkDescriptorSetLayout* descriptor_set_layouts, uint8_t descriptor_set_layouts_count,
-        VkPushConstantRange* push_constants, uint32_t push_constant_array_size) const;
-    VkPipelineLayout get_pipeline_layout(const PipelineLayoutKey& pipeline_layout_key);
-    std::mutex mutex_;
-    std::unordered_map<PipelineKey, VulkanPipeline*, HashPipelineKeyFunction> vulkan_pipelines_;
-    PipelineKey pipeline_key_cache_;
-
-    std::unordered_map<PipelineLayoutKey, VkPipelineLayout, HashPipelineLayoutKeyFunction> pipeline_layouts_;
-};
 }// namespace ocarina

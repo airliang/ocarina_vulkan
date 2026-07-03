@@ -6,9 +6,9 @@
 
 #include "core/stl.h"
 #include "graphics_descriptions.h"
+#include "pipeline_state.h"
 
 namespace ocarina {
-struct PipelineState;
 class Material;
 class VertexBuffer;
 class IndexBuffer;
@@ -28,7 +28,6 @@ struct DescriptorSetsBinding
 struct PipelineRenderQueue
 {
     std::list<uint32_t> draw_call_items;
-    RHIPipeline *pipeline_line = nullptr;
 
     void clear()
     {
@@ -49,7 +48,7 @@ public:
 
     void clear_draw_call_items();
 
-    void add_draw_call(uint32_t render_component_index, RHIPipeline* pipeline);
+    void add_draw_call(uint32_t render_component_index, const PipelineState& pipeline_state);
 
     void add_render_target(RenderTarget* render_target) {
         OC_ASSERT(render_target_count_ < kMaxRenderTargets);
@@ -75,7 +74,7 @@ public:
         return render_target_count_ == 0;
     }
 
-    const std::unordered_map<RHIPipeline*, PipelineRenderQueue*>& pipeline_render_queues() const {
+    const std::unordered_map<PipelineState, PipelineRenderQueue*, PipelineStateHash>& pipeline_render_queues() const {
         return pipeline_render_queues_;
     }
 protected:
@@ -93,7 +92,7 @@ protected:
     RenderTarget *render_target_[kMaxRenderTargets] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
     RenderTarget* depth_stencil_target_ = nullptr;
 
-    std::unordered_map<RHIPipeline *, PipelineRenderQueue *> pipeline_render_queues_;
+    std::unordered_map<PipelineState, PipelineRenderQueue*, PipelineStateHash> pipeline_render_queues_;
     GlobalUBO global_ubo_data_ = {};
     handle_ty command_buffer_ = 0;
 };

@@ -20,6 +20,7 @@
 #include "framework/framework_ui.h"
 #include "framework/renderer.h"
 #include "framework/primitive.h"
+#include "framework/scene.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/renderpass.h"
 #include "framework/camera.h"
@@ -58,7 +59,8 @@ int main(int argc, char *argv[]) {
     instanceCreation.windowWidth = window_size.x;
     instanceCreation.windowHeight = window_size.y;
     Device device = file_manager.create_device("vulkan", instanceCreation);
-    Primitive quad;
+    Scene scene;
+    Primitive& quad = scene.emplace_primitive();
     Material* material = nullptr;
     Mesh* quad_mesh = nullptr;
     Texture* texture = nullptr;
@@ -150,11 +152,10 @@ int main(int argc, char *argv[]) {
 
     auto setup_quad_with_pipeline = [&](Primitive& quad) {
         setup_quad(quad);
-        if (material != nullptr) {
-            material->set_target_render_pass(render_pass);
-        }
     };
 
+    renderer.set_scene(&scene);
+    renderer.set_camera(&camera);
     renderer.add_render_pass(render_pass);
 
     ImguiRenderer imgui_renderer(*window);
@@ -179,18 +180,10 @@ int main(int argc, char *argv[]) {
 
     //DescriptorSet *global_descriptor_set = device.get_global_descriptor_set("global_ubo");
     FrameResources::instance().set_update_callback([&](FrameResources&, double dt) {
-        camera.update(dt);
+        (void)dt;
         DescriptorSet* global_descriptor_set = FrameResources::instance().get_global_descriptor_set("global_ubo");
         GlobalUniformBuffer global_ubo_data = {camera.get_projection_matrix().transpose(), camera.get_view_matrix().transpose()};
         global_descriptor_set->update_buffer(hash64("global_ubo"), &global_ubo_data, sizeof(GlobalUniformBuffer));
-        render_pass->clear_draw_call_items();
-        renderer.ensure_render_components(1);
-        quad.update_render_component(
-            &device,
-            renderer.ecs().render_component(0),
-            renderer.ecs().transform_component(0));
-        RenderComponent& render_component = renderer.ecs().render_component(0);
-        render_pass->add_draw_call(0, render_component.pipeline);
     });
 
 

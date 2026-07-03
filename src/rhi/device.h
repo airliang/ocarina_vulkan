@@ -29,6 +29,7 @@ class RHIRenderPass;
 class DescriptorSet;
 class DescriptorSetLayout;
 struct RHIPipeline;
+struct RHIPipelineLayout;
 class Image;
 class TextureSampler;
 struct ImguiCreation;
@@ -63,8 +64,12 @@ public:
         virtual RHIRenderPass *create_render_pass(const RenderPassCreation &render_pass_creation) noexcept = 0;
         virtual void destroy_render_pass(RHIRenderPass *render_pass) noexcept = 0;
         virtual std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) noexcept = 0;
+        virtual bool build_pipeline_layout_desc(const handle_ty shaders[PipelineState::MAX_SHADER_STAGE], PipelineLayoutDesc& out_desc) noexcept = 0;
+        virtual RHIPipelineLayout* create_pipeline_layout(const PipelineLayoutDesc& desc) noexcept = 0;
+        virtual void destroy_pipeline_layout(RHIPipelineLayout* layout) noexcept = 0;
         virtual void bind_pipeline(const CommandBuffer& cmd_buffer, const handle_ty pipeline) noexcept = 0;
-        virtual RHIPipeline *get_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass) noexcept = 0;
+        virtual RHIPipeline *create_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass, RHIPipelineLayout* pipeline_layout) noexcept = 0;
+        virtual void destroy_pipeline(RHIPipeline *pipeline) noexcept = 0;
 
         virtual void memory_allocate(handle_ty *handle, size_t size, bool exported = true) {}
         virtual void memory_free(handle_ty *handle) {}
@@ -168,12 +173,28 @@ public:
         return impl_->create_descriptor_set_layout(shaders, shaders_count);
     }
 
+    [[nodiscard]] bool build_pipeline_layout_desc(const handle_ty shaders[PipelineState::MAX_SHADER_STAGE], PipelineLayoutDesc& out_desc) noexcept {
+        return impl_->build_pipeline_layout_desc(shaders, out_desc);
+    }
+
+    RHIPipelineLayout* create_pipeline_layout(const PipelineLayoutDesc& desc) noexcept {
+        return impl_->create_pipeline_layout(desc);
+    }
+
+    void destroy_pipeline_layout(RHIPipelineLayout* layout) noexcept {
+        impl_->destroy_pipeline_layout(layout);
+    }
+
     void bind_pipeline(const CommandBuffer& cmd_buffer, const handle_ty pipeline) noexcept {
         impl_->bind_pipeline(cmd_buffer, pipeline);
     }
 
-    RHIPipeline *get_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass) noexcept {
-        return impl_->get_pipeline(pipeline_state, render_pass);
+    RHIPipeline *create_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass, RHIPipelineLayout* pipeline_layout) noexcept {
+        return impl_->create_pipeline(pipeline_state, render_pass, pipeline_layout);
+    }
+
+    void destroy_pipeline(RHIPipeline *pipeline) noexcept {
+        impl_->destroy_pipeline(pipeline);
     }
 
     void get_imgui_creation(ImguiCreation& imgui_creation) {

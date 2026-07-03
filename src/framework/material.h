@@ -11,10 +11,8 @@
 namespace ocarina {
 class DescriptorSetLayout;
 class DescriptorSet;
-struct RHIPipeline;
 class TextureSampler;
 class Device;
-class RHIRenderPass;
 
 class Material {
 public:
@@ -84,25 +82,14 @@ public:
 
     void mark_pipeline_dirty() {
         pipeline_dirty_ = true;
-        try_build_pipeline();
     }
-
-    // Associate the render pass used for pipeline creation (main/setup thread).
-    void set_target_render_pass(RHIRenderPass* render_pass);
-
-    // Create or refresh the GPU pipeline for the current pipeline state and target render pass.
-    // Intended to be called from the main/setup thread when pipeline state changes.
-    void build_pipeline();
-
-    RHIPipeline* get_pipeline() const { return pipeline_; }
 
     const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>& descriptor_set_layouts() const {
         return descriptor_set_layouts_;
     }
 
-    [[nodiscard]] RHIRenderPass* target_render_pass() const { return render_pass_; }
     [[nodiscard]] bool is_pipeline_dirty() const { return pipeline_dirty_; }
-    [[nodiscard]] bool has_built_pipeline() const { return pipeline_ != nullptr; }
+    void clear_pipeline_dirty() { pipeline_dirty_ = false; }
 
     [[nodiscard]] bool has_material_uniform_buffer() const noexcept {
         return material_uniform_buffer_size_ > 0;
@@ -123,7 +110,6 @@ public:
     [[nodiscard]] const MaterialProperty* find_material_property(uint64_t name_id) const noexcept;
 
 private:
-    void try_build_pipeline();
     void create_global_descriptor_sets();
     void init_material_properties(handle_ty pixel_shader);
 
@@ -137,12 +123,9 @@ private:
     DescriptorSetLayout *descriptor_set_layout_ = nullptr;
     std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_layouts_ = {};
     PipelineState pipeline_state_;
-    RHIPipeline *pipeline_ = nullptr;
-    RHIRenderPass *render_pass_ = nullptr;
     bool pipeline_dirty_ = true;
 
     Device* device_ = nullptr;
-    std::mutex pipeline_mutex_;
 
     uint64_t material_uniform_buffer_name_id_ = 0;
     uint32_t material_uniform_buffer_size_ = 0;

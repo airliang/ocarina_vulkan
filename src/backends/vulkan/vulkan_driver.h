@@ -11,7 +11,6 @@
 #include <queue>
 
 namespace ocarina {
-class VulkanPipelineManager;
 class VulkanPipeline;
 class RHIContext;
 class VulkanDevice;
@@ -66,7 +65,7 @@ public:
     //    return draw_cmd_buffers_[current_buffer_];
     //}
 
-    VulkanPipeline* get_pipeline(const PipelineState &pipeline_state, VkRenderPass render_pass);
+    std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(VulkanShader *shaders[], uint32_t shaders_count);
 
     void begin_frame();
     void end_frame();
@@ -76,7 +75,6 @@ public:
     void write_gpu_timestamp_begin(VkCommandBuffer cmd) noexcept;
     void write_gpu_timestamp_end(VkCommandBuffer cmd) noexcept;
 
-    std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(VulkanShader *shaders[], uint32_t shaders_count);
     //VkPipelineLayout get_pipeline_layout(VkDescriptorSetLayout *descriptset_layouts, uint8_t descriptset_layouts_count, VkPushConstantRange* push_constants, uint32_t push_constant_array_size);
 
     VulkanRenderPass* create_render_pass(const RenderPassCreation& render_pass_creation);
@@ -176,7 +174,6 @@ private:
     };
     VulkanDriver();
     VulkanDevice *vulkan_device_;
-    std::unique_ptr<VulkanPipelineManager> vulkan_pipeline_manager;
     std::unique_ptr<VulkanShaderManager> vulkan_shader_manager;
     std::unique_ptr<VulkanDescriptorManager> vulkan_descriptor_manager;
 

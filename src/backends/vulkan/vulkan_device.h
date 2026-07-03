@@ -63,7 +63,11 @@ public:
     std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) noexcept override;    
     //DescriptorSetWriter *create_descriptor_set_writer(DescriptorSet *descriptor_set, void** shaders, uint32_t shaders_count) noexcept override;
     void bind_pipeline(const CommandBuffer& cmd_buffer, const handle_ty pipeline) noexcept override;
-    RHIPipeline *get_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass) noexcept override;
+    bool build_pipeline_layout_desc(const handle_ty shaders[PipelineState::MAX_SHADER_STAGE], PipelineLayoutDesc& out_desc) noexcept override;
+    RHIPipelineLayout* create_pipeline_layout(const PipelineLayoutDesc& desc) noexcept override;
+    void destroy_pipeline_layout(RHIPipelineLayout* layout) noexcept override;
+    RHIPipeline *create_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass, RHIPipelineLayout* pipeline_layout) noexcept override;
+    void destroy_pipeline(RHIPipeline *pipeline) noexcept override;
     //DescriptorSet *get_global_descriptor_set(const string &name) noexcept override;
     //void bind_descriptor_sets(DescriptorSet **descriptor_set, uint32_t descriptor_sets_num, RHIPipeline* pipeline) noexcept override;
 

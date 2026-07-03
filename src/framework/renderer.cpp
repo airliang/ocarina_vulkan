@@ -1,8 +1,11 @@
 #include "renderer.h"
 #include "async_loader.h"
+#include "pipeline_manager.h"
 #include "render_task.h"
 #include "resource_manager.h"
 #include "scene.h"
+#include "primitive.h"
+#include "material.h"
 #include "camera.h"
 #include "mesh_geometry.h"
 #include "global_gpu_storage.h"
@@ -13,11 +16,48 @@
 #include "rhi/vertex_buffer.h"
 #include "rhi/index_buffer.h"
 #include "rhi/descriptor_set.h"
+#include "frame_resources.h"
 #include "core/logging.h"
 #include <chrono>
 #include <algorithm>
 
 namespace ocarina {
+
+namespace {
+
+void bind_global_descriptor_sets(CommandBuffer& cmd, handle_ty pipeline_layout) noexcept {
+    FrameResources& frame_resources = FrameResources::instance();
+
+    if (frame_resources.has_global_ubo_descriptor_set()) {
+        DescriptorSet* global_ubo_set = frame_resources.get_global_ubo_descriptor_set();
+        cmd.bind_descriptor_sets(
+            &global_ubo_set,
+            frame_resources.global_ubo_descriptor_set_index(),
+            1,
+            pipeline_layout);
+    } else {
+        std::vector<DescriptorSet*> global_descriptor_sets =
+            frame_resources.global_descriptor_sets_array();
+        if (!global_descriptor_sets.empty()) {
+            cmd.bind_descriptor_sets(
+                global_descriptor_sets.data(),
+                static_cast<uint32_t>(DescriptorSetIndex::GLOBAL_SET),
+                static_cast<uint32_t>(global_descriptor_sets.size()),
+                pipeline_layout);
+        }
+    }
+
+    if (frame_resources.has_bindless_descriptor_set()) {
+        DescriptorSet* bindless_set = frame_resources.get_bindless_descriptor_set();
+        cmd.bind_descriptor_sets(
+            &bindless_set,
+            frame_resources.bindless_descriptor_set_index(),
+            1,
+            pipeline_layout);
+    }
+}
+
+}// namespace
 
 Renderer::Renderer(Device *device)
     : device_(device),
@@ -26,6 +66,7 @@ Renderer::Renderer(Device *device)
 {
     GlobalGPUStorage::instance().initialize(device);
     task_scheduler_.Initialize();
+    PipelineManager::instance().initialize(device, &task_scheduler_);
 }
 
 Renderer::~Renderer() {
@@ -39,7 +80,9 @@ void Renderer::shutdown() {
         return;
     }
     shutdown_called_ = true;
+    
     task_scheduler_.WaitforAllAndShutdown();
+    PipelineManager::instance().shutdown();
     GlobalGPUStorage::instance().cleanup();
 }
 
@@ -67,7 +110,44 @@ void Renderer::set_scene(Scene* scene) noexcept {
     }
 }
 
-void Renderer::draw_opaque(CommandBuffer& cmd, RHIRenderPass* render_pass) {
+void Renderer::update_visible_render_components() {
+    if (scene_ == nullptr) {
+        return;
+    }
+
+    ensure_render_components(scene_->primitive_count());
+
+    for (uint32_t primitive_index : scene_->visible_primitive_indices()) {
+        Primitive& primitive = scene_->primitive(primitive_index);
+        RenderComponent& render_component = ecs_.render_component(primitive_index);
+        TransformComponent& transform = scene_->transform_component(primitive_index);
+        primitive.update_render_component(device_, render_component, transform);
+    }
+}
+
+void Renderer::populate_render_pass_queues(RHIRenderPass* render_pass) {
+    if (render_pass == nullptr || scene_ == nullptr) {
+        return;
+    }
+
+    render_pass->clear_draw_call_items();
+
+    for (uint32_t primitive_index : scene_->visible_primitive_indices()) {
+        Material* material = scene_->primitive(primitive_index).get_material();
+        if (material == nullptr) {
+            continue;
+        }
+
+        const PipelineState& pipeline_state = material->get_pipeline_state();
+        render_pass->add_draw_call(primitive_index, pipeline_state);
+        PipelineManager::instance().enqueue(pipeline_state, render_pass);
+        if (material->is_pipeline_dirty()) {
+            material->clear_pipeline_dirty();
+        }
+    }
+}
+
+void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass) {
     if (render_pass == nullptr) {
         return;
     }
@@ -79,7 +159,14 @@ void Renderer::draw_opaque(CommandBuffer& cmd, RHIRenderPass* render_pass) {
     }
 
     for (const auto& queue : render_pass->pipeline_render_queues()) {
-        cmd.bind_pipeline(queue.first);
+        const PipelineState& pipeline_state = queue.first;
+        RHIPipeline* pipeline = PipelineManager::instance().get_pipeline(pipeline_state, render_pass);
+        if (pipeline == nullptr) {
+            continue;
+        }
+
+        cmd.bind_pipeline(pipeline);
+        bind_global_descriptor_sets(cmd, pipeline->pipeline_layout);
 
         if (vertex_buffer != nullptr) {
             cmd.set_vertex_buffer(vertex_buffer);
@@ -100,10 +187,10 @@ void Renderer::draw_opaque(CommandBuffer& cmd, RHIRenderPass* render_pass) {
                     item.descriptor_sets.data(),
                     item.first_set,
                     item.descriptor_sets.size(),
-                    queue.first->pipeline_layout);
+                    pipeline->pipeline_layout);
             }
 
-            if (!is_valid_geometry_slice(item.geometry)) { 
+            if (!is_valid_geometry_slice(item.geometry)) {
                 continue;
             }
 
@@ -221,7 +308,6 @@ void Renderer::cull_scene() {
 
     scene_->cull_grids(frustum);
     if (scene_->need_cull_primitive_count() == 0) {
-        scene_->set_visible_primitive_indices(primitive_cull_task_.batch_results(), 0);
         return;
     }
 

@@ -4,7 +4,6 @@
 #include "camera.h"
 #include "rhi/device.h"
 #include "rhi/command_buffer.h"
-#include "rhi/pipeline_state.h"
 #include "rhi/renderpass.h"
 #include "frame_resources.h"
 #include "TaskScheduler.h"
@@ -12,45 +11,6 @@
 namespace ocarina {
 
 namespace {
-
-void bind_global_descriptor_sets_for_pass(
-    CommandBuffer& cmd,
-    RHIRenderPass* render_pass) noexcept
-{
-    const auto& queues = render_pass->pipeline_render_queues();
-    if (queues.empty()) {
-        return;
-    }
-
-    RHIPipeline* pipeline = queues.begin()->first;
-    FrameResources& frame_resources = FrameResources::instance();
-    std::vector<DescriptorSet*> global_descriptor_sets =
-        frame_resources.global_descriptor_sets_array();
-
-    if (frame_resources.has_global_ubo_descriptor_set()) {
-        DescriptorSet* global_ubo_set = frame_resources.get_global_ubo_descriptor_set();
-        cmd.bind_descriptor_sets(
-            &global_ubo_set,
-            frame_resources.global_ubo_descriptor_set_index(),
-            1,
-            pipeline->pipeline_layout);
-    } else if (!global_descriptor_sets.empty()) {
-        cmd.bind_descriptor_sets(
-            global_descriptor_sets.data(),
-            static_cast<uint32_t>(DescriptorSetIndex::GLOBAL_SET),
-            static_cast<uint32_t>(global_descriptor_sets.size()),
-            pipeline->pipeline_layout);
-    }
-
-    if (frame_resources.has_bindless_descriptor_set()) {
-        DescriptorSet* bindless_set = frame_resources.get_bindless_descriptor_set();
-        cmd.bind_descriptor_sets(
-            &bindless_set,
-            frame_resources.bindless_descriptor_set_index(),
-            1,
-            pipeline->pipeline_layout);
-    }
-}
 
 void attach_swapchain_semaphores(Device* device, CommandBuffer& cmd) noexcept {
     device->attach_swapchain_semaphores(cmd);
@@ -68,8 +28,7 @@ void record_render_pass(
     }
 
     cmd.begin_render_pass(render_pass);
-    bind_global_descriptor_sets_for_pass(cmd, render_pass);
-    renderer.draw_opaque(cmd, render_pass);
+    renderer.draw_render_queues(cmd, render_pass);
 
     if (render_gui) {
         render_gui(cmd);
@@ -123,6 +82,7 @@ void RenderTask::render_one_frame() {
         renderer_.camera_->update(dt_);
     }
     renderer_.cull_scene();
+    renderer_.update_visible_render_components();
 
     FrameResources::instance().update_per_frame(dt_);
 
@@ -139,6 +99,10 @@ void RenderTask::execute_default_render_path() {
 
     device->begin_frame();
     CommandBuffer cmd = device->get_command_buffer();
+
+    for (RHIRenderPass* render_pass : renderer_.render_passes_) {
+        renderer_.populate_render_pass_queues(render_pass);
+    }
 
     record_frame_command_buffer(
         renderer_,

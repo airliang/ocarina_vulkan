@@ -3,6 +3,7 @@
 //
 
 #include "primitive.h"
+#include "pipeline_manager.h"
 #include "material.h"
 #include "core/hash.h"
 #include "rhi/vertex_buffer.h"
@@ -86,7 +87,6 @@ void Primitive::update_render_component(Device* device, RenderComponent& render_
 
     render_component.geometry = {};
     render_component.descriptor_sets.clear();
-    render_component.pipeline = nullptr;
     render_component.push_constant_data = nullptr;
     render_component.push_constant_size = 0;
 
@@ -104,12 +104,10 @@ void Primitive::update_render_component(Device* device, RenderComponent& render_
         render_component.geometry = mesh_->geometry_slice();
     }
 
-    RHIPipeline* pipeline = material_->get_pipeline();
-    if (pipeline == nullptr) {
-        return;
-    }
-
-    const uint32_t push_constant_size = pipeline->push_constant_size;
+    const PipelineState& pipeline_state = material_->get_pipeline_state();
+    RHIPipelineLayout* pipeline_layout = PipelineManager::instance().get_or_create_pipeline_layout(
+        pipeline_state.shaders);
+    const uint32_t push_constant_size = pipeline_layout != nullptr ? pipeline_layout->push_constant_size : 0;
     if (push_constant_data_ == nullptr && push_constant_size > 0) {
         push_constant_data_ = ocarina::allocate(push_constant_size);
         memset(push_constant_data_, 0, push_constant_size);
@@ -117,7 +115,6 @@ void Primitive::update_render_component(Device* device, RenderComponent& render_
 
     render_component.push_constant_size = static_cast<uint8_t>(push_constant_size);
     render_component.push_constant_data = push_constant_data_;
-    render_component.pipeline = pipeline;
     render_component.descriptor_sets = descriptor_sets_;
     render_component.first_set = first_descriptor_set_;
 }
@@ -202,13 +199,17 @@ void Primitive::set_push_constant_variable(uint64_t name_id, const std::byte *da
     if (push_constant_data_ == nullptr || material_ == nullptr) {
         return;
     }
-    RHIPipeline* pipeline = material_->get_pipeline();
-    if (pipeline == nullptr) {
+
+    const PipelineState& pipeline_state = material_->get_pipeline_state();
+    RHIPipelineLayout* pipeline_layout = PipelineManager::instance().get_or_create_pipeline_layout(
+        pipeline_state.shaders);
+    if (pipeline_layout == nullptr) {
         return;
     }
-    auto it = pipeline->push_constant_variables_.find(name_id);
-    if (it != pipeline->push_constant_variables_.end()) {
+
+    const auto it = pipeline_layout->push_constant_variables_.find(name_id);
+    if (it != pipeline_layout->push_constant_variables_.end()) {
         memcpy(push_constant_data_ + it->second.offset, data, size);
-    } 
+    }
 }
 }// namespace ocarina
