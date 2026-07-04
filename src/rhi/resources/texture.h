@@ -42,6 +42,8 @@ public:
         [[nodiscard]] virtual size_t data_size() const noexcept = 0;
         [[nodiscard]] virtual size_t data_alignment() const noexcept = 0;
         [[nodiscard]] virtual size_t max_member_size() const noexcept = 0;
+        [[nodiscard]] virtual bool is_render_target() const noexcept { return false; }
+        [[nodiscard]] virtual TextureUsageFlags usage_flags() const noexcept { return TextureUsageFlags::None; }
     };
 
 public:
@@ -63,6 +65,10 @@ public:
                      const TextureViewCreation &texture_view, const TextureSampler &sampler, uint4 default_color, const void *data)
         : RHIResource(device, Tag::TEXTURE,
                       device->create_texture(width, height, depth, pixel_storage, texture_view, sampler, default_color, data)),
+          channel_num_(ocarina::channel_num(pixel_storage)) {}
+
+    explicit Texture(Device::Impl *device, uint32_t width, uint32_t height, PixelStorage pixel_storage, TextureUsageFlags usage)
+        : RHIResource(device, Tag::TEXTURE, device->create_render_target_texture(width, height, pixel_storage, usage)),
           channel_num_(ocarina::channel_num(pixel_storage)) {}
 
     OC_MAKE_MEMBER_GETTER(channel_num, )
@@ -96,6 +102,9 @@ public:
     [[nodiscard]] const TextureSampler *get_sampler_pointer() const noexcept {
         return impl()->get_sampler_pointer();
     }
+
+    [[nodiscard]] bool is_render_target() const noexcept { return impl()->is_render_target(); }
+    [[nodiscard]] TextureUsageFlags usage_flags() const noexcept { return impl()->usage_flags(); }
 };
 
 template<typename T>

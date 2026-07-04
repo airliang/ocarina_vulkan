@@ -63,7 +63,8 @@ void fill_pipeline_key_from_state(
     PipelineKey& pipeline_key,
     const PipelineState& pipeline_state,
     VkRenderPass render_pass,
-    VkPipelineLayout pipeline_layout)
+    VkPipelineLayout pipeline_layout,
+    const DynamicRenderingFormats* dynamic_formats)
 {
     for (int i = 0; i < PipelineKey::MAX_SHADER_STAGE; ++i) {
         VulkanShader* shader = reinterpret_cast<VulkanShader*>(pipeline_state.shaders[i]);
@@ -77,6 +78,15 @@ void fill_pipeline_key_from_state(
     pipeline_key.topology = get_vulkan_topology(pipeline_state.primitive_type);
     pipeline_key.render_pass = render_pass;
     pipeline_key.pipeline_layout = pipeline_layout;
+    pipeline_key.dynamic_color_attachment_count = 0;
+    pipeline_key.dynamic_depth_format = VK_FORMAT_UNDEFINED;
+    if (dynamic_formats != nullptr) {
+        pipeline_key.dynamic_color_attachment_count = static_cast<uint8_t>(dynamic_formats->color_attachment_count);
+        for (uint32_t i = 0; i < dynamic_formats->color_attachment_count; ++i) {
+            pipeline_key.dynamic_color_formats[i] = dynamic_formats->color_formats[i];
+        }
+        pipeline_key.dynamic_depth_format = dynamic_formats->depth_format;
+    }
 
     VulkanShader* vertex_shader = reinterpret_cast<VulkanShader*>(pipeline_state.shaders[0]);
     if (vertex_shader != nullptr && vertex_shader->get_vertex_attribute_count() > 0) {
@@ -228,7 +238,8 @@ VulkanPipeline* create_vulkan_graphics_pipeline(
     const PipelineState& pipeline_state,
     VulkanDevice* device,
     VkRenderPass render_pass,
-    RHIPipelineLayout* pipeline_layout)
+    RHIPipelineLayout* pipeline_layout,
+    const DynamicRenderingFormats* dynamic_formats)
 {
     VulkanShader* vertex_shader = reinterpret_cast<VulkanShader*>(pipeline_state.shaders[0]);
     VulkanShader* pixel_shader = reinterpret_cast<VulkanShader*>(pipeline_state.shaders[1]);
@@ -247,7 +258,11 @@ VulkanPipeline* create_vulkan_graphics_pipeline(
         pipeline_key,
         pipeline_state,
         render_pass,
-        vulkan_pipeline_layout->layout_);
+        vulkan_pipeline_layout->layout_,
+        dynamic_formats);
+
+    const bool use_dynamic_rendering = dynamic_formats != nullptr && dynamic_formats->color_attachment_count > 0;
+    const uint32_t color_attachment_count = use_dynamic_rendering ? dynamic_formats->color_attachment_count : 1u;
 
     VulkanPipeline* pipeline_entry = ocarina::new_with_allocator<VulkanPipeline>();
     pipeline_entry->push_constant_size = vulkan_pipeline_layout->push_constant_size;
@@ -288,28 +303,34 @@ VulkanPipeline* create_vulkan_graphics_pipeline(
     multi_sample_state.rasterizationSamples = get_vulkan_sample_count_flag_bit(pipeline_key.multi_sample_state.sample_count);
     multi_sample_state.flags = 0;
 
-    VkPipelineColorBlendAttachmentState blend_attachment_state = {};
-    blend_attachment_state.blendEnable = pipeline_key.blend_state.blend_enable ? VK_TRUE : VK_FALSE;
-    blend_attachment_state.colorWriteMask = get_vulkan_color_component_flag_bits(pipeline_key.blend_state.color_mask);
-    blend_attachment_state.alphaBlendOp = get_vulkan_blend_op(pipeline_key.blend_state.alphaBlendOp);
-    blend_attachment_state.colorBlendOp = get_vulkan_blend_op(pipeline_key.blend_state.colorBlendOp);
-    blend_attachment_state.srcAlphaBlendFactor = get_vulkan_blend_factor(pipeline_key.blend_state.srcalphablend_factor);
-    blend_attachment_state.dstAlphaBlendFactor = get_vulkan_blend_factor(pipeline_key.blend_state.dstalphablend_factor);
-    blend_attachment_state.srcColorBlendFactor = get_vulkan_blend_factor(pipeline_key.blend_state.srccolorblend_factor);
-    blend_attachment_state.dstColorBlendFactor = get_vulkan_blend_factor(pipeline_key.blend_state.dstcolorblend_factor);
+    VkPipelineColorBlendAttachmentState blend_attachment_states[RenderPassCreation::MAX_COLOR_ATTACHMENTS] = {};
+    for (uint32_t i = 0; i < color_attachment_count; ++i) {
+        VkPipelineColorBlendAttachmentState& blend_attachment_state = blend_attachment_states[i];
+        blend_attachment_state.blendEnable = pipeline_key.blend_state.blend_enable ? VK_TRUE : VK_FALSE;
+        blend_attachment_state.colorWriteMask = get_vulkan_color_component_flag_bits(pipeline_key.blend_state.color_mask);
+        blend_attachment_state.alphaBlendOp = get_vulkan_blend_op(pipeline_key.blend_state.alphaBlendOp);
+        blend_attachment_state.colorBlendOp = get_vulkan_blend_op(pipeline_key.blend_state.colorBlendOp);
+        blend_attachment_state.srcAlphaBlendFactor = get_vulkan_blend_factor(pipeline_key.blend_state.srcalphablend_factor);
+        blend_attachment_state.dstAlphaBlendFactor = get_vulkan_blend_factor(pipeline_key.blend_state.dstalphablend_factor);
+        blend_attachment_state.srcColorBlendFactor = get_vulkan_blend_factor(pipeline_key.blend_state.srccolorblend_factor);
+        blend_attachment_state.dstColorBlendFactor = get_vulkan_blend_factor(pipeline_key.blend_state.dstcolorblend_factor);
+    }
 
     VkPipelineColorBlendStateCreateInfo color_blend_state = {};
     color_blend_state.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    color_blend_state.attachmentCount = 1;
+    color_blend_state.attachmentCount = color_attachment_count;
     color_blend_state.logicOpEnable = VK_FALSE;
     color_blend_state.logicOp = VK_LOGIC_OP_COPY;
-    color_blend_state.pAttachments = &blend_attachment_state;
+    color_blend_state.pAttachments = blend_attachment_states;
 
     VkPipelineDepthStencilStateCreateInfo depth_stencil_state = {};
     depth_stencil_state.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     depth_stencil_state.depthCompareOp = get_vulkan_compare_op(pipeline_key.depth_stencil_state.depth_compare_op);
     depth_stencil_state.depthTestEnable = pipeline_key.depth_stencil_state.depth_test_enable ? VK_TRUE : VK_FALSE;
     depth_stencil_state.depthWriteEnable = pipeline_key.depth_stencil_state.depth_write_enable ? VK_TRUE : VK_FALSE;
+    if (use_dynamic_rendering && dynamic_formats->depth_format != VK_FORMAT_UNDEFINED) {
+        depth_stencil_state.depthTestEnable = VK_TRUE;
+    }
 
     VkPipelineViewportStateCreateInfo viewport_state = {};
     viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -342,7 +363,7 @@ VulkanPipeline* create_vulkan_graphics_pipeline(
     VkGraphicsPipelineCreateInfo pipeline_create_info = {};
     pipeline_create_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipeline_create_info.layout = pipeline_key.pipeline_layout;
-    pipeline_create_info.renderPass = pipeline_key.render_pass;
+    pipeline_create_info.renderPass = use_dynamic_rendering ? VK_NULL_HANDLE : pipeline_key.render_pass;
     pipeline_create_info.subpass = 0;
     pipeline_create_info.stageCount = 2;
     pipeline_create_info.pStages = shader_stages;
@@ -356,6 +377,16 @@ VulkanPipeline* create_vulkan_graphics_pipeline(
     pipeline_create_info.pDynamicState = &pipeline_dynamic_state_create_info;
     pipeline_create_info.basePipelineIndex = -1;
     pipeline_create_info.basePipelineHandle = VK_NULL_HANDLE;
+
+    VkPipelineRenderingCreateInfo rendering_create_info{};
+    if (use_dynamic_rendering) {
+        rendering_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+        rendering_create_info.colorAttachmentCount = dynamic_formats->color_attachment_count;
+        rendering_create_info.pColorAttachmentFormats = dynamic_formats->color_formats;
+        rendering_create_info.depthAttachmentFormat = dynamic_formats->depth_format;
+        rendering_create_info.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
+        pipeline_create_info.pNext = &rendering_create_info;
+    }
 
     VK_CHECK_RESULT(vkCreateGraphicsPipelines(
         device->logicalDevice(),

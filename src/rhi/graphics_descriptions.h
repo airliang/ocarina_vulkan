@@ -10,6 +10,8 @@
 
 namespace ocarina {
 
+class Texture;
+
 struct InstanceCreation {
     const char *applicationName;
 #ifdef _DEBUG
@@ -352,12 +354,17 @@ struct RenderTargetCreation {
 
 struct RenderPassCreation
 {
-    constexpr static uint32_t MAX_RENDER_TARGETS = 8;
-    RenderTargetCreation render_targets[MAX_RENDER_TARGETS]; ///< render target
-    uint32_t render_target_count = 0; ///< render target count, 0 use swapchain
-    float4 swapchain_clear_color = {0.025f, 0.025f, 0.025f, 1.0f};     ///< clear color
-    float swapchain_clear_depth = 1.0f;                           ///< clear depth
-    uint32_t swapchain_clear_stencil = 0;                              ///< clear stencil
+    constexpr static uint32_t MAX_COLOR_ATTACHMENTS = 8;
+    /// When color_attachment_count == 0 the swapchain backbuffer is used.
+    Texture* color_attachments[MAX_COLOR_ATTACHMENTS] = {};
+    uint32_t color_attachment_count = 0;
+    Texture* depth_attachment = nullptr;
+    float4 clear_color = {0.025f, 0.025f, 0.025f, 1.0f};
+    float clear_depth = 1.0f;
+    uint32_t clear_stencil = 0;
+    float4 swapchain_clear_color = {0.025f, 0.025f, 0.025f, 1.0f};
+    float swapchain_clear_depth = 1.0f;
+    uint32_t swapchain_clear_stencil = 0;
 };
 
 struct SamplerCreation {

@@ -149,4 +149,18 @@ Texture* ResourceManager::create_texture(Device* device, const std::string& name
     return texture;
 }
 
+Texture* ResourceManager::create_render_target_texture(Device* device, const std::string& name, uint32_t width, uint32_t height,
+                                                       PixelStorage pixel_storage, TextureUsageFlags usage) {
+    uint64_t key = hash64(name, width, height, pixel_storage, usage);
+    auto it = textures_.find(key);
+    if (it != textures_.end()) {
+        return it->second;
+    }
+
+    Texture* texture = ocarina::new_with_allocator<Texture>(device->impl(), width, height, pixel_storage, usage);
+    std::lock_guard<std::mutex> l{mutex_};
+    textures_.emplace(key, texture);
+    return texture;
+}
+
 }// namespace ocarina

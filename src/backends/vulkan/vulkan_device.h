@@ -48,6 +48,8 @@ public:
     [[nodiscard]] handle_ty create_texture(uint32_t width, uint32_t height, uint32_t depth, PixelStorage pixel_storage,
                                            const TextureViewCreation &texture_view, const TextureSampler& sampler,
                                            uint4 default_color, const void *data) noexcept override;
+    [[nodiscard]] handle_ty create_render_target_texture(uint32_t width, uint32_t height, PixelStorage pixel_storage,
+                                                         TextureUsageFlags usage) noexcept override;
     void destroy_texture(handle_ty handle) noexcept override;
     [[nodiscard]] handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string>& options) noexcept override;
     void destroy_shader(handle_ty handle) noexcept override;

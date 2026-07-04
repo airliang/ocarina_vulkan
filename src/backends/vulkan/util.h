@@ -222,8 +222,8 @@ static VkSampleCountFlagBits get_vulkan_sample_count(uint sample_count) {
     }
 }
 
-static VkImageUsageFlagBits get_vulkan_image_usage_flag(uint32_t image_usage) {
-    uint32_t usage = 0;
+static VkImageUsageFlags get_vulkan_image_usage_flags(uint32_t image_usage) {
+    VkImageUsageFlags usage = 0;
     if (image_usage & static_cast<uint32_t>(TextureUsageFlags::ShaderReadOnly)) {
         usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
     }
@@ -252,7 +252,11 @@ static VkImageUsageFlagBits get_vulkan_image_usage_flag(uint32_t image_usage) {
         usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     }
 
-    return static_cast<VkImageUsageFlagBits>(usage);
+    return usage;
+}
+
+static VkImageUsageFlags get_vulkan_image_usage_flag(uint32_t image_usage) {
+    return get_vulkan_image_usage_flags(image_usage);
 }
 
 static VkSampleCountFlagBits get_vulkan_sample_count_flag_bit(MultiSampleCount sample_count) {

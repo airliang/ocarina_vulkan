@@ -52,6 +52,8 @@ public:
         [[nodiscard]] virtual handle_ty create_texture(uint32_t width, uint32_t height, uint32_t depth, PixelStorage pixel_storage,
                                                        const TextureViewCreation &texture_view, const TextureSampler& sampler,
                                                        uint4 default_color, const void *data) noexcept = 0;
+        [[nodiscard]] virtual handle_ty create_render_target_texture(uint32_t width, uint32_t height, PixelStorage pixel_storage,
+                                                                     TextureUsageFlags usage) noexcept = 0;
         virtual void destroy_texture(handle_ty handle) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept = 0;
         virtual void destroy_shader(handle_ty handle) noexcept = 0;
@@ -136,6 +138,8 @@ public:
     [[nodiscard]] Texture create_texture(uint32_t width, uint32_t height, uint32_t depth, PixelStorage pixel_storage,
                                          const TextureViewCreation &texture_view, const TextureSampler& sampler,
                                          uint4 default_color = uint4(0, 0, 0, 255), const void *data = nullptr) const noexcept;
+    [[nodiscard]] Texture create_render_target_texture(uint32_t width, uint32_t height, PixelStorage pixel_storage,
+                                                     TextureUsageFlags usage) const noexcept;
 
     [[nodiscard]] handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, std::set<std::string> &options) {
         return impl_->create_shader_from_file(file_name, shader_type, options);

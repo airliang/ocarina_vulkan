@@ -1,12 +1,14 @@
 #pragma once
 
 #include "rhi/command_buffer.h"
+#include "vulkan_renderpass.h"
 #include <vulkan/vulkan.h>
 namespace ocarina {
 class VulkanDevice;
 class VulkanPipeline;
 class VulkanBuffer;
 class VulkanTexture;
+class RHIRenderPass;
 
 struct CommandBufferState {
     VkDescriptorSet bound_sets[MAX_DESCRIPTOR_SETS_PER_SHADER] = { VK_NULL_HANDLE };
@@ -41,11 +43,13 @@ public:
     void copy_buffer(VulkanBuffer* src, VulkanBuffer* dst);
     void copy_image(VulkanBuffer* src, VulkanTexture* dst);
     void copy_image(VulkanBuffer* src, VulkanTexture* dst, const VkBufferImageCopy* regions, uint32_t region_count);
-    /// Records vkCmdPipelineBarrier for a color image layout transition (subset of layouts used by texture upload).
+    /// Records vkCmdPipelineBarrier for image layout transitions used by texture upload and rendering.
     void image_layout_barrier(VulkanTexture* texture, VkImageLayout old_layout, VkImageLayout new_layout);
     QueueType queue_type() const noexcept { return queue_type_; }
     [[nodiscard]] VkCommandPool vulkan_command_pool() const noexcept { return command_pool_; }
 private:
+    void begin_swapchain_render_pass(RHIRenderPass* render_pass, VulkanRenderPass* vulkan_render_pass);
+    void begin_offscreen_render_pass(RHIRenderPass* render_pass, VulkanRenderPass* vulkan_render_pass);
     VulkanDevice *device_ = nullptr;
     VkCommandPool command_pool_ = VK_NULL_HANDLE;
     VkCommandBuffer vulkan_command_buffer_ = VK_NULL_HANDLE;
@@ -54,6 +58,8 @@ private:
     CommandBufferState state_;
     QueueType queue_type_ = QueueType::Graphics;
     bool record_gpu_timestamps_ = true;
+    bool use_dynamic_rendering_ = false;
+    RHIRenderPass* current_render_pass_ = nullptr;
 };
 
 }// namespace ocarina

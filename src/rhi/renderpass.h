@@ -12,11 +12,11 @@ namespace ocarina {
 class Material;
 class VertexBuffer;
 class IndexBuffer;
-class RenderTarget;
 class DescriptorSetWriter;
 class DescriptorSet;
 struct RHIPipeline;
 class CommandBuffer;
+class Texture;
 
 struct DescriptorSetsBinding
 {
@@ -50,14 +50,19 @@ public:
 
     void add_draw_call(uint32_t render_component_index, const PipelineState& pipeline_state);
 
-    void add_render_target(RenderTarget* render_target) {
-        OC_ASSERT(render_target_count_ < kMaxRenderTargets);
-        render_target_[render_target_count_++] = render_target;
+    void add_color_attachment(Texture* texture) {
+        OC_ASSERT(color_attachment_count_ < kMaxColorAttachments);
+        color_attachments_[color_attachment_count_++] = texture;
     }
 
     bool is_swapchain_renderpass() const
     {
-        return render_target_count_ == 0;
+        return color_attachment_count_ == 0;
+    }
+
+    bool is_offscreen_renderpass() const
+    {
+        return color_attachment_count_ > 0;
     }
 
     handle_ty get_command_buffer() const
@@ -68,17 +73,30 @@ public:
     OC_MAKE_MEMBER_GETTER(size, )
     OC_MAKE_MEMBER_GETTER(scissor, )
     OC_MAKE_MEMBER_GETTER(viewport, )
-    OC_MAKE_MEMBER_GETTER(render_target_count, )
+    OC_MAKE_MEMBER_GETTER(color_attachment_count, )
+    OC_MAKE_MEMBER_GETTER(clear_color, )
+    OC_MAKE_MEMBER_GETTER(clear_depth, )
+    OC_MAKE_MEMBER_GETTER(clear_stencil, )
+    OC_MAKE_MEMBER_GETTER(swapchain_clear_color, )
+    OC_MAKE_MEMBER_GETTER(swapchain_clear_depth, )
+    OC_MAKE_MEMBER_GETTER(swapchain_clear_stencil, )
+
+    Texture* color_attachment(uint32_t index) const {
+        return index < color_attachment_count_ ? color_attachments_[index] : nullptr;
+    }
+
+    Texture* depth_attachment() const {
+        return depth_attachment_;
+    }
 
     bool is_use_swapchain_framebuffer() const {
-        return render_target_count_ == 0;
+        return color_attachment_count_ == 0;
     }
 
     const std::unordered_map<PipelineState, PipelineRenderQueue*, PipelineStateHash>& pipeline_render_queues() const {
         return pipeline_render_queues_;
     }
 protected:
-    
 
     float4 viewport_ = {0, 0, 0, 0};
     int4 scissor_ = {0, 0, 0, 0};
@@ -86,11 +104,17 @@ protected:
 
     std::string name_ = "RHIRenderPass";
 
-    //if render_target_count == 0, use the swapchain backbuffer as render target
-    uint32_t render_target_count_ = 0;
-    constexpr static const int kMaxRenderTargets = 8;
-    RenderTarget *render_target_[kMaxRenderTargets] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-    RenderTarget* depth_stencil_target_ = nullptr;
+    uint32_t color_attachment_count_ = 0;
+    constexpr static const int kMaxColorAttachments = RenderPassCreation::MAX_COLOR_ATTACHMENTS;
+    Texture* color_attachments_[kMaxColorAttachments] = {};
+    Texture* depth_attachment_ = nullptr;
+
+    float4 clear_color_ = {0.025f, 0.025f, 0.025f, 1.0f};
+    float clear_depth_ = 1.0f;
+    uint32_t clear_stencil_ = 0;
+    float4 swapchain_clear_color_ = {0.025f, 0.025f, 0.025f, 1.0f};
+    float swapchain_clear_depth_ = 1.0f;
+    uint32_t swapchain_clear_stencil_ = 0;
 
     std::unordered_map<PipelineState, PipelineRenderQueue*, PipelineStateHash> pipeline_render_queues_;
     GlobalUBO global_ubo_data_ = {};

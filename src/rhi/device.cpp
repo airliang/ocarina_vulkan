@@ -28,6 +28,11 @@ Texture Device::create_texture(uint32_t width, uint32_t height, uint32_t depth, 
     return Texture(impl_.get(), width, height, depth, pixel_storage, texture_view, sampler, default_color, data);
 }
 
+Texture Device::create_render_target_texture(uint32_t width, uint32_t height, PixelStorage pixel_storage,
+                                             TextureUsageFlags usage) const noexcept {
+    return Texture(impl_.get(), width, height, pixel_storage, usage);
+}
+
 Device Device::create_device(const string &backend_name, const ocarina::InstanceCreation &instance_creation) {
     RHIContext &rhi_context = RHIContext::instance();
     return rhi_context.create_device(backend_name, instance_creation);

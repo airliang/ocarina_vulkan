@@ -19,14 +19,17 @@ public:
 
     OC_MAKE_MEMBER_GETTER(render_pass, )
     OC_MAKE_MEMBER_GETTER(clear_values, )
-    OC_MAKE_MEMBER_GETTER(vulkan_frame_buffer, )
+    OC_MAKE_MEMBER_GETTER(color_attachment_formats, )
+    OC_MAKE_MEMBER_GETTER(color_attachment_format_count, )
+    OC_MAKE_MEMBER_GETTER(depth_attachment_format, )
 
 private:
     void setup_render_pass();
     VkRenderPass render_pass_ = VK_NULL_HANDLE;
     VulkanDevice *device_ = nullptr;
-    VkRenderPassBeginInfo render_pass_begin_info_ = {};
-    VkClearValue clear_values_[kMaxRenderTargets + 1];
-    VkFramebuffer vulkan_frame_buffer_ = VK_NULL_HANDLE;
+    VkClearValue clear_values_[kMaxColorAttachments + 1];
+    VkFormat color_attachment_formats_[kMaxColorAttachments] = {};
+    uint32_t color_attachment_format_count_ = 0;
+    VkFormat depth_attachment_format_ = VK_FORMAT_UNDEFINED;
 };
 }// namespace ocarina

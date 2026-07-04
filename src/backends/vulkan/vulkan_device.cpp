@@ -65,6 +65,12 @@ handle_ty VulkanDevice::create_texture(uint32_t width, uint32_t height, uint32_t
     return reinterpret_cast<handle_ty>(texture);
 }
 
+handle_ty VulkanDevice::create_render_target_texture(uint32_t width, uint32_t height, PixelStorage pixel_storage,
+                                                     TextureUsageFlags usage) noexcept {
+    auto texture = ocarina::new_with_allocator<VulkanTexture>(this, width, height, pixel_storage, usage);
+    return reinterpret_cast<handle_ty>(texture);
+}
+
 namespace detail {
 void context_log_cb(unsigned int level, const char *tag, const char *message, void * /*cbdata */) {
     std::cerr << "[" << std::setw(2) << level << "][" << std::setw(12) << tag << "]: " << message << "\n";
@@ -283,6 +289,7 @@ void VulkanDevice::create_logical_device()
     if (m_deviceProperties.apiVersion >= VK_API_VERSION_1_3) {
         features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
         features13.synchronization2 = VK_TRUE;
+        features13.dynamicRendering = VK_TRUE;
         features13.pNext = next;
         next = &features13;
     }
@@ -442,11 +449,26 @@ RHIPipeline *VulkanDevice::create_pipeline(
     RHIRenderPass *render_pass,
     RHIPipelineLayout* pipeline_layout) noexcept {
     VulkanRenderPass *vulkan_render_pass = static_cast<VulkanRenderPass *>(render_pass);
+    if (vulkan_render_pass->is_offscreen_renderpass()) {
+        DynamicRenderingFormats dynamic_formats{};
+        dynamic_formats.color_attachment_count = vulkan_render_pass->color_attachment_format_count();
+        for (uint32_t i = 0; i < dynamic_formats.color_attachment_count; ++i) {
+            dynamic_formats.color_formats[i] = vulkan_render_pass->color_attachment_formats()[i];
+        }
+        dynamic_formats.depth_format = vulkan_render_pass->depth_attachment_format();
+        return create_vulkan_graphics_pipeline(
+            pipeline_state,
+            this,
+            VK_NULL_HANDLE,
+            pipeline_layout,
+            &dynamic_formats);
+    }
     return create_vulkan_graphics_pipeline(
         pipeline_state,
         this,
         vulkan_render_pass->render_pass(),
-        pipeline_layout);
+        pipeline_layout,
+        nullptr);
 }
 
 void VulkanDevice::destroy_pipeline(RHIPipeline *pipeline) noexcept {

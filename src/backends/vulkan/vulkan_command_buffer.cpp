@@ -29,36 +29,14 @@ VulkanCommandBuffer::~VulkanCommandBuffer() {
 }
 
 void VulkanCommandBuffer::begin_render_pass(RHIRenderPass* render_pass) {
-    if (render_pass->is_swapchain_renderpass()) {
-        // Begin swapchain render pass
-        pipeline_stage_flags_ = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-    } else {
-        // Begin offscreen render pass
-    }
-
+    current_render_pass_ = render_pass;
     VulkanRenderPass* vulkan_render_pass = static_cast<VulkanRenderPass*>(render_pass);
-    set_pipeline_stage_flags(vulkan_render_pass->is_use_swapchain_framebuffer() ? VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
-
-    VkRenderPassBeginInfo renderPassBeginInfo{};
-    renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassBeginInfo.renderPass = vulkan_render_pass->render_pass();
-    renderPassBeginInfo.renderArea.offset.x = 0;
-    renderPassBeginInfo.renderArea.offset.y = 0;
-    renderPassBeginInfo.renderArea.extent.width = render_pass->size().x;
-    renderPassBeginInfo.renderArea.extent.height = render_pass->size().y;
-    renderPassBeginInfo.clearValueCount = render_pass->is_use_swapchain_framebuffer() ? 2 : render_pass->render_target_count() + 1;
-    renderPassBeginInfo.pClearValues = vulkan_render_pass->clear_values();
-
-    if (render_pass->render_target_count() == 0)
-    {
-        renderPassBeginInfo.framebuffer = VulkanDriver::instance().get_frame_buffer(VulkanDriver::instance().current_buffer());
-    }
-    else
-    {
-        renderPassBeginInfo.framebuffer = vulkan_render_pass->vulkan_frame_buffer();
+    if (render_pass->is_offscreen_renderpass()) {
+        begin_offscreen_render_pass(render_pass, vulkan_render_pass);
+    } else {
+        begin_swapchain_render_pass(render_pass, vulkan_render_pass);
     }
 
-    vkCmdBeginRenderPass(vulkan_command_buffer_, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
     float4 viewport_ = render_pass->viewport();
     VkViewport viewport = {
         .x = viewport_.x,
@@ -72,12 +50,103 @@ void VulkanCommandBuffer::begin_render_pass(RHIRenderPass* render_pass) {
     int4 scissor_ = render_pass->scissor();
     VkRect2D scissor;
     scissor.offset = { scissor_.x, scissor_.y };
-    scissor.extent = { (uint32_t)scissor_.z, (uint32_t)scissor_.w };
+    scissor.extent = { static_cast<uint32_t>(scissor_.z), static_cast<uint32_t>(scissor_.w) };
     vkCmdSetScissor(vulkan_command_buffer_, 0, 1, &scissor);
 }
 
+void VulkanCommandBuffer::begin_swapchain_render_pass(RHIRenderPass* render_pass, VulkanRenderPass* vulkan_render_pass) {
+    use_dynamic_rendering_ = false;
+    set_pipeline_stage_flags(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+
+    VkRenderPassBeginInfo renderPassBeginInfo{};
+    renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassBeginInfo.renderPass = vulkan_render_pass->render_pass();
+    renderPassBeginInfo.renderArea.offset = {0, 0};
+    renderPassBeginInfo.renderArea.extent = {render_pass->size().x, render_pass->size().y};
+    renderPassBeginInfo.clearValueCount = 2;
+    renderPassBeginInfo.pClearValues = vulkan_render_pass->clear_values();
+    renderPassBeginInfo.framebuffer = VulkanDriver::instance().get_frame_buffer(VulkanDriver::instance().current_buffer());
+    vkCmdBeginRenderPass(vulkan_command_buffer_, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+}
+
+void VulkanCommandBuffer::begin_offscreen_render_pass(RHIRenderPass* render_pass, VulkanRenderPass* vulkan_render_pass) {
+    use_dynamic_rendering_ = true;
+    set_pipeline_stage_flags(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+
+    for (uint32_t i = 0; i < render_pass->color_attachment_count(); ++i) {
+        auto* texture = static_cast<VulkanTexture*>(render_pass->color_attachment(i)->impl());
+        image_layout_barrier(texture, texture->vk_image_layout(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        texture->set_image_layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    }
+
+    VkRenderingAttachmentInfo depth_attachment_info{};
+    VkRenderingAttachmentInfo* depth_attachment_ptr = nullptr;
+    if (render_pass->depth_attachment() != nullptr) {
+        auto* depth_texture = static_cast<VulkanTexture*>(render_pass->depth_attachment()->impl());
+        image_layout_barrier(depth_texture, depth_texture->vk_image_layout(), VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        depth_texture->set_image_layout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
+        depth_attachment_info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        depth_attachment_info.imageView = depth_texture->vk_image_view();
+        depth_attachment_info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depth_attachment_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depth_attachment_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        depth_attachment_info.clearValue.depthStencil = vulkan_render_pass->clear_values()[render_pass->color_attachment_count()].depthStencil;
+        depth_attachment_ptr = &depth_attachment_info;
+    }
+
+    VkRenderingAttachmentInfo color_attachments[RenderPassCreation::MAX_COLOR_ATTACHMENTS];
+    for (uint32_t i = 0; i < render_pass->color_attachment_count(); ++i) {
+        auto* texture = static_cast<VulkanTexture*>(render_pass->color_attachment(i)->impl());
+        VkRenderingAttachmentInfo& color_attachment = color_attachments[i];
+        color_attachment = {};
+        color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        color_attachment.imageView = texture->vk_image_view();
+        color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        color_attachment.clearValue.color = vulkan_render_pass->clear_values()[i].color;
+    }
+
+    VkRenderingInfo rendering_info{};
+    rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    rendering_info.renderArea.offset = {0, 0};
+    rendering_info.renderArea.extent = {render_pass->size().x, render_pass->size().y};
+    rendering_info.layerCount = 1;
+    rendering_info.colorAttachmentCount = render_pass->color_attachment_count();
+    rendering_info.pColorAttachments = color_attachments;
+    rendering_info.pDepthAttachment = depth_attachment_ptr;
+    rendering_info.pStencilAttachment = nullptr;
+
+    vkCmdBeginRendering(vulkan_command_buffer_, &rendering_info);
+}
+
 void VulkanCommandBuffer::end_render_pass() {
-    vkCmdEndRenderPass(vulkan_command_buffer_);
+    if (use_dynamic_rendering_) {
+        RHIRenderPass* render_pass = current_render_pass_;
+        vkCmdEndRendering(vulkan_command_buffer_);
+
+        for (uint32_t i = 0; i < render_pass->color_attachment_count(); ++i) {
+            auto* texture = static_cast<VulkanTexture*>(render_pass->color_attachment(i)->impl());
+            if ((static_cast<uint32_t>(texture->usage_flags()) & static_cast<uint32_t>(TextureUsageFlags::ShaderReadOnly)) != 0) {
+                image_layout_barrier(texture, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                texture->set_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            }
+        }
+
+        if (render_pass->depth_attachment() != nullptr) {
+            auto* depth_texture = static_cast<VulkanTexture*>(render_pass->depth_attachment()->impl());
+            if ((static_cast<uint32_t>(depth_texture->usage_flags()) & static_cast<uint32_t>(TextureUsageFlags::ShaderReadOnly)) != 0) {
+                image_layout_barrier(depth_texture, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                depth_texture->set_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            }
+        }
+
+        use_dynamic_rendering_ = false;
+    } else {
+        vkCmdEndRenderPass(vulkan_command_buffer_);
+    }
+    current_render_pass_ = nullptr;
 }
 void VulkanCommandBuffer::bind_pipeline(const RHIPipeline* pipeline) {
     VulkanPipeline* vulkan_pipeline = static_cast<VulkanPipeline*>(const_cast<RHIPipeline*>(pipeline));
@@ -270,6 +339,10 @@ void VulkanCommandBuffer::copy_image(VulkanBuffer* src, VulkanTexture* dst, cons
 
 void VulkanCommandBuffer::image_layout_barrier(VulkanTexture* texture, VkImageLayout old_layout, VkImageLayout new_layout)
 {
+    if (old_layout == new_layout) {
+        return;
+    }
+
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.oldLayout = old_layout;
@@ -277,7 +350,7 @@ void VulkanCommandBuffer::image_layout_barrier(VulkanTexture* texture, VkImageLa
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.image = reinterpret_cast<VkImage>(texture->tex_handle());
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.aspectMask = texture->vk_aspect_mask();
     barrier.subresourceRange.baseMipLevel = 0;
     barrier.subresourceRange.levelCount = texture->mip_levels();
     barrier.subresourceRange.baseArrayLayer = 0;
@@ -295,13 +368,42 @@ void VulkanCommandBuffer::image_layout_barrier(VulkanTexture* texture, VkImageLa
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         if (queue_type_ == QueueType::Copy) {
-            // Transfer queues only support transfer-stage access flags; layout change is enough here.
             barrier.dstAccessMask = 0;
             destination_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
         } else {
             barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
             destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
         }
+    } else if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destination_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    } else if (old_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        source_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        destination_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    } else if (old_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        source_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destination_stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    } else if (old_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        source_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        destination_stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    } else if (old_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        source_stage = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     } else {
         throw std::runtime_error("VulkanCommandBuffer::image_layout_barrier: unsupported layout transition");
     }

@@ -14,6 +14,7 @@ endfunction()
 
 
 ocarina_add_test(test-vulkan-triangle SOURCES test_vulkan_triangle.cpp)
+ocarina_add_test(test-vulkan-offscreen SOURCES test_vulkan_offscreen.cpp)
 ocarina_add_test(test-vulkan-texture SOURCES test_vulkan_texture.cpp)
 ocarina_add_test(test-vulkan-bindless SOURCES test_vulkan_bindless.cpp)
 ocarina_add_test(test-enkiTS SOURCES test_enkiTS.cpp)
