@@ -92,6 +92,20 @@ CpuMipChain build_cpu_mip_chain(const void* base_pixels, uint32_t width, uint32_
     return chain;
 }
 
+void submit_render_target_initial_layout(VulkanDevice* device, VulkanTexture* texture, VkImageLayout layout)
+{
+    CommandBuffer cmd = device->get_command_buffer(QueueType::Copy);
+    cmd.begin();
+    VulkanCommandBuffer* vk_cmd = static_cast<VulkanCommandBuffer*>(cmd.impl());
+    vk_cmd->image_layout_barrier(texture, VK_IMAGE_LAYOUT_UNDEFINED, layout);
+    cmd.end();
+    Fence fence = device->create_fence();
+    cmd.submit_to_queue(QueueType::Copy, &fence);
+    fence.wait();
+    device->release_command_buffer(cmd);
+    texture->set_image_layout(layout);
+}
+
 void submit_texture_staging_upload(VulkanDevice* device, VulkanBuffer* staging_buffer, VulkanTexture* texture)
 {
     CommandBuffer cmd = device->get_command_buffer(QueueType::Copy);
@@ -236,6 +250,11 @@ void VulkanTexture::init_render_target(uint32_t width, uint32_t height, PixelSto
     if ((static_cast<uint32_t>(usage) & static_cast<uint32_t>(TextureUsageFlags::ShaderReadOnly)) != 0) {
         TextureSampler sampler;
         create_sampler(sampler);
+
+        const VkImageLayout initial_layout = is_depth
+            ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+            : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        submit_render_target_initial_layout(device_, this, initial_layout);
     }
 }
 

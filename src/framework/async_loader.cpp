@@ -38,6 +38,14 @@ void AsyncLoader::ExecuteRange(enki::TaskSetPartition range, uint32_t threadnum)
     } else {
         load(device_);
     }
+
+    if (complete_callback_) {
+        try {
+            complete_callback_();
+        } catch (...) {
+        }
+        complete_callback_ = nullptr;
+    }
 }
 
 }// namespace ocarina

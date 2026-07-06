@@ -64,6 +64,11 @@ public:
         progress_listener_ = progress_listener;
     }
 
+    void set_complete_callback(ocarina::function<void()> complete_callback) noexcept
+    {
+        complete_callback_ = std::move(complete_callback);
+    }
+
     [[nodiscard]] uint64_t execute_thread_id() const noexcept { return execute_thread_id_; }
 
 protected:
@@ -81,6 +86,7 @@ protected:
 
 private:
     ocarina::function<void(Device*)> task_ = nullptr;
+    ocarina::function<void()> complete_callback_ = nullptr;
     uint64_t execute_thread_id_ = 0;
 };
 

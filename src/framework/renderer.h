@@ -66,7 +66,7 @@ public:
         clear_color = color;
     }
     // Set an async loader task set + a wait callback supplied by the application.
-    // The task runs on an enkiTS worker thread (ITaskSet), not the main thread.
+    // The loader task and its complete callback run on an enkiTS worker thread (ITaskSet), not the main thread.
     void set_async_loader(enki::ITaskSet* task, ocarina::function<void()> wait_fn, AsyncLoaderCompleteCallback complete_fn = nullptr)
     {
         async_loader_task_ = task;
@@ -94,13 +94,17 @@ public:
     [[nodiscard]] Scene* scene() const noexcept { return scene_; }
     [[nodiscard]] Camera* camera() const noexcept { return camera_; }
 
-    void ensure_render_components(size_t count);
-    [[nodiscard]] EntityComponentSystem& ecs() noexcept { return ecs_; }
-    [[nodiscard]] const EntityComponentSystem& ecs() const noexcept { return ecs_; }
+    [[nodiscard]] EntityComponentSystem& ecs() noexcept { return EntityComponentSystem::instance(); }
+    [[nodiscard]] const EntityComponentSystem& ecs() const noexcept { return EntityComponentSystem::instance(); }
 
     void draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass);
     void update_visible_render_components();
     void populate_render_pass_queues(RHIRenderPass* render_pass);
+
+    using RenderPassPrimitiveFilter = ocarina::function<bool(uint32_t entity_index, RHIRenderPass* render_pass)>;
+    void set_render_pass_primitive_filter(RenderPassPrimitiveFilter filter) {
+        render_pass_primitive_filter_ = std::move(filter);
+    }
 
     void set_frustum_culling_enabled(bool enabled) noexcept { frustum_culling_enabled_ = enabled; }
     [[nodiscard]] bool frustum_culling_enabled() const noexcept { return frustum_culling_enabled_; }
@@ -112,6 +116,8 @@ public:
     [[nodiscard]] const enki::TaskScheduler& task_scheduler() const noexcept { return task_scheduler_; }
 
 private:
+    void update_entity_render_component(uint32_t entity_index);
+
     RenderCallback render = nullptr;
     RenderGUIImplCallback render_gui_impl_ = nullptr;
     LoadingGUIImplCallback loading_gui_impl_ = nullptr;
@@ -133,12 +139,11 @@ protected:
 
     Scene* scene_ = nullptr;
     Camera* camera_ = nullptr;
-    EntityComponentSystem ecs_;
     RendererPrimitiveCullTask primitive_cull_task_;
     bool frustum_culling_enabled_ = true;
+    RenderPassPrimitiveFilter render_pass_primitive_filter_;
 
     bool shutdown_called_ = false;
 };
 
 }// namespace ocarina
-

@@ -186,9 +186,9 @@ void display_frame_info(Widgets& widgets) {
 
         if (Scene* scene = context->renderer->scene()) {
 
-            widgets.text("Primitives: %zu", scene->primitives().size());
+            widgets.text("Primitives: %zu", scene->primitive_count());
 
-            widgets.text("Visible primitives: %zu", scene->visible_primitive_indices().size());
+            widgets.text("Visible primitives: %zu", scene->visible_entity_indices().size());
 
         }
 

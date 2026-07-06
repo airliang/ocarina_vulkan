@@ -183,7 +183,7 @@ int main(int argc, char* argv[]) {
                     flat,
                     cx,
                     cz,
-                    scene->grid_cell_primitive_count(flat));
+                    scene->grid_cell_entity_count(flat));
             }
             widgets.text(
                 "Culling: %s",

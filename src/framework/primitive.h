@@ -97,6 +97,7 @@ public:
     void set_material_parameter(const char* name, const T& value) {
         set_material_parameter(hash64(name), value);
     }
+
 private:
     void update_descriptor_sets(Device *device);
     void upload_material_parameters();

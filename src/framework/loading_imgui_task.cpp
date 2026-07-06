@@ -62,6 +62,8 @@ void LoadingImguiTask::Execute() {
         return;
     }
 
+    set_current_thread_name("ImGui Display Loading Progress Thread");
+
     enki::TaskScheduler& scheduler = renderer_.task_scheduler_;
     clock_.start();
     while (!loader_task_->GetIsComplete() && !scheduler.GetIsShutdownRequested()) {

@@ -14,6 +14,7 @@
 #include "mesh.h"
 #include "bindless_texture_registry.h"
 #include "frame_resources.h"
+#include "rhi/renderpass.h"
 
 namespace ocarina {
 
@@ -81,10 +82,6 @@ void Primitive::upload_material_parameters() {
 }
 
 void Primitive::update_render_component(Device* device, RenderComponent& render_component, TransformComponent& transform) {
-    if (update_push_constant_function_ != nullptr) {
-        update_push_constant_function_(*this, transform);
-    }
-
     render_component.geometry = {};
     render_component.descriptor_sets.clear();
     render_component.push_constant_data = nullptr;
@@ -113,7 +110,11 @@ void Primitive::update_render_component(Device* device, RenderComponent& render_
         memset(push_constant_data_, 0, push_constant_size);
     }
 
-    render_component.push_constant_size = static_cast<uint8_t>(push_constant_size);
+    if (update_push_constant_function_ != nullptr) {
+        update_push_constant_function_(*this, transform);
+    }
+
+    render_component.push_constant_size = push_constant_size;
     render_component.push_constant_data = push_constant_data_;
     render_component.descriptor_sets = descriptor_sets_;
     render_component.first_set = first_descriptor_set_;

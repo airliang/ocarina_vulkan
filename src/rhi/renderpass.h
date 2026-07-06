@@ -96,6 +96,7 @@ public:
     const std::unordered_map<PipelineState, PipelineRenderQueue*, PipelineStateHash>& pipeline_render_queues() const {
         return pipeline_render_queues_;
     }
+
 protected:
 
     float4 viewport_ = {0, 0, 0, 0};

@@ -47,6 +47,8 @@ void record_frame_command_buffer(
     cmd.begin();
 
     for (RHIRenderPass* render_pass : render_passes) {
+        renderer.populate_render_pass_queues(render_pass);
+
         const Renderer::RenderGUIImplCallback& pass_render_gui =
             render_pass->is_swapchain_renderpass() ? render_gui : Renderer::RenderGUIImplCallback{};
         record_render_pass(renderer, device, cmd, render_pass, pass_render_gui);
@@ -62,6 +64,8 @@ RenderTask::RenderTask(Renderer& renderer) noexcept
       renderer_(renderer) {}
 
 void RenderTask::Execute() {
+    set_current_thread_name("Render Thread");
+
     clock_.start();
     dt_ = 0.0;
 
@@ -99,10 +103,6 @@ void RenderTask::execute_default_render_path() {
 
     device->begin_frame();
     CommandBuffer cmd = device->get_command_buffer();
-
-    for (RHIRenderPass* render_pass : renderer_.render_passes_) {
-        renderer_.populate_render_pass_queues(render_pass);
-    }
 
     record_frame_command_buffer(
         renderer_,

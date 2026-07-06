@@ -4,6 +4,7 @@
 #include "render_task.h"
 #include "resource_manager.h"
 #include "scene.h"
+#include "entity_component_system.h"
 #include "primitive.h"
 #include "material.h"
 #include "camera.h"
@@ -17,9 +18,11 @@
 #include "rhi/index_buffer.h"
 #include "rhi/descriptor_set.h"
 #include "frame_resources.h"
+#include "enki_task_debug.h"
 #include "core/logging.h"
 #include <chrono>
 #include <algorithm>
+#include <cstdio>
 
 namespace ocarina {
 
@@ -57,6 +60,16 @@ void bind_global_descriptor_sets(CommandBuffer& cmd, handle_ty pipeline_layout) 
     }
 }
 
+void enki_thread_start_profiler_callback(uint32_t thread_num) noexcept {
+    char name[64] = {};
+    if (thread_num == 0) {
+        std::snprintf(name, sizeof(name), "enkiTS Main");
+    } else {
+        std::snprintf(name, sizeof(name), "enkiTS Worker %u", thread_num);
+    }
+    set_current_thread_name(name);
+}
+
 }// namespace
 
 Renderer::Renderer(Device *device)
@@ -65,7 +78,9 @@ Renderer::Renderer(Device *device)
       render_task_(*this)
 {
     GlobalGPUStorage::instance().initialize(device);
-    task_scheduler_.Initialize();
+    enki::TaskSchedulerConfig scheduler_config = task_scheduler_.GetConfig();
+    scheduler_config.profilerCallbacks.threadStart = enki_thread_start_profiler_callback;
+    task_scheduler_.Initialize(scheduler_config);
     PipelineManager::instance().initialize(device, &task_scheduler_);
 }
 
@@ -90,24 +105,20 @@ void Renderer::set_render_callback(RenderCallback cb) {
     render = cb;
 }
 
-void Renderer::ensure_render_components(size_t count) {
-    if (ecs_.render_component_count() < count) {
-        ecs_.resize(count);
-    }
-    if (scene_ != nullptr && scene_->transform_components().size() >= count) {
-        for (size_t index = 0; index < count; ++index) {
-            ecs_.transform_component(static_cast<uint32_t>(index)) =
-                scene_->transform_component(static_cast<uint32_t>(index));
-        }
-    }
-}
-
 void Renderer::set_scene(Scene* scene) noexcept {
     scene_ = scene;
-    if (scene_ != nullptr) {
-        scene_->bind_entity_component_system(&ecs_);
-        ensure_render_components(scene_->primitive_count());
+}
+
+void Renderer::update_entity_render_component(uint32_t entity_index) {
+    EntityComponentSystem& ecs = EntityComponentSystem::instance();
+    if (entity_index >= ecs.primitive_count()) {
+        return;
     }
+
+    Primitive& primitive = ecs.primitive(entity_index);
+    RenderComponent& render_component = ecs.render_component(entity_index);
+    TransformComponent& transform = ecs.transform_component(entity_index);
+    primitive.update_render_component(device_, render_component, transform);
 }
 
 void Renderer::update_visible_render_components() {
@@ -115,13 +126,8 @@ void Renderer::update_visible_render_components() {
         return;
     }
 
-    ensure_render_components(scene_->primitive_count());
-
-    for (uint32_t primitive_index : scene_->visible_primitive_indices()) {
-        Primitive& primitive = scene_->primitive(primitive_index);
-        RenderComponent& render_component = ecs_.render_component(primitive_index);
-        TransformComponent& transform = scene_->transform_component(primitive_index);
-        primitive.update_render_component(device_, render_component, transform);
+    for (uint32_t entity_index : scene_->visible_entity_indices()) {
+        update_entity_render_component(entity_index);
     }
 }
 
@@ -130,20 +136,40 @@ void Renderer::populate_render_pass_queues(RHIRenderPass* render_pass) {
         return;
     }
 
-    render_pass->clear_draw_call_items();
+    EntityComponentSystem& ecs = EntityComponentSystem::instance();
 
-    for (uint32_t primitive_index : scene_->visible_primitive_indices()) {
-        Material* material = scene_->primitive(primitive_index).get_material();
+    auto add_entity_draw_call = [&](uint32_t entity_index) {
+        if (entity_index >= ecs.primitive_count()) {
+            return;
+        }
+
+        Primitive& primitive = ecs.primitive(entity_index);
+        Material* material = primitive.get_material();
         if (material == nullptr) {
-            continue;
+            return;
         }
 
         const PipelineState& pipeline_state = material->get_pipeline_state();
-        render_pass->add_draw_call(primitive_index, pipeline_state);
+        render_pass->add_draw_call(entity_index, pipeline_state);
         PipelineManager::instance().enqueue(pipeline_state, render_pass);
         if (material->is_pipeline_dirty()) {
             material->clear_pipeline_dirty();
         }
+    };
+
+    bool cleared = false;
+    for (uint32_t entity_index : scene_->visible_entity_indices()) {
+        if (render_pass_primitive_filter_
+            && !render_pass_primitive_filter_(entity_index, render_pass)) {
+            continue;
+        }
+
+        if (!cleared) {
+            render_pass->clear_draw_call_items();
+            cleared = true;
+        }
+
+        add_entity_draw_call(entity_index);
     }
 }
 
@@ -152,6 +178,7 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
         return;
     }
 
+    EntityComponentSystem& ecs = EntityComponentSystem::instance();
     VertexBuffer* vertex_buffer = GlobalGPUStorage::instance().vertex_buffer();
     IndexBuffer* index_buffer = GlobalGPUStorage::instance().index_buffer();
     if (vertex_buffer != nullptr && index_buffer != nullptr) {
@@ -172,12 +199,12 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
             cmd.set_vertex_buffer(vertex_buffer);
         }
 
-        for (uint32_t render_component_index : queue.second->draw_call_items) {
-            if (render_component_index >= ecs_.render_component_count()) {
+        for (uint32_t entity_index : queue.second->draw_call_items) {
+            if (entity_index >= ecs.render_component_count()) {
                 continue;
             }
 
-            RenderComponent& item = ecs_.render_component(render_component_index);
+            RenderComponent& item = ecs.render_component(entity_index);
             if (item.push_constant_data && item.push_constant_size > 0) {
                 cmd.push_constants(item.push_constant_data, 0, item.push_constant_size);
             }
@@ -221,7 +248,7 @@ void Renderer::cull_visible_primitives_parallel(Scene& scene, const Frustum& fru
     primitive_cull_task_.prepare(scene.primitive_count());
 
     if (primitive_batch.empty()) {
-        scene.set_visible_primitive_indices(primitive_cull_task_.batch_results(), 0);
+        scene.set_visible_entity_indices(primitive_cull_task_.batch_results(), 0);
         return;
     }
 
@@ -239,9 +266,10 @@ void Renderer::cull_visible_primitives_parallel(Scene& scene, const Frustum& fru
 #if defined(_DEBUG) || !defined(NDEBUG)
     const auto t_after_batch_size = std::chrono::high_resolution_clock::now();
 #endif
+    EntityComponentSystem& ecs = EntityComponentSystem::instance();
     primitive_cull_task_.configure(
-        &scene.primitives(),
-        &scene.transform_components(),
+        &ecs.primitives(),
+        &ecs.transform_components(),
         &primitive_batch,
         &frustum,
         max_primitives_per_batch,
@@ -256,7 +284,7 @@ void Renderer::cull_visible_primitives_parallel(Scene& scene, const Frustum& fru
 #if defined(_DEBUG) || !defined(NDEBUG)
     const auto t_after_wait = std::chrono::high_resolution_clock::now();
 #endif
-    scene.set_visible_primitive_indices(
+    scene.set_visible_entity_indices(
         primitive_cull_task_.batch_results(),
         primitive_cull_task_.visible_count());
 
@@ -274,22 +302,13 @@ void Renderer::cull_visible_primitives_parallel(Scene& scene, const Frustum& fru
     const double wait_ms = ms(t_after_configure, t_after_wait);
     const double write_back_ms = ms(t_after_wait, t_end);
 
-    // Perf analysis: WaitForTask typically dominates because it includes the real work:
-    // per-primitive AABB transform + frustum test in worker threads.
-    //OC_INFO_FORMAT(
-    //    "Renderer::cull_visible_primitives_parallel: total={:.3f}ms (buildBatch={:.3f} prepare={:.3f} batchSize={:.3f} configure={:.3f} wait(work)={:.3f} writeBack={:.3f}) "
-    //    "needCull={} visible={} threads={} minRange={}",
-    //    total_ms,
-    //    build_batch_ms,
-    //    prepare_ms,
-    //    batch_size_ms,
-    //    configure_ms,
-    //    wait_ms,
-    //    write_back_ms,
-    //    need_cull_count,
-    //    primitive_cull_task_.visible_count(),
-    //    worker_thread_count,
-    //    static_cast<uint32_t>(max_primitives_per_batch));
+    (void)total_ms;
+    (void)build_batch_ms;
+    (void)prepare_ms;
+    (void)batch_size_ms;
+    (void)configure_ms;
+    (void)wait_ms;
+    (void)write_back_ms;
 #endif
 }
 
@@ -299,7 +318,7 @@ void Renderer::cull_scene() {
     }
 
     if (!frustum_culling_enabled_) {
-        scene_->make_all_primitives_visible();
+        scene_->make_all_entities_visible();
         return;
     }
 
@@ -317,9 +336,12 @@ void Renderer::cull_scene() {
 void Renderer::run()
 {
     if (async_loader_task_) {
-        if (loading_progress_listener_ != nullptr) {
-            if (auto* async_loader = dynamic_cast<AsyncLoader*>(async_loader_task_)) {
+        if (auto* async_loader = dynamic_cast<AsyncLoader*>(async_loader_task_)) {
+            if (loading_progress_listener_ != nullptr) {
                 async_loader->set_progress_listener(loading_progress_listener_);
+            }
+            if (async_complete_fn_) {
+                async_loader->set_complete_callback(std::move(async_complete_fn_));
             }
         }
 
@@ -334,10 +356,6 @@ void Renderer::run()
 
         task_scheduler_.WaitforTask(async_loader_task_);
         task_scheduler_.WaitforTask(&loading_imgui_task_);
-
-        if (async_complete_fn_) {
-            async_complete_fn_();
-        }
 
         GlobalGPUStorage::instance().finalize();
 
