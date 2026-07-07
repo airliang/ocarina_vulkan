@@ -97,6 +97,10 @@ public:
     [[nodiscard]] EntityComponentSystem& ecs() noexcept { return EntityComponentSystem::instance(); }
     [[nodiscard]] const EntityComponentSystem& ecs() const noexcept { return EntityComponentSystem::instance(); }
 
+    [[nodiscard]] const std::vector<uint32_t>& visible_entity_indices() const noexcept {
+        return primitive_cull_task_.visible_entity_indices();
+    }
+
     void draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass);
     void update_visible_render_components();
     void populate_render_pass_queues(RHIRenderPass* render_pass);

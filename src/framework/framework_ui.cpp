@@ -188,7 +188,7 @@ void display_frame_info(Widgets& widgets) {
 
             widgets.text("Primitives: %zu", scene->primitive_count());
 
-            widgets.text("Visible primitives: %zu", scene->visible_entity_indices().size());
+            widgets.text("Visible primitives: %zu", context->renderer->visible_entity_indices().size());
 
         }
 

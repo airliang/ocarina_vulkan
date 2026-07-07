@@ -174,7 +174,7 @@ int main(int argc, char* argv[]) {
             widgets.text("Total grids: %u", scene->grid_cell_count());
             widgets.text("Visible grids: %u", scene->visible_grid_count());
             const auto& visible_grids = scene->visible_grid_indices();
-            const uint32_t sample_count = static_cast<uint32_t>(std::min<size_t>(visible_grids.size(), 12));
+            const uint32_t sample_count = std::min(scene->visible_grid_count(), 12u);
             for (uint32_t i = 0; i < sample_count; ++i) {
                 const uint32_t flat = visible_grids[i];
                 const auto [cx, cz] = scene->grid_cell_coords(flat);

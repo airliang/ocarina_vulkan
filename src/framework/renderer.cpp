@@ -126,7 +126,7 @@ void Renderer::update_visible_render_components() {
         return;
     }
 
-    for (uint32_t entity_index : scene_->visible_entity_indices()) {
+    for (uint32_t entity_index : primitive_cull_task_.visible_entity_indices()) {
         update_entity_render_component(entity_index);
     }
 }
@@ -158,7 +158,7 @@ void Renderer::populate_render_pass_queues(RHIRenderPass* render_pass) {
     };
 
     bool cleared = false;
-    for (uint32_t entity_index : scene_->visible_entity_indices()) {
+    for (uint32_t entity_index : primitive_cull_task_.visible_entity_indices()) {
         if (render_pass_primitive_filter_
             && !render_pass_primitive_filter_(entity_index, render_pass)) {
             continue;
@@ -239,41 +239,28 @@ void Renderer::cull_visible_primitives_parallel(Scene& scene, const Frustum& fru
 #if defined(_DEBUG) || !defined(NDEBUG)
     const auto t0 = std::chrono::high_resolution_clock::now();
 #endif
-    scene.build_primitive_cull_batch();
-    const std::vector<uint32_t>& primitive_batch = scene.primitive_cull_batch();
-
-#if defined(_DEBUG) || !defined(NDEBUG)
-    const auto t_after_build_batch = std::chrono::high_resolution_clock::now();
-#endif
     primitive_cull_task_.prepare(scene.primitive_count());
 
-    if (primitive_batch.empty()) {
-        scene.set_visible_entity_indices(primitive_cull_task_.batch_results(), 0);
+    const uint32_t visible_cell_count = scene.visible_cell_count();
+    if (visible_cell_count == 0) {
+        primitive_cull_task_.clear_visible_entity_indices();
         return;
     }
 
 #if defined(_DEBUG) || !defined(NDEBUG)
     const auto t_after_prepare = std::chrono::high_resolution_clock::now();
 #endif
-    const uint32_t need_cull_count = scene.need_cull_primitive_count();
-    const uint32_t worker_thread_count = task_scheduler_.GetNumTaskThreads();
-    const size_t max_primitives_per_batch = std::max(
-        Scene::kMaxPrimitivesPerCullBatch,
-        need_cull_count > 0
-            ? static_cast<size_t>(worker_thread_count / need_cull_count)
-            : Scene::kMaxPrimitivesPerCullBatch);
+    const size_t max_cells_per_batch = 1; // requirement: one visible cell per range
 
 #if defined(_DEBUG) || !defined(NDEBUG)
     const auto t_after_batch_size = std::chrono::high_resolution_clock::now();
 #endif
-    EntityComponentSystem& ecs = EntityComponentSystem::instance();
     primitive_cull_task_.configure(
-        &ecs.primitives(),
-        &ecs.transform_components(),
-        &primitive_batch,
+        &scene,
+        &scene.visible_cell_indices(),
+        visible_cell_count,
         &frustum,
-        max_primitives_per_batch,
-        need_cull_count);
+        max_cells_per_batch);
 
 #if defined(_DEBUG) || !defined(NDEBUG)
     const auto t_after_configure = std::chrono::high_resolution_clock::now();
@@ -284,9 +271,7 @@ void Renderer::cull_visible_primitives_parallel(Scene& scene, const Frustum& fru
 #if defined(_DEBUG) || !defined(NDEBUG)
     const auto t_after_wait = std::chrono::high_resolution_clock::now();
 #endif
-    scene.set_visible_entity_indices(
-        primitive_cull_task_.batch_results(),
-        primitive_cull_task_.visible_count());
+    primitive_cull_task_.commit_visible_results();
 
 #if defined(_DEBUG) || !defined(NDEBUG)
     const auto t_end = std::chrono::high_resolution_clock::now();
@@ -295,15 +280,13 @@ void Renderer::cull_visible_primitives_parallel(Scene& scene, const Frustum& fru
     };
 
     const double total_ms = ms(t0, t_end);
-    const double build_batch_ms = ms(t0, t_after_build_batch);
-    const double prepare_ms = ms(t_after_build_batch, t_after_prepare);
+    const double prepare_ms = ms(t0, t_after_prepare);
     const double batch_size_ms = ms(t_after_prepare, t_after_batch_size);
     const double configure_ms = ms(t_after_batch_size, t_after_configure);
     const double wait_ms = ms(t_after_configure, t_after_wait);
     const double write_back_ms = ms(t_after_wait, t_end);
 
     (void)total_ms;
-    (void)build_batch_ms;
     (void)prepare_ms;
     (void)batch_size_ms;
     (void)configure_ms;
@@ -318,7 +301,7 @@ void Renderer::cull_scene() {
     }
 
     if (!frustum_culling_enabled_) {
-        scene_->make_all_entities_visible();
+        primitive_cull_task_.set_visible_entity_indices(scene_->entity_indices());
         return;
     }
 
@@ -326,7 +309,12 @@ void Renderer::cull_scene() {
     const Frustum frustum(view_projection);
 
     scene_->cull_grids(frustum);
-    if (scene_->need_cull_primitive_count() == 0) {
+    if (!scene_->has_grid()) {
+        primitive_cull_task_.set_visible_entity_indices(scene_->entity_indices());
+        return;
+    }
+    if (scene_->visible_cell_count() == 0) {
+        primitive_cull_task_.clear_visible_entity_indices();
         return;
     }
 

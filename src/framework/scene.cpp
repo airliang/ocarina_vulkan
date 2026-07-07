@@ -2,7 +2,9 @@
 #include "camera.h"
 #include "entity_component_system.h"
 #include "mesh.h"
+#include "simd_frustum_cull.h"
 #include <algorithm>
+#include <numeric>
 
 namespace ocarina {
 
@@ -36,12 +38,9 @@ namespace {
 
 void Scene::clear_entities() {
     entity_indices_.clear();
-    visible_entity_indices_.clear();
-    primitive_cull_batch_.clear();
-    need_cull_primitive_count_ = 0;
     grid_cells_.clear();
-    visible_grid_indices_.clear();
-    visible_grid_count_ = 0;
+    visible_cell_indices_.clear();
+    visible_cell_count_ = 0;
     grid_dim_x_ = 0;
     grid_dim_z_ = 0;
     grid_origin_cell_x_ = 0;
@@ -68,10 +67,9 @@ BoundingBox Scene::compute_bounds(const std::vector<uint32_t>& entity_indices) c
     return bounds;
 }
 
-void Scene::ensure_primitive_cull_batch_capacity() {
-    const uint32_t ecs_count = EntityComponentSystem::instance().primitive_count();
-    if (primitive_cull_batch_.size() < ecs_count) {
-        primitive_cull_batch_.resize(ecs_count);
+void Scene::ensure_visible_cell_capacity() {
+    if (visible_cell_indices_.size() < grid_cells_.size()) {
+        visible_cell_indices_.resize(grid_cells_.size());
     }
 }
 
@@ -85,7 +83,6 @@ void Scene::build_grid(float cell_size_meters) {
     EntityComponentSystem& ecs = EntityComponentSystem::instance();
     grid_cell_size_ = std::max(cell_size_meters, kMinGridCellSizeMeters);
 
-    std::vector<BoundingBox> entity_bounds(entity_indices_.size());
     int32_t min_cell_x = INT32_MAX;
     int32_t min_cell_z = INT32_MAX;
     int32_t max_cell_x = INT32_MIN;
@@ -97,10 +94,10 @@ void Scene::build_grid(float cell_size_meters) {
         return {cx, cz};
     };
 
+    // First pass: compute grid extents (XZ) from entity centers.
     for (uint32_t scene_index = 0; scene_index < entity_indices_.size(); ++scene_index) {
         const uint32_t entity_index = entity_indices_[scene_index];
-        entity_bounds[scene_index] = compute_entity_bounds(entity_index);
-        const BoundingBox& bounds = entity_bounds[scene_index];
+        const BoundingBox bounds = compute_entity_bounds(entity_index);
         const float3 center = bounds.valid
             ? bounds.center()
             : ecs.transform_component(entity_index).get_position();
@@ -120,11 +117,11 @@ void Scene::build_grid(float cell_size_meters) {
     grid_cells_.resize(static_cast<size_t>(grid_dim_x_) * static_cast<size_t>(grid_dim_z_));
     for (SceneGridCell& cell : grid_cells_) {
         cell.bounds = {};
-        cell.entity_indices.clear();
+        cell.first_entity_index = 0;
+        cell.entity_count = 0;
     }
-    visible_grid_indices_.clear();
-    visible_grid_indices_.reserve(grid_cells_.size());
-    visible_grid_count_ = 0;
+    ensure_visible_cell_capacity();
+    visible_cell_count_ = 0;
 
     auto cell_index = [&](int32_t cx, int32_t cz) -> uint32_t {
         const uint32_t ix = static_cast<uint32_t>(cx - grid_origin_cell_x_);
@@ -132,63 +129,133 @@ void Scene::build_grid(float cell_size_meters) {
         return iz * grid_dim_x_ + ix;
     };
 
+    // Second pass: count entities per cell and build per-cell bounds.
+    std::vector<uint32_t> cell_counts(grid_cells_.size(), 0u);
+    std::vector<BoundingBox> cell_bounds(grid_cells_.size());
+    std::vector<uint32_t> entity_cell_ids(entity_indices_.size());
     for (uint32_t scene_index = 0; scene_index < entity_indices_.size(); ++scene_index) {
         const uint32_t entity_index = entity_indices_[scene_index];
-        const BoundingBox& bounds = entity_bounds[scene_index];
+        const BoundingBox bounds = compute_entity_bounds(entity_index);
         const float3 center = bounds.valid
             ? bounds.center()
             : ecs.transform_component(entity_index).get_position();
         const auto [cx, cz] = to_cell(center);
-        SceneGridCell& cell = grid_cells_[cell_index(cx, cz)];
-        cell.entity_indices.push_back(entity_index);
-        cell.bounds.merge(bounds);
+        const uint32_t flat = cell_index(cx, cz);
+        entity_cell_ids[scene_index] = flat;
+        cell_counts[flat] += 1;
+        cell_bounds[flat].merge(bounds);
     }
 
-    ensure_primitive_cull_batch_capacity();
+    // Compute per-cell ranges (prefix sums) into the reordered entity_indices_ array.
+    uint32_t running = 0;
+    for (uint32_t flat = 0; flat < static_cast<uint32_t>(grid_cells_.size()); ++flat) {
+        SceneGridCell& cell = grid_cells_[flat];
+        cell.first_entity_index = running;
+        cell.entity_count = cell_counts[flat];
+        cell.bounds = cell_bounds[flat];
+        running += cell.entity_count;
+    }
+
+    // Third pass: reorder entity_indices_ so entities are grouped by cell.
+    std::vector<uint32_t> write_cursor(grid_cells_.size(), 0u);
+    for (uint32_t flat = 0; flat < static_cast<uint32_t>(grid_cells_.size()); ++flat) {
+        write_cursor[flat] = grid_cells_[flat].first_entity_index;
+    }
+    std::vector<uint32_t> reordered(entity_indices_.size());
+    for (uint32_t scene_index = 0; scene_index < static_cast<uint32_t>(entity_indices_.size()); ++scene_index) {
+        const uint32_t flat = entity_cell_ids[scene_index];
+        const uint32_t dst = write_cursor[flat]++;
+        reordered[dst] = entity_indices_[scene_index];
+    }
+    entity_indices_.swap(reordered);
+
     grid_built_ = true;
 }
 
 void Scene::build_primitive_cull_batch() {
-    // With grid culling, primitive_cull_batch_ is already packed in cull_grids().
-}
-
-void Scene::set_visible_entity_indices(const std::vector<uint32_t>& indices, uint32_t count) {
-    visible_entity_indices_.assign(indices.begin(), indices.begin() + count);
-}
-
-void Scene::make_all_entities_visible() {
-    set_all_entities_visible();
-    need_cull_primitive_count_ = 0;
-}
-
-void Scene::set_all_entities_visible() {
-    visible_entity_indices_ = entity_indices_;
+    // No-op: entity ordering is stored in grid cell ranges.
 }
 
 void Scene::cull_grids(const Frustum& frustum) {
-    visible_entity_indices_.clear();
-    need_cull_primitive_count_ = 0;
-    visible_grid_indices_.clear();
-    visible_grid_count_ = 0;
+    visible_cell_count_ = 0;
 
     if (!grid_built_ || grid_cells_.empty()) {
-        set_all_entities_visible();
         return;
     }
 
-    ensure_primitive_cull_batch_capacity();
+    ensure_visible_cell_capacity();
 
-    for (uint32_t cell_flat_index = 0; cell_flat_index < grid_cells_.size(); ++cell_flat_index) {
-        const SceneGridCell& cell = grid_cells_[cell_flat_index];
-        if (cell.entity_indices.empty()) {
+    // Pass 1: CullCellsSIMD. Pack visible cell flat indices into visible_cell_indices_ using visible_cell_count_.
+    const uint32_t cell_count = static_cast<uint32_t>(grid_cells_.size());
+    uint32_t cell_index_i = 0;
+
+    alignas(16) float min_x[4]{};
+    alignas(16) float min_y[4]{};
+    alignas(16) float min_z[4]{};
+    alignas(16) float max_x[4]{};
+    alignas(16) float max_y[4]{};
+    alignas(16) float max_z[4]{};
+    alignas(16) float valid_mask_f[4]{};
+    uint32_t flat_lane_index[4]{};
+
+    for (; cell_index_i + 4 <= cell_count; cell_index_i += 4) {
+        for (int lane = 0; lane < 4; ++lane) {
+            const uint32_t flat = cell_index_i + static_cast<uint32_t>(lane);
+            flat_lane_index[lane] = flat;
+            const SceneGridCell& cell = grid_cells_[flat];
+            valid_mask_f[lane] = 0.0f;
+
+            if (cell.entity_count == 0) {
+                min_x[lane] = min_y[lane] = min_z[lane] = 0.0f;
+                max_x[lane] = max_y[lane] = max_z[lane] = 0.0f;
+                continue;
+            }
+
+            if (!cell.bounds.valid) {
+                // No bounds: conservatively treat as visible.
+                valid_mask_f[lane] = -1.0f;
+                min_x[lane] = min_y[lane] = min_z[lane] = 0.0f;
+                max_x[lane] = max_y[lane] = max_z[lane] = 0.0f;
+                continue;
+            }
+
+            min_x[lane] = cell.bounds.min.x;
+            min_y[lane] = cell.bounds.min.y;
+            min_z[lane] = cell.bounds.min.z;
+            max_x[lane] = cell.bounds.max.x;
+            max_y[lane] = cell.bounds.max.y;
+            max_z[lane] = cell.bounds.max.z;
+        }
+
+        const uint32_t visible_mask = intersect_aabb4_soa(
+            frustum,
+            _mm_load_ps(min_x),
+            _mm_load_ps(min_y),
+            _mm_load_ps(min_z),
+            _mm_load_ps(max_x),
+            _mm_load_ps(max_y),
+            _mm_load_ps(max_z),
+            _mm_load_ps(valid_mask_f));
+
+        for (int lane = 0; lane < 4; ++lane) {
+            const uint32_t flat = flat_lane_index[lane];
+            if (grid_cells_[flat].entity_count == 0) {
+                continue;
+            }
+            if ((visible_mask & (1u << lane)) == 0u) {
+                continue;
+            }
+            visible_cell_indices_[visible_cell_count_++] = flat;
+        }
+    }
+
+    for (; cell_index_i < cell_count; ++cell_index_i) {
+        const SceneGridCell& cell = grid_cells_[cell_index_i];
+        if (cell.entity_count == 0) {
             continue;
         }
         if (!cell.bounds.valid || cell.bounds.intersects(frustum)) {
-            visible_grid_indices_.push_back(cell_flat_index);
-            ++visible_grid_count_;
-            for (uint32_t entity_index : cell.entity_indices) {
-                primitive_cull_batch_[need_cull_primitive_count_++] = entity_index;
-            }
+            visible_cell_indices_[visible_cell_count_++] = cell_index_i;
         }
     }
 }
