@@ -106,17 +106,10 @@ int main(int argc, char *argv[]) {
         //pipeline_state.vertex_buffer = quad.get_mesh()->vertex_buffer();
         //quad.set_pipeline_state(pipeline_state);
         quad.set_material(material);
+        const uint64_t albedo_name_id = hash64("albedo");
+        material->add_bindless_texture(albedo_name_id, texture);
 
-        quad.set_mesh(quad_mesh);
-        //pipeline_state.vertex_buffer = quad.get_mesh()->vertex_buffer();
-        //quad.set_pipeline_state(pipeline_state);
-        quad.set_material(material);
-        uint64_t albedo_name_id = hash64("albedo");
-        quad.add_bindless_texture(albedo_name_id, texture);
-        uint64_t name_id = hash64("sampler_albedo");
-        quad.add_sampler(name_id, *(texture->get_sampler_pointer()));
-
-        const Primitive::TextureHandle albedo_handle = quad.get_texture_handle(albedo_name_id);
+        const Material::TextureHandle albedo_handle = material->get_bindless_texture_handle(albedo_name_id);
         quad.set_material_parameter("albedoIndex", albedo_handle.bindless_index_);
         quad.set_material_parameter("albedoSamplerIndex", get_bindless_sampler_index(*texture));
     };

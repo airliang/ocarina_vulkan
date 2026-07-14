@@ -145,8 +145,8 @@ int main(int argc, char *argv[]) {
     auto setup_quad = [&](Primitive& primitive) {
         primitive.set_mesh(quad_mesh);
         primitive.set_material(quad_material);
-        primitive.add_texture(hash64("albedo"), offscreen_color);
-        primitive.add_sampler(hash64("sampler_albedo"), *offscreen_color->get_sampler_pointer());
+        quad_material->add_texture(hash64("albedo"), offscreen_color);
+        quad_material->add_sampler(hash64("sampler_albedo"), *offscreen_color->get_sampler_pointer());
     };
 
     Camera camera;

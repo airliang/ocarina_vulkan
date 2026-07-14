@@ -94,8 +94,8 @@ int main(int argc, char *argv[]) {
         quad.set_mesh(quad_mesh);
         quad.set_material(material);
 
-        quad.add_texture(hash64("albedo"), texture);
-        quad.add_sampler(hash64("sampler_albedo"), *texture->get_sampler_pointer());
+        material->add_texture(hash64("albedo"), texture);
+        material->add_sampler(hash64("sampler_albedo"), *texture->get_sampler_pointer());
     };
 
     Camera camera;

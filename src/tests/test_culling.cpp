@@ -50,13 +50,13 @@ static void apply_mesh_material_defaults(Primitive& primitive) {
     primitive.set_material_parameter("normalSamplerIndex", 0u);
 }
 
-static void apply_mesh_bindless_indices(Primitive& primitive) {
-    const Primitive::TextureHandle albedo_handle = primitive.get_texture_handle(hash64("albedo"));
-    primitive.set_material_parameter("albedoIndex", albedo_handle.bindless_index_);
-    OC_ASSERT(albedo_handle.texture_ != nullptr);
+static void apply_mesh_bindless_indices(Primitive& primitive, Texture* albedo_texture) {
+    const uint32_t albedo_index = BindlessTextureRegistry::instance().get_index(albedo_texture);
+    primitive.set_material_parameter("albedoIndex", albedo_index);
+    OC_ASSERT(albedo_texture != nullptr);
     primitive.set_material_parameter(
         "albedoSamplerIndex",
-        get_bindless_sampler_index(*albedo_handle.texture_));
+        get_bindless_sampler_index(*albedo_texture));
 }
 
 int main(int argc, char* argv[]) {
@@ -100,7 +100,8 @@ int main(int argc, char* argv[]) {
             shader_entries[1].shader);
         cube_mesh = Mesh::create_cube();
         white_texture = InternalTextures::instance().get_white_texture(load_device);
-        BindlessTextureRegistry::instance().allocate_index(white_texture);
+        const uint32_t white_bindless_index = BindlessTextureRegistry::instance().allocate_index(white_texture);
+        FrameResources::instance().update_bindless_texture_at_index(white_bindless_index, white_texture);
 
         scene = ocarina::new_with_allocator<Scene>();
         scene->reserve_primitives(kTotalCubes);
@@ -117,9 +118,7 @@ int main(int argc, char* argv[]) {
                     primitive.set_mesh(cube_mesh);
                     primitive.set_material(material);
                     apply_mesh_material_defaults(primitive);
-                    primitive.add_bindless_texture(hash64("albedo"), white_texture);
-                    primitive.add_sampler(hash64("sampler_albedo"), *white_texture->get_sampler_pointer());
-                    apply_mesh_bindless_indices(primitive);
+                    apply_mesh_bindless_indices(primitive, white_texture);
                 }
             }
         }

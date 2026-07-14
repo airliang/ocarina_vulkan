@@ -1,10 +1,12 @@
 #include "material.h"
 #include "core/hash.h"
 #include "bindless_texture_registry.h"
+#include "entity_component_system.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/device.h"
 #include "rhi/shader_base.h"
 #include "framework/frame_resources.h"
+#include <algorithm>
 
 namespace ocarina {
 
@@ -49,6 +51,27 @@ uint32_t Material::find_global_ubo_descriptor_set_index(
     return InvalidUI32;
 }
 
+uint32_t Material::find_material_ubo_descriptor_set_index(
+    const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>& layouts) {
+    for (size_t set_index = 0; set_index < layouts.size(); ++set_index) {
+        DescriptorSetLayout* layout = layouts[set_index];
+        if (layout == nullptr) {
+            continue;
+        }
+        if (layout->has_bindless_binding()) {
+            continue;
+        }
+        if (!layout->has_uniform_buffer_binding()) {
+            continue;
+        }
+        if (layout->get_descriptor_set_index() == static_cast<uint32_t>(DescriptorSetIndex::GLOBAL_SET)) {
+            continue;
+        }
+        return layout->get_descriptor_set_index();
+    }
+    return InvalidUI32;
+}
+
 uint32_t Material::find_max_descriptor_set_index(
     const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>& layouts) {
     uint32_t max_index = 0;
@@ -78,6 +101,7 @@ Material::Material(Device* device, handle_ty vertex_shader, handle_ty pixel_shad
     descriptor_set_layouts_ = device_->create_descriptor_set_layout(shaders, 2);
     init_material_properties(pixel_shader);
     create_global_descriptor_sets();
+    create_material_descriptor_set();
 }
 
 void Material::init_material_properties(handle_ty pixel_shader) {
@@ -142,6 +166,95 @@ void Material::create_global_descriptor_sets() {
                 [bindless_layout]() { return bindless_layout->allocate_descriptor_set(); });
         }
     }
+}
+
+void Material::create_material_descriptor_set() {
+    uint32_t material_set_index = find_material_ubo_descriptor_set_index(descriptor_set_layouts_);
+    if (material_set_index == InvalidUI32) {
+        FrameResources& frame_resources = FrameResources::instance();
+        for (size_t set_index = 0; set_index < descriptor_set_layouts_.size(); ++set_index) {
+            if (frame_resources.is_global_descriptor_set_index(static_cast<uint32_t>(set_index))) {
+                continue;
+            }
+            if (descriptor_set_layouts_[set_index] == nullptr) {
+                continue;
+            }
+            if (descriptor_set_layouts_[set_index]->has_bindless_binding()) {
+                continue;
+            }
+            material_set_index = static_cast<uint32_t>(set_index);
+            break;
+        }
+    }
+    if (material_set_index == InvalidUI32) {
+        return;
+    }
+
+    DescriptorSetLayout* material_layout = descriptor_set_layouts_[material_set_index];
+    if (material_layout == nullptr) {
+        return;
+    }
+
+    material_descriptor_set_ = material_layout->allocate_descriptor_set();
+    material_descriptor_set_index_ = material_set_index;
+}
+
+void Material::upload_material_uniform_buffer(const void* data, uint32_t size) {
+    if (material_descriptor_set_ == nullptr || data == nullptr || size == 0) {
+        return;
+    }
+
+    const uint32_t upload_size = std::min(size, material_uniform_buffer_size_);
+    material_descriptor_set_->update_buffer(
+        material_uniform_buffer_name_id_,
+        data,
+        upload_size);
+}
+
+void Material::add_bindless_texture(uint64_t name_id, Texture* texture) {
+    const uint32_t bindless_index = BindlessTextureRegistry::instance().allocate_index(texture);
+    FrameResources::instance().update_bindless_texture_at_index(bindless_index, texture);
+    bindless_textures_.insert_or_assign(name_id, TextureHandle{bindless_index, texture});
+}
+
+Material::TextureHandle Material::get_bindless_texture_handle(uint64_t name_id) const {
+    const auto it = bindless_textures_.find(name_id);
+    if (it != bindless_textures_.end()) {
+        return it->second;
+    }
+    return TextureHandle{InvalidUI32, nullptr};
+}
+
+void Material::add_texture(uint64_t name_id, Texture* texture) {
+    if (material_descriptor_set_ != nullptr) {
+        material_descriptor_set_->update_texture(name_id, texture);
+    }
+}
+
+void Material::add_sampler(uint64_t name_id, const TextureSampler& sampler) {
+    if (material_descriptor_set_ != nullptr) {
+        material_descriptor_set_->update_sampler(name_id, sampler);
+    }
+}
+
+void Material::ensure_material_buffer() {
+    if (!has_material_uniform_buffer() || material_buffer_offset_ != InvalidUI32) {
+        return;
+    }
+
+    const uint32_t buffer_size = material_uniform_buffer_size_;
+    if (buffer_size == 0) {
+        return;
+    }
+
+    EntityComponentSystem& ecs = EntityComponentSystem::instance();
+    material_buffer_offset_ = ecs.allocate_material_buffer_region(buffer_size);
+    material_buffer_size_ = buffer_size;
+    memset(
+        ecs.material_parameters_buffer().data() + material_buffer_offset_,
+        0,
+        buffer_size);
+    material_parameters_dirty_ = true;
 }
 
 }// namespace ocarina

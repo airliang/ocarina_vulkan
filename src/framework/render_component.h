@@ -5,16 +5,14 @@
 
 namespace ocarina {
 
-class DescriptorSet;
-
 struct RenderComponent {
     MeshGeometrySlice geometry{};
 
-    std::vector<DescriptorSet*> descriptor_sets;
-    uint32_t first_set = 0;
-
     std::byte* push_constant_data = nullptr;
     uint8_t push_constant_size = 0;
+
+    uint32_t material_buffer_offset = InvalidUI32;
+    uint32_t material_buffer_size = 0;
 };
 
 }// namespace ocarina

@@ -39,6 +39,9 @@ public:
     void add_bindless_texture(uint64_t name_id, Texture* texture);
     TextureHandle get_bindless_texture_handle(uint64_t name_id) const;
 
+    void add_texture(uint64_t name_id, Texture* texture);
+    void add_sampler(uint64_t name_id, const TextureSampler& sampler);
+
     void set_blend_state(const BlendState& blend_state) {
         if (blend_state != pipeline_state_.blend_state) {
             pipeline_state_.blend_state = blend_state;
@@ -109,13 +112,50 @@ public:
 
     [[nodiscard]] const MaterialProperty* find_material_property(uint64_t name_id) const noexcept;
 
+    [[nodiscard]] bool has_material_descriptor_set() const noexcept {
+        return material_descriptor_set_ != nullptr;
+    }
+
+    [[nodiscard]] DescriptorSet* get_material_descriptor_set() const noexcept {
+        return material_descriptor_set_;
+    }
+
+    [[nodiscard]] uint32_t material_descriptor_set_index() const noexcept {
+        return material_descriptor_set_index_;
+    }
+
+    [[nodiscard]] DescriptorSetLayout* material_descriptor_set_layout() const noexcept {
+        return material_descriptor_set_index_ != InvalidUI32
+            ? descriptor_set_layouts_[material_descriptor_set_index_]
+            : nullptr;
+    }
+
+    [[nodiscard]] bool is_material_descriptor_set_index(uint32_t set_index) const noexcept {
+        return material_descriptor_set_ != nullptr && material_descriptor_set_index_ == set_index;
+    }
+
+    void upload_material_uniform_buffer(const void* data, uint32_t size);
+
+    void ensure_material_buffer();
+    [[nodiscard]] bool has_material_buffer() const noexcept {
+        return material_buffer_offset_ != InvalidUI32;
+    }
+    [[nodiscard]] uint32_t material_buffer_offset() const noexcept { return material_buffer_offset_; }
+    [[nodiscard]] uint32_t material_buffer_size() const noexcept { return material_buffer_size_; }
+    void mark_material_parameters_dirty() noexcept { material_parameters_dirty_ = true; }
+    [[nodiscard]] bool material_parameters_dirty() const noexcept { return material_parameters_dirty_; }
+    void clear_material_parameters_dirty() noexcept { material_parameters_dirty_ = false; }
+
 private:
     void create_global_descriptor_sets();
+    void create_material_descriptor_set();
     void init_material_properties(handle_ty pixel_shader);
 
     static uint32_t find_bindless_descriptor_set_index(
         const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>& layouts);
     static uint32_t find_global_ubo_descriptor_set_index(
+        const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>& layouts);
+    static uint32_t find_material_ubo_descriptor_set_index(
         const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>& layouts);
     static uint32_t find_max_descriptor_set_index(
         const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>& layouts);
@@ -131,6 +171,15 @@ private:
     uint32_t material_uniform_buffer_size_ = 0;
     std::vector<MaterialProperty> material_properties_;
     std::unordered_map<uint64_t, size_t> material_property_indices_;
+
+    DescriptorSet* material_descriptor_set_ = nullptr;
+    uint32_t material_descriptor_set_index_ = InvalidUI32;
+
+    uint32_t material_buffer_offset_ = InvalidUI32;
+    uint32_t material_buffer_size_ = 0;
+    bool material_parameters_dirty_ = true;
+
+    std::unordered_map<uint64_t, TextureHandle> bindless_textures_;
 };
 
 }// namespace ocarina

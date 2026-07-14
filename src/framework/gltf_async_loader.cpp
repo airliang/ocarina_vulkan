@@ -12,6 +12,7 @@
 #include "transform.h"
 #include "primitive.h"
 #include "mesh.h"
+#include "material.h"
 #include "math/basic_types.h"
 #include "scene.h"
 #include "global_gpu_storage.h"
@@ -191,10 +192,8 @@ void GltfAsyncLoader::load(Device* device) {
 
     device_ = device;
     if (shader_entries_ != nullptr && shader_entries_->size() >= 2) {
-        shared_material_ = ResourceManager::instance().create_material(
-            device,
-            (*shader_entries_)[0].shader,
-            (*shader_entries_)[1].shader);
+        vertex_shader_ = (*shader_entries_)[0].shader;
+        pixel_shader_ = (*shader_entries_)[1].shader;
     }
 
     is_loaded_ = load_gltf_file();
@@ -335,12 +334,20 @@ void GltfAsyncLoader::load_gltf_node(
 
             prim.set_mesh(mesh_obj);
 
-            if (shared_material_ != nullptr) {
-                prim.set_material(shared_material_);
-            }
-
             if (gltf_primitive.material >= 0 && gltf_primitive.material < static_cast<int>(model.materials.size())) {
                 load_material(prim, model.materials[gltf_primitive.material], model);
+            } else if (vertex_shader_ != InvalidUI64 && pixel_shader_ != InvalidUI64) {
+                Material* prim_material = ResourceManager::instance().create_unique_material(
+                    device_,
+                    vertex_shader_,
+                    pixel_shader_);
+                prim.set_material(prim_material);
+                prim.set_material_parameter("baseColorFactor", make_float4(1.f, 1.f, 1.f, 1.f));
+                prim.set_material_parameter("roughness", 1.f);
+                prim.set_material_parameter("metallic", 0.f);
+                prim.set_material_parameter("ao", 1.f);
+                prim.set_material_parameter("normalIndex", 0u);
+                prim.set_material_parameter("normalSamplerIndex", 0u);
             }
 
             if (progress_listener_ != nullptr) {
@@ -559,8 +566,12 @@ Texture* GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::Model
 }
 
 void GltfAsyncLoader::load_material(Primitive& prim, const tinygltf::Material& material, const tinygltf::Model& model) {
-    if (shared_material_ != nullptr) {
-        prim.set_material(shared_material_);
+    if (vertex_shader_ != InvalidUI64 && pixel_shader_ != InvalidUI64) {
+        Material* prim_material = ResourceManager::instance().create_unique_material(
+            device_,
+            vertex_shader_,
+            pixel_shader_);
+        prim.set_material(prim_material);
     }
 
     const auto& pbr = material.pbrMetallicRoughness;
@@ -592,10 +603,14 @@ void GltfAsyncLoader::load_material(Primitive& prim, const tinygltf::Material& m
         return;
     }
 
-    prim.add_bindless_texture(hash64("albedo"), texture);
-    prim.add_sampler(hash64("sampler_albedo"), *texture->get_sampler_pointer());
+    Material* prim_material = prim.get_material();
+    if (prim_material == nullptr) {
+        return;
+    }
 
-    const Primitive::TextureHandle albedo_handle = prim.get_texture_handle(hash64("albedo"));
+    prim_material->add_bindless_texture(hash64("albedo"), texture);
+
+    const Material::TextureHandle albedo_handle = prim_material->get_bindless_texture_handle(hash64("albedo"));
     prim.set_material_parameter("albedoIndex", albedo_handle.bindless_index_);
     prim.set_material_parameter("albedoSamplerIndex", get_bindless_sampler_index(*texture));
     prim.set_material_parameter("normalIndex", 0u);

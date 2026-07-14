@@ -15,10 +15,34 @@ public:
     template<typename... Args>
     uint32_t emplace_primitive(Args&&... args) {
         const uint32_t entity_index = static_cast<uint32_t>(primitives_.size());
-        primitives_.emplace_back(OC_FORWARD(args)...);
         render_components_.emplace_back();
         transform_components_.emplace_back();
+        primitives_.emplace_back(OC_FORWARD(args)...);
+        primitives_.back().set_entity_index(entity_index);
         return entity_index;
+    }
+
+    uint32_t emplace_primitive(Primitive&& primitive) {
+        const uint32_t entity_index = static_cast<uint32_t>(primitives_.size());
+        render_components_.emplace_back();
+        transform_components_.emplace_back();
+        primitives_.push_back(std::move(primitive));
+        primitives_.back().set_entity_index(entity_index);
+        return entity_index;
+    }
+
+    [[nodiscard]] uint32_t allocate_material_buffer_region(uint32_t size) {
+        const uint32_t offset = static_cast<uint32_t>(material_parameters_buffer_.size());
+        material_parameters_buffer_.resize(offset + size);
+        return offset;
+    }
+
+    [[nodiscard]] std::vector<uint8_t>& material_parameters_buffer() noexcept {
+        return material_parameters_buffer_;
+    }
+
+    [[nodiscard]] const std::vector<uint8_t>& material_parameters_buffer() const noexcept {
+        return material_parameters_buffer_;
     }
 
     void resize_render_components(size_t count) {
@@ -100,6 +124,7 @@ private:
     std::vector<Primitive> primitives_;
     std::vector<RenderComponent> render_components_;
     std::vector<TransformComponent> transform_components_;
+    std::vector<uint8_t> material_parameters_buffer_;
 };
 
 }// namespace ocarina

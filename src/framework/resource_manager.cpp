@@ -23,6 +23,10 @@ void ResourceManager::cleanup() {
         ocarina::delete_with_allocator<Material>(material);
     }
     materials_.clear();
+    for (Material* material : unique_materials_) {
+        ocarina::delete_with_allocator<Material>(material);
+    }
+    unique_materials_.clear();
     for (auto& [key, mesh] : meshes_) {
         ocarina::delete_with_allocator<Mesh>(mesh);
     }
@@ -53,6 +57,12 @@ Material* ResourceManager::create_material(Device* device, handle_ty vertex_shad
 
     Material* material = ocarina::new_with_allocator<Material>(device, vertex_shader, pixel_shader);
     materials_.emplace(key, material);
+    return material;
+}
+
+Material* ResourceManager::create_unique_material(Device* device, handle_ty vertex_shader, handle_ty pixel_shader) {
+    Material* material = ocarina::new_with_allocator<Material>(device, vertex_shader, pixel_shader);
+    unique_materials_.push_back(material);
     return material;
 }
 

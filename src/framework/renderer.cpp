@@ -118,7 +118,8 @@ void Renderer::update_entity_render_component(uint32_t entity_index) {
     Primitive& primitive = ecs.primitive(entity_index);
     RenderComponent& render_component = ecs.render_component(entity_index);
     TransformComponent& transform = ecs.transform_component(entity_index);
-    primitive.update_render_component(device_, render_component, transform);
+    primitive.initialize_render_component(device_, render_component, transform);
+    primitive.update_push_constants(transform);
 }
 
 void Renderer::update_visible_render_components() {
@@ -209,12 +210,18 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
                 cmd.push_constants(item.push_constant_data, 0, item.push_constant_size);
             }
 
-            if (!item.descriptor_sets.empty()) {
-                cmd.bind_descriptor_sets(
-                    item.descriptor_sets.data(),
-                    item.first_set,
-                    item.descriptor_sets.size(),
-                    pipeline->pipeline_layout);
+            Primitive& primitive = ecs.primitive(entity_index);
+            Material* material = primitive.get_material();
+            if (material != nullptr) {
+                primitive.upload_material_parameters();
+                if (material->has_material_descriptor_set()) {
+                    DescriptorSet* material_descriptor_set = material->get_material_descriptor_set();
+                    cmd.bind_descriptor_sets(
+                        &material_descriptor_set,
+                        material->material_descriptor_set_index(),
+                        1,
+                        pipeline->pipeline_layout);
+                }
             }
 
             if (!is_valid_geometry_slice(item.geometry)) {

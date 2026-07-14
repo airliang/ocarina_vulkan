@@ -11,16 +11,19 @@ public:
         position_ = position;
         transform_.set_position(position);
         transform_dirty_ = true;
+        ++transform_version_;
     }
 
     void set_rotation(const quaternion& rotation) {
         rotation_ = rotation;
         transform_dirty_ = true;
+        ++transform_version_;
     }
 
     void set_scale(const float3& scale) {
         scale_ = scale;
         transform_dirty_ = true;
+        ++transform_version_;
     }
 
     [[nodiscard]] const float3& get_position() const noexcept { return position_; }
@@ -40,12 +43,17 @@ public:
         return transform_;
     }
 
+    [[nodiscard]] uint32_t transform_version() const noexcept {
+        return transform_version_;
+    }
+
 private:
     mutable float4x4 world_matrix_{};
     float3 position_{};
     quaternion rotation_{0.0f, 0.0f, 0.0f, 1.0f};
     float3 scale_{1.0f, 1.0f, 1.0f};
     mutable bool transform_dirty_ = true;
+    uint32_t transform_version_ = 0;
     mutable Transform<float4x4> transform_{};
 };
 

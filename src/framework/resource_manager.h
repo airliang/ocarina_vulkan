@@ -27,6 +27,7 @@ public:
     static uint64_t make_texture_key(const std::string& name, const TextureViewCreation& texture_view, const TextureSampler& sampler) noexcept;
 
     Material* create_material(Device* device, handle_ty vertex_shader, handle_ty pixel_shader);
+    Material* create_unique_material(Device* device, handle_ty vertex_shader, handle_ty pixel_shader);
     Material* get_material(handle_ty vertex_shader, handle_ty pixel_shader) const noexcept;
     bool release_material(handle_ty vertex_shader, handle_ty pixel_shader);
 
@@ -43,6 +44,7 @@ public:
 private:
 
     std::unordered_map<uint64_t, Material*> materials_;
+    std::vector<Material*> unique_materials_;
     std::unordered_map<uint64_t, Mesh*> meshes_;
     std::unordered_map<uint64_t, Texture*> textures_;
     std::mutex mutex_;
