@@ -13,7 +13,7 @@
 #include "framework/resource_manager.h"
 #include "framework/material.h"
 #include "framework/async_loader.h"
-#include "framework/shader_compile_task.h"
+#include "framework/pipeline_compile_task.h"
 #include "framework/frame_resources.h"
 #include "framework/scene.h"
 #include "framework/transform.h"
@@ -83,21 +83,20 @@ int main(int argc, char* argv[]) {
 
     Renderer renderer(&device);
 
-    std::vector<ShaderCompileTask::Entry> shader_entries(2);
-    shader_entries[0].file_path = fs::absolute(shader_vert).string();
-    shader_entries[0].shader_type = ShaderType::VertexShader;
-    shader_entries[1].file_path = fs::absolute(shader_frag).string();
-    shader_entries[1].shader_type = ShaderType::PixelShader;
+    std::vector<PipelineCompileTask::Entry> pipeline_entries;
+    pipeline_entries.push_back(PipelineCompileTask::Entry::make_graphics(
+        fs::absolute(shader_vert).string(),
+        fs::absolute(shader_frag).string()));
 
     AsyncLoader async_loader(
         &renderer.task_scheduler(),
         &device,
-        &shader_entries,
+        &pipeline_entries,
         [&](Device* load_device) {
         material = ResourceManager::instance().create_material(
             load_device,
-            shader_entries[0].shader,
-            shader_entries[1].shader);
+            pipeline_entries[0].vertex_shader(),
+            pipeline_entries[0].pixel_shader());
         cube_mesh = Mesh::create_cube();
         white_texture = InternalTextures::instance().get_white_texture(load_device);
         const uint32_t white_bindless_index = BindlessTextureRegistry::instance().allocate_index(white_texture);
@@ -194,6 +193,8 @@ int main(int argc, char* argv[]) {
         display_loading_progress(*window->widgets(), nullptr, renderer.loading_dt());
     });
 
+    renderer.add_render_pass(render_pass);
+
     renderer.set_async_loader(&async_loader, nullptr, [&]() {
         if (scene == nullptr) {
             return;
@@ -226,8 +227,6 @@ int main(int argc, char* argv[]) {
             make_float4(200.0f, 300.0f, 200.0f, 1.0f)};
         global_descriptor_set->update_buffer(hash64("global_ubo"), &global_ubo_data, sizeof(GlobalUniformBuffer));
     });
-
-    renderer.add_render_pass(render_pass);
 
     renderer.set_loading_gui_impl_callback([&](const CommandBuffer& cmd_buffer) {
         imgui_renderer.render(cmd_buffer);

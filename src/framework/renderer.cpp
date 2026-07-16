@@ -332,6 +332,11 @@ void Renderer::run()
 {
     if (async_loader_task_) {
         if (auto* async_loader = dynamic_cast<AsyncLoader*>(async_loader_task_)) {
+            // Render passes (swapchain and/or dynamic-rendering targets) must be
+            // registered before async load so PSOs can be compiled against them.
+            if (async_loader->target_render_pass() == nullptr) {
+                async_loader->set_target_render_pass(primary_render_pass());
+            }
             if (loading_progress_listener_ != nullptr) {
                 async_loader->set_progress_listener(loading_progress_listener_);
             }

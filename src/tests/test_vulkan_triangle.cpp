@@ -23,7 +23,7 @@
 #include "framework/resource_manager.h"
 #include "framework/material.h"
 #include "framework/async_loader.h"
-#include "framework/shader_compile_task.h"
+#include "framework/pipeline_compile_task.h"
 #include "framework/frame_resources.h"
 #include "framework/global_gpu_storage.h"
 
@@ -83,21 +83,20 @@ int main(int argc, char *argv[]) {
     const fs::path shader_vert = project_root / "res/shaderlibrary/builtin/triangle.vert";
     const fs::path shader_frag = project_root / "res/shaderlibrary/builtin/triangle.frag";
 
-    std::vector<ShaderCompileTask::Entry> shader_entries(2);
-    shader_entries[0].file_path = fs::absolute(shader_vert).string();
-    shader_entries[0].shader_type = ShaderType::VertexShader;
-    shader_entries[1].file_path = fs::absolute(shader_frag).string();
-    shader_entries[1].shader_type = ShaderType::PixelShader;
+    std::vector<PipelineCompileTask::Entry> pipeline_entries;
+    pipeline_entries.push_back(PipelineCompileTask::Entry::make_graphics(
+        fs::absolute(shader_vert).string(),
+        fs::absolute(shader_frag).string()));
 
     AsyncLoader async_loader(
         &renderer.task_scheduler(),
         &device,
-        &shader_entries,
-        [&material, &triangle_mesh, &shader_entries](Device* device) {
+        &pipeline_entries,
+        [&material, &triangle_mesh, &pipeline_entries](Device* device) {
         material = ResourceManager::instance().create_material(
             device,
-            shader_entries[0].shader,
-            shader_entries[1].shader);
+            pipeline_entries[0].vertex_shader(),
+            pipeline_entries[0].pixel_shader());
         triangle_mesh = create_triangle_mesh();
         ResourceManager::instance().add_mesh("triangle", triangle_mesh);
     });

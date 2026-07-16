@@ -11,7 +11,7 @@
 #include "framework/camera.h"
 #include "framework/resource_manager.h"
 #include "framework/material.h"
-#include "framework/shader_compile_task.h"
+#include "framework/pipeline_compile_task.h"
 #include "framework/frame_resources.h"
 #include "framework/gltf_async_loader.h"
 #include "framework/loading_progress_listener.h"
@@ -61,16 +61,15 @@ int main(int argc, char* argv[]) {
     renderer.set_camera(&camera);
     renderer.set_loading_progress_listener(&loading_progress);
 
-    std::vector<ShaderCompileTask::Entry> shader_entries(2);
-    shader_entries[0].file_path = fs::absolute(shader_vert).string();
-    shader_entries[0].shader_type = ShaderType::VertexShader;
-    shader_entries[1].file_path = fs::absolute(shader_frag).string();
-    shader_entries[1].shader_type = ShaderType::PixelShader;
+    std::vector<PipelineCompileTask::Entry> pipeline_entries;
+    pipeline_entries.push_back(PipelineCompileTask::Entry::make_graphics(
+        fs::absolute(shader_vert).string(),
+        fs::absolute(shader_frag).string()));
 
     GltfAsyncLoader gltf_loader(
         &renderer.task_scheduler(),
         &device,
-        &shader_entries,
+        &pipeline_entries,
         fs::absolute(gltf_path).string());
 
     const uint64_t model_matrix_name_id = hash64("modelMatrix");
@@ -106,6 +105,8 @@ int main(int argc, char* argv[]) {
         display_loading_progress(*window->widgets(), &loading_progress, renderer.loading_dt());
     });
 
+    renderer.add_render_pass(render_pass);
+
     renderer.set_async_loader(&gltf_loader, nullptr, [&]() {
         Scene& scene = gltf_loader.get_scene();
         for (uint32_t index = 0; index < scene.primitive_count(); ++index) {
@@ -132,8 +133,6 @@ int main(int argc, char* argv[]) {
             make_float4(5.0f, 10.0f, 5.0f, 1.0f)};
         global_descriptor_set->update_buffer(hash64("global_ubo"), &global_ubo_data, sizeof(GlobalUniformBuffer));
     });
-
-    renderer.add_render_pass(render_pass);
 
     renderer.set_loading_gui_impl_callback([&](const CommandBuffer& cmd_buffer) {
         imgui_renderer.render(cmd_buffer);

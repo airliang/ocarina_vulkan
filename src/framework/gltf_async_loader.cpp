@@ -172,9 +172,10 @@ uint64_t GltfAsyncLoader::make_geometry_key(const tinygltf::Primitive& primitive
 GltfAsyncLoader::GltfAsyncLoader(
     enki::TaskScheduler* scheduler,
     Device* device,
-    std::vector<ShaderCompileTask::Entry>* shader_entries,
-    const std::string& gltf_file)
-    : AsyncLoader(scheduler, device, shader_entries)
+    std::vector<PipelineCompileTask::Entry>* pipeline_entries,
+    const std::string& gltf_file,
+    RHIRenderPass* target_render_pass)
+    : AsyncLoader(scheduler, device, pipeline_entries, target_render_pass)
     , gltf_file_(gltf_file)
     , gltf_directory_(fs::path(gltf_file).parent_path()) {}
 
@@ -191,9 +192,10 @@ void GltfAsyncLoader::load(Device* device) {
     }
 
     device_ = device;
-    if (shader_entries_ != nullptr && shader_entries_->size() >= 2) {
-        vertex_shader_ = (*shader_entries_)[0].shader;
-        pixel_shader_ = (*shader_entries_)[1].shader;
+    if (pipeline_entries_ != nullptr && !pipeline_entries_->empty()
+        && (*pipeline_entries_)[0].is_graphics()) {
+        vertex_shader_ = (*pipeline_entries_)[0].vertex_shader();
+        pixel_shader_ = (*pipeline_entries_)[0].pixel_shader();
     }
 
     is_loaded_ = load_gltf_file();

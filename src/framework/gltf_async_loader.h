@@ -28,8 +28,9 @@ public:
     GltfAsyncLoader(
         enki::TaskScheduler* scheduler,
         Device* device,
-        std::vector<ShaderCompileTask::Entry>* shader_entries,
-        const std::string& gltf_file);
+        std::vector<PipelineCompileTask::Entry>* pipeline_entries,
+        const std::string& gltf_file,
+        RHIRenderPass* target_render_pass = nullptr);
 
     ~GltfAsyncLoader() noexcept;
 

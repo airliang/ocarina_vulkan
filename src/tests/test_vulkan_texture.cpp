@@ -27,7 +27,7 @@
 #include "framework/material.h"
 #include "framework/transform.h"
 #include "framework/async_loader.h"
-#include "framework/shader_compile_task.h"
+#include "framework/pipeline_compile_task.h"
 #include "framework/frame_resources.h"
 
 using namespace ocarina;
@@ -64,21 +64,20 @@ int main(int argc, char *argv[]) {
     const fs::path shader_frag = project_root / "res/shaderlibrary/builtin/texture.frag";
     const fs::path texture_path = project_root / "res/textures/granite.png";
 
-    std::vector<ShaderCompileTask::Entry> shader_entries(2);
-    shader_entries[0].file_path = fs::absolute(shader_vert).string();
-    shader_entries[0].shader_type = ShaderType::VertexShader;
-    shader_entries[1].file_path = fs::absolute(shader_frag).string();
-    shader_entries[1].shader_type = ShaderType::PixelShader;
+    std::vector<PipelineCompileTask::Entry> pipeline_entries;
+    pipeline_entries.push_back(PipelineCompileTask::Entry::make_graphics(
+        fs::absolute(shader_vert).string(),
+        fs::absolute(shader_frag).string()));
 
     AsyncLoader async_loader(
         &renderer.task_scheduler(),
         &device,
-        &shader_entries,
-        [&material, &quad_mesh, &texture, &shader_entries, &texture_path](Device* device) {
+        &pipeline_entries,
+        [&material, &quad_mesh, &texture, &pipeline_entries, &texture_path](Device* device) {
         material = ResourceManager::instance().create_material(
             device,
-            shader_entries[0].shader,
-            shader_entries[1].shader);
+            pipeline_entries[0].vertex_shader(),
+            pipeline_entries[0].pixel_shader());
 
         Image image = Image::load(texture_path, ColorSpace::SRGB);
         TextureViewCreation texture_view = {};

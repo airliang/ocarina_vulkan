@@ -132,7 +132,7 @@ void Primitive::initialize_render_component(
     }
 
     const PipelineState& pipeline_state = material_->get_pipeline_state();
-    RHIPipelineLayout* pipeline_layout = PipelineManager::instance().get_or_create_pipeline_layout(
+    RHIPipelineLayout* pipeline_layout = PipelineManager::instance().get_pipeline_layout(
         pipeline_state.shaders);
     const uint32_t push_constant_size = pipeline_layout != nullptr ? pipeline_layout->push_constant_size : 0;
     if (push_constant_data_ == nullptr && push_constant_size > 0) {
@@ -174,7 +174,7 @@ void Primitive::set_push_constant_variable(uint64_t name_id, const std::byte* da
     }
 
     const PipelineState& pipeline_state = material_->get_pipeline_state();
-    RHIPipelineLayout* pipeline_layout = PipelineManager::instance().get_or_create_pipeline_layout(
+    RHIPipelineLayout* pipeline_layout = PipelineManager::instance().get_pipeline_layout(
         pipeline_state.shaders);
     if (pipeline_layout == nullptr) {
         return;

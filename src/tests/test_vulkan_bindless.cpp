@@ -30,7 +30,7 @@
 #include "framework/material.h"
 #include "framework/transform.h"
 #include "framework/async_loader.h"
-#include "framework/shader_compile_task.h"
+#include "framework/pipeline_compile_task.h"
 #include "rhi/bindless_sampler.h"
 #include "rhi/fence.h"
 #include "framework/frame_resources.h"
@@ -72,21 +72,20 @@ int main(int argc, char *argv[]) {
 
     Renderer renderer(&device);
 
-    std::vector<ShaderCompileTask::Entry> shader_entries(2);
-    shader_entries[0].file_path = fs::absolute(shader_vert).string();
-    shader_entries[0].shader_type = ShaderType::VertexShader;
-    shader_entries[1].file_path = fs::absolute(shader_frag).string();
-    shader_entries[1].shader_type = ShaderType::PixelShader;
+    std::vector<PipelineCompileTask::Entry> pipeline_entries;
+    pipeline_entries.push_back(PipelineCompileTask::Entry::make_graphics(
+        fs::absolute(shader_vert).string(),
+        fs::absolute(shader_frag).string()));
 
     AsyncLoader async_loader(
         &renderer.task_scheduler(),
         &device,
-        &shader_entries,
-        [&material, &quad_mesh, &texture, &shader_entries, &texture_path](Device* local_device) {
+        &pipeline_entries,
+        [&material, &quad_mesh, &texture, &pipeline_entries, &texture_path](Device* local_device) {
         material = ResourceManager::instance().create_material(
             local_device,
-            shader_entries[0].shader,
-            shader_entries[1].shader);
+            pipeline_entries[0].vertex_shader(),
+            pipeline_entries[0].pixel_shader());
 
         Image image = Image::load(texture_path, ColorSpace::SRGB);
         TextureViewCreation texture_view = {};

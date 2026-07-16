@@ -89,6 +89,18 @@ public:
         render_passes_.remove(render_pass);
     }
 
+    // First registered pass (swapchain / main view). Used as the async-load PSO target
+    // when the loader does not set one explicitly.
+    [[nodiscard]] RHIRenderPass* primary_render_pass() const noexcept
+    {
+        return render_passes_.empty() ? nullptr : render_passes_.front();
+    }
+
+    [[nodiscard]] const std::list<RHIRenderPass*>& render_passes() const noexcept
+    {
+        return render_passes_;
+    }
+
     void set_scene(Scene* scene) noexcept;
     void set_camera(Camera* camera) noexcept { camera_ = camera; }
     [[nodiscard]] Scene* scene() const noexcept { return scene_; }

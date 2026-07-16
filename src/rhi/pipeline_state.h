@@ -24,7 +24,7 @@ struct RasterState {
 
     static RasterState Default()
     {
-        RasterState state;
+        RasterState state{};
         state.cull_mode = CullingMode::BACK;
         state.front_face = false;// Counter-clockwise
         state.depth_bias = false;
@@ -57,7 +57,7 @@ struct BlendState {
 
     static BlendState Opaque()
     {
-        BlendState state;
+        BlendState state{};
         state.srccolorblend_factor = BlendFunction::ONE;
         state.dstcolorblend_factor = BlendFunction::ZERO;
         state.srcalphablend_factor = BlendFunction::ONE;
@@ -69,7 +69,7 @@ struct BlendState {
     }
 
     static BlendState AlphaBlend() {
-        BlendState state;
+        BlendState state{};
         state.srccolorblend_factor = BlendFunction::SRC_ALPHA;
         state.dstcolorblend_factor = BlendFunction::ONE_MINUS_SRC_ALPHA;
         state.srcalphablend_factor = BlendFunction::SRC_ALPHA;
@@ -105,7 +105,7 @@ struct DepthStencilState {
     int32_t padding : 25;
 
     static DepthStencilState Default() {
-        DepthStencilState state;
+        DepthStencilState state{};
         state.depth_test_enable = true;
         state.depth_write_enable = true;
         state.depth_compare_op = SamplerCompareFunc::L;
@@ -183,19 +183,82 @@ handle_ty shaders[MAX_SHADER_STAGE];
     bool operator==(const PipelineState &other) const {
         return !(*this != other);
     }
+
+    [[nodiscard]] static PipelineState MakeGraphicsDefault(
+        handle_ty vertex_shader,
+        handle_ty pixel_shader) noexcept {
+        PipelineState state{};
+        state.shaders[0] = vertex_shader;
+        state.shaders[1] = pixel_shader;
+        state.descriptorset_layout = InvalidUI64;
+        state.raster_state = RasterState::Default();
+        state.blend_state = BlendState::Opaque();
+        state.depth_stencil_state = DepthStencilState::Default();
+        state.primitive_type = PrimitiveType::TRIANGLES;
+        return state;
+    }
+
+    // Canonical key for PSO caches: copies only compared fields into a zero-initialized state.
+    [[nodiscard]] PipelineState ForCacheKey() const noexcept {
+        PipelineState key{};
+        key.shaders[0] = shaders[0];
+        key.shaders[1] = shaders[1];
+        key.descriptorset_layout = descriptorset_layout;
+        key.raster_state.cull_mode = raster_state.cull_mode;
+        key.raster_state.front_face = raster_state.front_face;
+        key.raster_state.depth_bias = raster_state.depth_bias;
+        key.raster_state.depth_clamp = raster_state.depth_clamp;
+        key.blend_state.srccolorblend_factor = blend_state.srccolorblend_factor;
+        key.blend_state.dstcolorblend_factor = blend_state.dstcolorblend_factor;
+        key.blend_state.srcalphablend_factor = blend_state.srcalphablend_factor;
+        key.blend_state.dstalphablend_factor = blend_state.dstalphablend_factor;
+        key.blend_state.colorBlendOp = blend_state.colorBlendOp;
+        key.blend_state.alphaBlendOp = blend_state.alphaBlendOp;
+        key.blend_state.color_mask = blend_state.color_mask;
+        key.blend_state.blend_enable = blend_state.blend_enable;
+        key.depth_stencil_state.depth_test_enable = depth_stencil_state.depth_test_enable;
+        key.depth_stencil_state.depth_write_enable = depth_stencil_state.depth_write_enable;
+        key.depth_stencil_state.depth_compare_op = depth_stencil_state.depth_compare_op;
+        key.depth_stencil_state.depth_bounds_test_enable = depth_stencil_state.depth_bounds_test_enable;
+        key.depth_stencil_state.stencil_test_enable = depth_stencil_state.stencil_test_enable;
+        key.multiple_sample_state.sample_count = multiple_sample_state.sample_count;
+        key.multiple_sample_state.alpha_to_coverage_enable = multiple_sample_state.alpha_to_coverage_enable;
+        key.multiple_sample_state.alpha_to_one_enable = multiple_sample_state.alpha_to_one_enable;
+        key.multiple_sample_state.sample_shading_enable = multiple_sample_state.sample_shading_enable;
+        key.primitive_type = primitive_type;
+        return key;
+    }
 };
 
 struct PipelineStateHash {
     size_t operator()(const PipelineState& state) const noexcept {
+        const PipelineState key = state.ForCacheKey();
         size_t hash = 0;
-        hash_combine(hash, state.shaders[0]);
-        hash_combine(hash, state.shaders[1]);
-        hash_combine(hash, state.descriptorset_layout);
-        hash_combine(hash, *reinterpret_cast<const uint32_t*>(&state.raster_state));
-        hash_combine(hash, *reinterpret_cast<const uint64_t*>(&state.blend_state));
-        hash_combine(hash, *reinterpret_cast<const uint32_t*>(&state.depth_stencil_state));
-        hash_combine(hash, *reinterpret_cast<const uint32_t*>(&state.multiple_sample_state));
-        hash_combine(hash, static_cast<uint32_t>(state.primitive_type));
+        hash_combine(hash, key.shaders[0]);
+        hash_combine(hash, key.shaders[1]);
+        hash_combine(hash, key.descriptorset_layout);
+        hash_combine(hash, static_cast<uint32_t>(key.raster_state.cull_mode));
+        hash_combine(hash, static_cast<uint32_t>(key.raster_state.front_face));
+        hash_combine(hash, static_cast<uint32_t>(key.raster_state.depth_bias));
+        hash_combine(hash, static_cast<uint32_t>(key.raster_state.depth_clamp));
+        hash_combine(hash, static_cast<uint32_t>(key.blend_state.srccolorblend_factor));
+        hash_combine(hash, static_cast<uint32_t>(key.blend_state.dstcolorblend_factor));
+        hash_combine(hash, static_cast<uint32_t>(key.blend_state.srcalphablend_factor));
+        hash_combine(hash, static_cast<uint32_t>(key.blend_state.dstalphablend_factor));
+        hash_combine(hash, static_cast<uint32_t>(key.blend_state.colorBlendOp));
+        hash_combine(hash, static_cast<uint32_t>(key.blend_state.alphaBlendOp));
+        hash_combine(hash, static_cast<uint32_t>(key.blend_state.color_mask));
+        hash_combine(hash, static_cast<uint32_t>(key.blend_state.blend_enable));
+        hash_combine(hash, static_cast<uint32_t>(key.depth_stencil_state.depth_test_enable));
+        hash_combine(hash, static_cast<uint32_t>(key.depth_stencil_state.depth_write_enable));
+        hash_combine(hash, static_cast<uint32_t>(key.depth_stencil_state.depth_compare_op));
+        hash_combine(hash, static_cast<uint32_t>(key.depth_stencil_state.depth_bounds_test_enable));
+        hash_combine(hash, static_cast<uint32_t>(key.depth_stencil_state.stencil_test_enable));
+        hash_combine(hash, static_cast<uint32_t>(key.multiple_sample_state.sample_count));
+        hash_combine(hash, static_cast<uint32_t>(key.multiple_sample_state.alpha_to_coverage_enable));
+        hash_combine(hash, static_cast<uint32_t>(key.multiple_sample_state.alpha_to_one_enable));
+        hash_combine(hash, static_cast<uint32_t>(key.multiple_sample_state.sample_shading_enable));
+        hash_combine(hash, static_cast<uint32_t>(key.primitive_type));
         return hash;
     }
 };

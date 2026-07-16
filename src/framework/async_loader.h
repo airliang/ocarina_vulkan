@@ -3,24 +3,27 @@
 #include "core/header.h"
 #include "core/stl.h"
 #include "ext/enkiTS/src/TaskScheduler.h"
-#include "shader_compile_task.h"
+#include "pipeline_compile_task.h"
 
 namespace ocarina {
 
 class Device;
 class LoadingProgressListener;
+class RHIRenderPass;
 
-/// Worker-thread loader: optionally compiles shaders in parallel, then runs load().
+/// Worker-thread loader: compiles pipelines (shaders → layouts → PSO), then runs load().
 class AsyncLoader : public enki::ITaskSet {
 public:
     AsyncLoader(
         enki::TaskScheduler* scheduler,
         Device* device,
-        std::vector<ShaderCompileTask::Entry>* shader_entries,
+        std::vector<PipelineCompileTask::Entry>* pipeline_entries,
+        RHIRenderPass* target_render_pass = nullptr,
         LoadingProgressListener* progress_listener = nullptr)
         : scheduler_(scheduler),
           device_(device),
-          shader_entries_(shader_entries),
+          pipeline_entries_(pipeline_entries),
+          target_render_pass_(target_render_pass),
           progress_listener_(progress_listener)
     {
         m_SetSize = 1;
@@ -30,12 +33,14 @@ public:
     AsyncLoader(
         enki::TaskScheduler* scheduler,
         Device* device,
-        std::vector<ShaderCompileTask::Entry>* shader_entries,
+        std::vector<PipelineCompileTask::Entry>* pipeline_entries,
         ocarina::function<void(Device*)> task,
+        RHIRenderPass* target_render_pass = nullptr,
         LoadingProgressListener* progress_listener = nullptr)
         : scheduler_(scheduler),
           device_(device),
-          shader_entries_(shader_entries),
+          pipeline_entries_(pipeline_entries),
+          target_render_pass_(target_render_pass),
           progress_listener_(progress_listener),
           task_(std::move(task))
     {
@@ -69,19 +74,39 @@ public:
         complete_callback_ = std::move(complete_callback);
     }
 
+    // One compile task per target (Entry + render pass). Preferred over target_render_pass_.
+    void set_compile_targets(std::vector<PipelineCompileTarget> targets) noexcept
+    {
+        compile_targets_ = std::move(targets);
+    }
+
+    void set_target_render_pass(RHIRenderPass* render_pass) noexcept
+    {
+        target_render_pass_ = render_pass;
+    }
+
+    [[nodiscard]] RHIRenderPass* target_render_pass() const noexcept
+    {
+        return target_render_pass_;
+    }
+
     [[nodiscard]] uint64_t execute_thread_id() const noexcept { return execute_thread_id_; }
 
 protected:
     virtual void load(Device* device) { (void)device; }
 
-    /// Extra loading steps after shader compilation (e.g. glTF scene items).
+    /// Extra loading steps after pipeline compilation (e.g. glTF scene items).
     [[nodiscard]] virtual uint32_t count_load_progress_steps() { return 0; }
 
-    void run_shader_compile_task() noexcept;
+    void run_pipeline_compile_tasks() noexcept;
+    [[nodiscard]] std::vector<PipelineCompileTarget> build_compile_targets() const noexcept;
+    [[nodiscard]] uint32_t count_pending_shader_steps() const noexcept;
 
     enki::TaskScheduler* scheduler_ = nullptr;
     Device* device_ = nullptr;
-    std::vector<ShaderCompileTask::Entry>* shader_entries_ = nullptr;
+    std::vector<PipelineCompileTask::Entry>* pipeline_entries_ = nullptr;
+    std::vector<PipelineCompileTarget> compile_targets_;
+    RHIRenderPass* target_render_pass_ = nullptr;
     LoadingProgressListener* progress_listener_ = nullptr;
 
 private:

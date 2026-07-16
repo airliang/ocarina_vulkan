@@ -1,5 +1,6 @@
 #include "render_task.h"
 #include "renderer.h"
+#include "pipeline_manager.h"
 #include "enki_task_debug.h"
 #include "camera.h"
 #include "rhi/device.h"
@@ -82,6 +83,9 @@ void RenderTask::Execute() {
 }
 
 void RenderTask::render_one_frame() {
+    // Kick pending PSO creates first so workers can compile while we cull / update components.
+    PipelineManager::instance().update();
+
     if (renderer_.camera_ != nullptr) {
         renderer_.camera_->update(dt_);
     }
@@ -92,6 +96,8 @@ void RenderTask::render_one_frame() {
 
     if (renderer_.render) {
         renderer_.render(dt_);
+        // Catch any PSOs enqueued during a custom render path.
+        PipelineManager::instance().update();
         return;
     }
 
@@ -114,6 +120,10 @@ void RenderTask::execute_default_render_path() {
     device->execute_command_buffers(&cmd, 1);
     device->release_command_buffer(cmd);
     device->end_frame();
+
+    // Dispatch PSOs enqueued during populate_render_pass_queues this frame.
+    // Creation overlaps with GPU work / next frame; we never wait here.
+    PipelineManager::instance().update();
 }
 
 }// namespace ocarina

@@ -2,6 +2,7 @@
 #include "core/hash.h"
 #include "bindless_texture_registry.h"
 #include "entity_component_system.h"
+#include "pipeline_manager.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/device.h"
 #include "rhi/shader_base.h"
@@ -86,19 +87,14 @@ uint32_t Material::find_max_descriptor_set_index(
 }
 
 Material::Material(Device* device, handle_ty vertex_shader, handle_ty pixel_shader) : device_(device) {
-    pipeline_state_.shaders[0] = vertex_shader;
-    pipeline_state_.shaders[1] = pixel_shader;
-    pipeline_state_.descriptorset_layout = InvalidUI64;
-    pipeline_state_.raster_state = RasterState::Default();
-    pipeline_state_.blend_state = BlendState::Opaque();
-    pipeline_state_.depth_stencil_state = DepthStencilState::Default();
-    pipeline_state_.primitive_type = PrimitiveType::TRIANGLES;
+    pipeline_state_ = PipelineState::MakeGraphicsDefault(vertex_shader, pixel_shader);
 
-    void* shaders[2] = {
-        reinterpret_cast<void*>(vertex_shader),
-        reinterpret_cast<void*>(pixel_shader)
-    };
-    descriptor_set_layouts_ = device_->create_descriptor_set_layout(shaders, 2);
+    // Descriptor set layouts / pipeline layout are created in PipelineCompileTask.
+    if (RHIPipelineLayout* pipeline_layout =
+            PipelineManager::instance().get_pipeline_layout(pipeline_state_.shaders)) {
+        descriptor_set_layouts_ = pipeline_layout->descriptor_set_layouts_;
+    }
+
     init_material_properties(pixel_shader);
     create_global_descriptor_sets();
     create_material_descriptor_set();
