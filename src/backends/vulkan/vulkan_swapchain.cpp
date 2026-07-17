@@ -28,6 +28,7 @@ void VulkanSwapchain::create_surface(VkInstance instance, uint64_t window_handle
 
 void VulkanSwapchain::create_swapchain(const SwapChainCreation &creation, VulkanDevice *vulkan_device) {
     vulkan_device_ = vulkan_device;
+    creation_ = creation;
     VkDevice device = vulkan_device->logicalDevice();
     VkPhysicalDevice physicalDevice = vulkan_device->physicalDevice();
     // Store the current swap chain handle so we can use it later on to ease up recreation
@@ -37,14 +38,6 @@ void VulkanSwapchain::create_swapchain(const SwapChainCreation &creation, Vulkan
     VkSurfaceCapabilitiesKHR surfCaps;
     VK_CHECK_RESULT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface_, &surfCaps));
 
-    // Get available present modes
-    uint32_t presentModeCount;
-    VK_CHECK_RESULT(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface_, &presentModeCount, NULL));
-    assert(presentModeCount > 0);
-
-    std::vector<VkPresentModeKHR> presentModes(presentModeCount);
-    VK_CHECK_RESULT(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface_, &presentModeCount, presentModes.data()));
-
     VkExtent2D swapchainExtent = {};
     // If width (and height) equals the special value 0xFFFFFFFF, the size of the surface will be set by the swapchain
     if (surfCaps.currentExtent.width == UINT32_MAX) {
@@ -53,6 +46,18 @@ void VulkanSwapchain::create_swapchain(const SwapChainCreation &creation, Vulkan
     } else {
         // If the surface size is defined, the swap chain size must match
         swapchainExtent = surfCaps.currentExtent;
+    }
+
+    // Minimized window: surface reports 0x0 — do not create an invalid swapchain.
+    if (swapchainExtent.width == 0 || swapchainExtent.height == 0) {
+        if (oldSwapchain != VK_NULL_HANDLE) {
+            release_backbuffers();
+            release_depth_stencil();
+            vkDestroySwapchainKHR(device, oldSwapchain, nullptr);
+            swapchain_ = VK_NULL_HANDLE;
+        }
+        resolution_ = make_uint2(0u, 0u);
+        return;
     }
 
     swapchainExtent.width = std::clamp(
@@ -143,8 +148,45 @@ void VulkanSwapchain::create_swapchain(const SwapChainCreation &creation, Vulkan
     }
 
     resolution_ = make_uint2(swapchainExtent.width, swapchainExtent.height);
+    creation_.width = swapchainExtent.width;
+    creation_.height = swapchainExtent.height;
     setup_backbuffers(swapchainCI);
+    release_depth_stencil();
     setup_depth_stencil();
+}
+
+bool VulkanSwapchain::query_surface_extent(uint32_t& width, uint32_t& height) const {
+    if (vulkan_device_ == nullptr || surface_ == VK_NULL_HANDLE) {
+        width = 0;
+        height = 0;
+        return false;
+    }
+
+    VkSurfaceCapabilitiesKHR surfCaps{};
+    const VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+        vulkan_device_->physicalDevice(), surface_, &surfCaps);
+    if (result != VK_SUCCESS) {
+        width = 0;
+        height = 0;
+        return false;
+    }
+
+    if (surfCaps.currentExtent.width == UINT32_MAX) {
+        width = std::max(creation_.width, 1u);
+        height = std::max(creation_.height, 1u);
+    } else {
+        width = surfCaps.currentExtent.width;
+        height = surfCaps.currentExtent.height;
+    }
+
+    return width > 0 && height > 0;
+}
+
+bool VulkanSwapchain::recreate_swapchain(uint32_t width, uint32_t height) {
+    creation_.width = std::max(width, 1u);
+    creation_.height = std::max(height, 1u);
+    create_swapchain(creation_, vulkan_device_);
+    return is_valid();
 }
 
 void VulkanSwapchain::release()

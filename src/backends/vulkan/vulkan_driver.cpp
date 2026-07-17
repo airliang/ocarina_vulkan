@@ -104,6 +104,12 @@ VulkanShader* VulkanDriver::get_shader(handle_ty shader) const
 
 void VulkanDriver::setup_frame_buffer()
 {
+    if (vulkan_device_->supports_dynamic_rendering()) {
+        renderpass_framebuffer = VK_NULL_HANDLE;
+        frame_buffers.clear();
+        return;
+    }
+
     VulkanSwapchain *swapchain = vulkan_device_->get_swapchain();
     uint2 resolution = swapchain->resolution();
 
@@ -252,10 +258,15 @@ void VulkanDriver::release_frame_buffer()
 {
     if (renderpass_framebuffer != VK_NULL_HANDLE) {
         vkDestroyRenderPass(device(), renderpass_framebuffer, nullptr);
+        renderpass_framebuffer = VK_NULL_HANDLE;
     }
     for (uint32_t i = 0; i < frame_buffers.size(); i++) {
-        vkDestroyFramebuffer(device(), frame_buffers[i], nullptr);
+        if (frame_buffers[i] != VK_NULL_HANDLE) {
+            vkDestroyFramebuffer(device(), frame_buffers[i], nullptr);
+            frame_buffers[i] = VK_NULL_HANDLE;
+        }
     }
+    frame_buffers.clear();
 }
 
 void VulkanDriver::create_command_pool()
@@ -407,9 +418,211 @@ void VulkanDriver::destroy_frame_sync()
     frame_sync_.clear();
 }
 
-void VulkanDriver::window_resize()
+void VulkanDriver::destroy_swapchain_framebuffers()
 {
+    for (uint32_t i = 0; i < frame_buffers.size(); i++) {
+        if (frame_buffers[i] != VK_NULL_HANDLE) {
+            vkDestroyFramebuffer(device(), frame_buffers[i], nullptr);
+            frame_buffers[i] = VK_NULL_HANDLE;
+        }
+    }
+    frame_buffers.clear();
+}
 
+void VulkanDriver::create_swapchain_framebuffers()
+{
+    if (vulkan_device_->supports_dynamic_rendering()) {
+        frame_buffers.clear();
+        return;
+    }
+
+    VulkanSwapchain* swapchain = vulkan_device_->get_swapchain();
+    if (!swapchain->is_valid() || renderpass_framebuffer == VK_NULL_HANDLE) {
+        return;
+    }
+
+    const uint2 resolution = swapchain->resolution();
+    VkImageView imageview_attachments[2];
+    VulkanSwapchain::DepthStencil depth_stencil = swapchain->get_depth_stencil();
+    imageview_attachments[1] = depth_stencil.view;
+
+    VkFramebufferCreateInfo frameBufferCreateInfo = {};
+    frameBufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    frameBufferCreateInfo.pNext = NULL;
+    frameBufferCreateInfo.renderPass = renderpass_framebuffer;
+    frameBufferCreateInfo.attachmentCount = 2;
+    frameBufferCreateInfo.pAttachments = imageview_attachments;
+    frameBufferCreateInfo.width = resolution.x;
+    frameBufferCreateInfo.height = resolution.y;
+    frameBufferCreateInfo.layers = 1;
+
+    frame_buffers.resize(swapchain->backbuffer_size());
+    for (uint32_t i = 0; i < frame_buffers.size(); i++) {
+        imageview_attachments[0] = swapchain->get_swapchain_buffer(i).imageView_;
+        VK_CHECK_RESULT(vkCreateFramebuffer(device(), &frameBufferCreateInfo, nullptr, &frame_buffers[i]));
+    }
+}
+
+void VulkanDriver::update_swapchain_render_pass_extents()
+{
+    VulkanSwapchain* swapchain = vulkan_device_->get_swapchain();
+    if (swapchain == nullptr || !swapchain->is_valid()) {
+        return;
+    }
+
+    const uint2 extent = swapchain->resolution();
+    for (VulkanRenderPass* render_pass : render_passes_) {
+        if (render_pass != nullptr) {
+            render_pass->update_swapchain_extent(extent);
+        }
+    }
+}
+
+bool VulkanDriver::recreate_swapchain()
+{
+    vulkan_device_->wait_idle();
+
+    destroy_swapchain_framebuffers();
+
+    VulkanSwapchain* swapchain = vulkan_device_->get_swapchain();
+    uint32_t width = 0;
+    uint32_t height = 0;
+    (void)swapchain->query_surface_extent(width, height);
+
+    const bool ok = swapchain->recreate_swapchain(width, height);
+    if (!ok) {
+        frame_acquired_ = false;
+        return false;
+    }
+
+    create_swapchain_framebuffers();
+    update_swapchain_render_pass_extents();
+    return true;
+}
+
+bool VulkanDriver::begin_frame()
+{
+    frame_acquired_ = false;
+
+    VulkanSwapchain* swapchain = vulkan_device_->get_swapchain();
+    if (!swapchain->is_valid()) {
+        if (!recreate_swapchain()) {
+            return false;
+        }
+    }
+
+#if OCARINA_VULKAN_FRAME_SYNC_TIMELINE
+    // Wait for an older in-flight frame before acquiring. Frame number is
+    // incremented only after a successful acquire so skipped frames cannot
+    // leave the timeline semaphore unsignaled.
+    const uint64_t upcoming_frame = frame_timeline_sync_.frame_number + 1;
+    if (frame_timeline_sync_.timeline_semaphore != VK_NULL_HANDLE &&
+        upcoming_frame > frames_in_flight_) {
+        const uint64_t wait_value = upcoming_frame - frames_in_flight_;
+        VkSemaphoreWaitInfo wait_info{};
+        wait_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
+        wait_info.semaphoreCount = 1;
+        wait_info.pSemaphores = &frame_timeline_sync_.timeline_semaphore;
+        wait_info.pValues = &wait_value;
+        VK_CHECK_RESULT(vkWaitSemaphores(device(), &wait_info, UINT64_MAX));
+    }
+    const uint32_t slot = static_cast<uint32_t>(upcoming_frame % frames_in_flight_);
+#else
+    FrameSync& frame = frame_sync_[current_frame_];
+    VK_CHECK_RESULT(vkWaitForFences(device(), 1, &frame.in_flight_fence, VK_TRUE, UINT64_MAX));
+    const uint32_t slot = current_frame_;
+#endif
+
+    // Resolve GPU timestamp for the last time we used this frame slot.
+    if (gpu_timestamp_query_pool_ != VK_NULL_HANDLE) {
+        const uint32_t query_base = slot * 2;
+        if (slot < gpu_timestamp_written_.size() && gpu_timestamp_written_[slot] != 0u) {
+            uint64_t timestamps[2] = {0, 0};
+            const VkResult qr = vkGetQueryPoolResults(
+                device(),
+                gpu_timestamp_query_pool_,
+                query_base,
+                2,
+                sizeof(timestamps),
+                timestamps,
+                sizeof(uint64_t),
+                VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+            if (qr == VK_SUCCESS) {
+                const uint64_t delta = (timestamps[1] > timestamps[0]) ? (timestamps[1] - timestamps[0]) : 0;
+                const double ns = static_cast<double>(delta) * gpu_timestamp_period_ns_;
+                gpu_frame_time_ms_ = ns * 1e-6;
+            }
+            gpu_timestamp_written_[slot] = 0u;
+        }
+    }
+
+    VkResult result = swapchain->aquire_next_image(frame_sync_[slot].image_available, &current_buffer_);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+        if (!recreate_swapchain()) {
+            return false;
+        }
+        // Skip this frame after recreation; next frame will acquire cleanly.
+        return false;
+    }
+    if (result != VK_SUCCESS) {
+        VK_CHECK_RESULT(result);
+        return false;
+    }
+
+#if OCARINA_VULKAN_FRAME_SYNC_TIMELINE
+    ++frame_timeline_sync_.frame_number;
+#else
+    VK_CHECK_RESULT(vkResetFences(device(), 1, &frame_sync_[current_frame_].in_flight_fence));
+#endif
+    frame_acquired_ = true;
+    return true;
+}
+
+void VulkanDriver::write_gpu_timestamp_begin(VkCommandBuffer cmd) noexcept {
+    if (gpu_timestamp_query_pool_ == VK_NULL_HANDLE) {
+        return;
+    }
+    const uint32_t query_base = frame_slot() * 2;
+    // Reset both queries for this frame slot before writing timestamps (no hostQueryReset needed).
+    vkCmdResetQueryPool(cmd, gpu_timestamp_query_pool_, query_base, 2);
+    const uint32_t query = query_base + 0;
+    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpu_timestamp_query_pool_, query);
+}
+
+void VulkanDriver::write_gpu_timestamp_end(VkCommandBuffer cmd) noexcept {
+    if (gpu_timestamp_query_pool_ == VK_NULL_HANDLE) {
+        return;
+    }
+    const uint32_t slot = frame_slot();
+    const uint32_t query = slot * 2 + 1;
+    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_query_pool_, query);
+    if (slot < gpu_timestamp_written_.size()) {
+        gpu_timestamp_written_[slot] = 1u;
+    }
+}
+
+void VulkanDriver::end_frame()
+{
+    if (!frame_acquired_) {
+#if !OCARINA_VULKAN_FRAME_SYNC_TIMELINE
+        current_frame_ = (current_frame_ + 1) % frames_in_flight_;
+#endif
+        return;
+    }
+
+    const VkResult result = vulkan_device_->get_swapchain()->queue_present(
+        graphics_queue, current_buffer_, frame_sync_[frame_slot()].render_finished);
+    frame_acquired_ = false;
+
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+        (void)recreate_swapchain();
+    } else if (result != VK_SUCCESS) {
+        VK_CHECK_RESULT(result);
+    }
+
+#if !OCARINA_VULKAN_FRAME_SYNC_TIMELINE
+    current_frame_ = (current_frame_ + 1) % frames_in_flight_;
+#endif
 }
 
 void VulkanDriver::flush_command_buffer(VkCommandBuffer cmd)
@@ -488,93 +701,6 @@ VkSemaphore VulkanDriver::get_present_complete_semaphore() const
 VkSemaphore VulkanDriver::get_render_complete_semaphore() const
 {
     return frame_sync_[frame_slot()].render_finished;
-}
-
-void VulkanDriver::begin_frame()
-{
-#if OCARINA_VULKAN_FRAME_SYNC_TIMELINE
-    ++frame_timeline_sync_.frame_number;
-    if (frame_timeline_sync_.timeline_semaphore != VK_NULL_HANDLE &&
-        frame_timeline_sync_.frame_number > frames_in_flight_) {
-        const uint64_t wait_value = frame_timeline_sync_.frame_number - frames_in_flight_;
-        VkSemaphoreWaitInfo wait_info{};
-        wait_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
-        wait_info.semaphoreCount = 1;
-        wait_info.pSemaphores = &frame_timeline_sync_.timeline_semaphore;
-        wait_info.pValues = &wait_value;
-        VK_CHECK_RESULT(vkWaitSemaphores(device(), &wait_info, UINT64_MAX));
-    }
-#else
-    FrameSync& frame = frame_sync_[current_frame_];
-    VK_CHECK_RESULT(vkWaitForFences(device(), 1, &frame.in_flight_fence, VK_TRUE, UINT64_MAX));
-#endif
-
-    const uint32_t slot = frame_slot();
-
-    // Resolve GPU timestamp for the last time we used this frame slot.
-    if (gpu_timestamp_query_pool_ != VK_NULL_HANDLE) {
-        const uint32_t query_base = slot * 2;
-        if (slot < gpu_timestamp_written_.size() && gpu_timestamp_written_[slot] != 0u) {
-            uint64_t timestamps[2] = {0, 0};
-            const VkResult qr = vkGetQueryPoolResults(
-                device(),
-                gpu_timestamp_query_pool_,
-                query_base,
-                2,
-                sizeof(timestamps),
-                timestamps,
-                sizeof(uint64_t),
-                VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
-            if (qr == VK_SUCCESS) {
-                const uint64_t delta = (timestamps[1] > timestamps[0]) ? (timestamps[1] - timestamps[0]) : 0;
-                const double ns = static_cast<double>(delta) * gpu_timestamp_period_ns_;
-                gpu_frame_time_ms_ = ns * 1e-6;
-            }
-            gpu_timestamp_written_[slot] = 0u;
-        }
-
-        // IMPORTANT: We cannot call vkResetQueryPool() on host unless hostQueryReset is enabled.
-        // Reset is recorded into the command buffer (vkCmdResetQueryPool) right before timestamps are written.
-    }
-
-    VulkanSwapchain* swapchain = vulkan_device_->get_swapchain();
-    VkResult result = swapchain->aquire_next_image(frame_sync_[slot].image_available, &current_buffer_);
-#if !OCARINA_VULKAN_FRAME_SYNC_TIMELINE
-    VK_CHECK_RESULT(vkResetFences(device(), 1, &frame_sync_[current_frame_].in_flight_fence));
-#endif
-    VK_CHECK_RESULT(result);
-}
-
-void VulkanDriver::write_gpu_timestamp_begin(VkCommandBuffer cmd) noexcept {
-    if (gpu_timestamp_query_pool_ == VK_NULL_HANDLE) {
-        return;
-    }
-    const uint32_t query_base = frame_slot() * 2;
-    // Reset both queries for this frame slot before writing timestamps (no hostQueryReset needed).
-    vkCmdResetQueryPool(cmd, gpu_timestamp_query_pool_, query_base, 2);
-    const uint32_t query = query_base + 0;
-    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpu_timestamp_query_pool_, query);
-}
-
-void VulkanDriver::write_gpu_timestamp_end(VkCommandBuffer cmd) noexcept {
-    if (gpu_timestamp_query_pool_ == VK_NULL_HANDLE) {
-        return;
-    }
-    const uint32_t slot = frame_slot();
-    const uint32_t query = slot * 2 + 1;
-    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_query_pool_, query);
-    if (slot < gpu_timestamp_written_.size()) {
-        gpu_timestamp_written_[slot] = 1u;
-    }
-}
-
-void VulkanDriver::end_frame()
-{
-    vulkan_device_->get_swapchain()->queue_present(
-        graphics_queue, current_buffer_, frame_sync_[frame_slot()].render_finished);
-#if !OCARINA_VULKAN_FRAME_SYNC_TIMELINE
-    current_frame_ = (current_frame_ + 1) % frames_in_flight_;
-#endif
 }
 
 VulkanRenderPass* VulkanDriver::create_render_pass(const RenderPassCreation& render_pass_creation) {

@@ -67,7 +67,9 @@ public:
 
     std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(VulkanShader *shaders[], uint32_t shaders_count);
 
-    void begin_frame();
+    /// Acquire the next swapchain image. Returns false when the surface is not
+    /// drawable (minimized) or recreation failed; the caller must skip the frame.
+    [[nodiscard]] bool begin_frame();
     void end_frame();
 
     // GPU frame timing (timestamps). Returns last resolved frame GPU time in ms.
@@ -153,7 +155,10 @@ private:
     void create_command_buffers();
     void release_command_buffers();
     void initialize();
-    void window_resize();
+    [[nodiscard]] bool recreate_swapchain();
+    void destroy_swapchain_framebuffers();
+    void create_swapchain_framebuffers();
+    void update_swapchain_render_pass_extents();
     void create_internal_textures();
     void destroy_internal_textures();
     void create_frame_sync();
@@ -191,6 +196,8 @@ private:
     std::mutex command_buffer_pool_mutex_;
     // Swapchain image index from the latest acquire
     uint32_t current_buffer_ = 0;
+    // True after a successful begin_frame acquire; end_frame presents only then.
+    bool frame_acquired_ = false;
     // Ring index for per-frame CPU/GPU sync (fences, semaphores, command-buffer pools)
     uint32_t current_frame_ = 0;
     uint32_t frames_in_flight_ = 0;

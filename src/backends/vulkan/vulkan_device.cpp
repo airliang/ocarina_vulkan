@@ -285,13 +285,9 @@ void VulkanDevice::create_logical_device()
         next = &indexing_features_;
     }
 
-    VkPhysicalDeviceVulkan13Features features13{};
-    if (m_deviceProperties.apiVersion >= VK_API_VERSION_1_3) {
-        features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-        features13.synchronization2 = VK_TRUE;
-        features13.dynamicRendering = VK_TRUE;
-        features13.pNext = next;
-        next = &features13;
+    if (supports_dynamic_rendering_) {
+        vulkan13_features_.pNext = next;
+        next = &vulkan13_features_;
     }
 
     VkDeviceCreateInfo info{};
@@ -310,6 +306,26 @@ void VulkanDevice::create_logical_device()
 }
 
 void VulkanDevice::get_enable_features() {
+    supports_dynamic_rendering_ = false;
+    vulkan13_features_ = {};
+
+    if (m_deviceProperties.apiVersion >= VK_API_VERSION_1_3) {
+        VkPhysicalDeviceVulkan13Features supported13{};
+        supported13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+
+        VkPhysicalDeviceFeatures2 features2{};
+        features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        features2.pNext = &supported13;
+        vkGetPhysicalDeviceFeatures2(physicalDevice_, &features2);
+
+        if (supported13.dynamicRendering) {
+            supports_dynamic_rendering_ = true;
+            vulkan13_features_.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+            vulkan13_features_.dynamicRendering = VK_TRUE;
+            vulkan13_features_.synchronization2 = supported13.synchronization2 ? VK_TRUE : VK_FALSE;
+        }
+    }
+
     if (m_deviceProperties.apiVersion >= VK_API_VERSION_1_2) {
         VkPhysicalDeviceVulkan12Features supported{};
         supported.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
@@ -387,9 +403,9 @@ IndexBuffer* VulkanDevice::create_index_buffer(const void* initial_data, uint32_
     return index_buffer;
 }
 
-void VulkanDevice::begin_frame() noexcept
+bool VulkanDevice::begin_frame() noexcept
 {
-    VulkanDriver::instance().begin_frame();
+    return VulkanDriver::instance().begin_frame();
 }
 
 void VulkanDevice::end_frame() noexcept
@@ -449,7 +465,11 @@ RHIPipeline *VulkanDevice::create_pipeline(
     RHIRenderPass *render_pass,
     RHIPipelineLayout* pipeline_layout) noexcept {
     VulkanRenderPass *vulkan_render_pass = static_cast<VulkanRenderPass *>(render_pass);
-    if (vulkan_render_pass->is_offscreen_renderpass()) {
+    const bool use_dynamic_rendering =
+        supports_dynamic_rendering_ &&
+        (vulkan_render_pass->is_offscreen_renderpass() || vulkan_render_pass->is_swapchain_renderpass());
+
+    if (use_dynamic_rendering) {
         DynamicRenderingFormats dynamic_formats{};
         dynamic_formats.color_attachment_count = vulkan_render_pass->color_attachment_format_count();
         for (uint32_t i = 0; i < dynamic_formats.color_attachment_count; ++i) {
@@ -611,8 +631,17 @@ void VulkanDevice::get_imgui_creation(ImguiCreation& imgui_creation) noexcept
     imgui_creation.pipeline_cache_ = reinterpret_cast<handle_ty>(VK_NULL_HANDLE);
     imgui_creation.queue_ = reinterpret_cast<handle_ty>(VulkanDriver::instance().get_graphics_queue());
     imgui_creation.descriptor_pool_ = reinterpret_cast<handle_ty>(VulkanDriver::instance().get_imgui_descriptor_pool());
-    imgui_creation.swapchain_render_pass_ = reinterpret_cast<handle_ty>(VulkanDriver::instance().get_framebuffer_render_pass());
     imgui_creation.surface_ = reinterpret_cast<handle_ty>(m_swapChain.get_surface());
+    imgui_creation.api_version_ = m_deviceProperties.apiVersion;
+    imgui_creation.use_dynamic_rendering_ = supports_dynamic_rendering_;
+    imgui_creation.color_attachment_format_ = static_cast<uint32_t>(m_swapChain.color_format());
+    imgui_creation.depth_attachment_format_ = static_cast<uint32_t>(m_swapChain.depth_format());
+    if (supports_dynamic_rendering_) {
+        imgui_creation.swapchain_render_pass_ = reinterpret_cast<handle_ty>(VK_NULL_HANDLE);
+    } else {
+        imgui_creation.swapchain_render_pass_ =
+            reinterpret_cast<handle_ty>(VulkanDriver::instance().get_framebuffer_render_pass());
+    }
 }
 
 CommandBuffer VulkanDevice::get_command_buffer() noexcept

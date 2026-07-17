@@ -24,6 +24,12 @@ struct OC_RHI_API ImguiCreation {
     handle_ty surface_;
     void* check_VkResult_fn_;
     void* allocator_callback_;
+    /// When true, ImGui uses dynamic rendering (Vulkan 1.3+) instead of VkRenderPass.
+    bool use_dynamic_rendering_ = false;
+    /// VkFormat values used when use_dynamic_rendering_ is true.
+    uint32_t color_attachment_format_ = 0;
+    uint32_t depth_attachment_format_ = 0;
+    uint32_t api_version_ = 0;
 };
 
 }// namespace ocarina

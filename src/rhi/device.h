@@ -60,7 +60,7 @@ public:
         [[nodiscard]] RHIContext *context() noexcept { return context_; }
         virtual VertexBuffer *create_vertex_buffer() noexcept = 0;
         virtual IndexBuffer *create_index_buffer(const void *initial_data, uint32_t indices_count, bool bit16) noexcept = 0;
-        virtual void begin_frame() noexcept = 0;
+        virtual bool begin_frame() noexcept = 0;
         virtual void end_frame() noexcept = 0;
         virtual void wait_idle() noexcept {}
         virtual RHIRenderPass *create_render_pass(const RenderPassCreation &render_pass_creation) noexcept = 0;
@@ -95,6 +95,8 @@ public:
         virtual Fence create_fence() noexcept = 0;
         // Returns last completed frame GPU time in milliseconds (0 if unsupported).
         [[nodiscard]] virtual double gpu_frame_time_ms() const noexcept { return 0.0; }
+        /// True when the device was created with Vulkan 1.3 dynamicRendering enabled.
+        [[nodiscard]] virtual bool supports_dynamic_rendering() const noexcept { return false; }
     };
 
     using Creator = Device::Impl *(RHIContext *);
@@ -153,8 +155,8 @@ public:
         return impl_->create_index_buffer(initial_data, indices_count, bit16);
     }
 
-    void begin_frame() {
-        impl_->begin_frame();
+    [[nodiscard]] bool begin_frame() {
+        return impl_->begin_frame();
     }
 
     void end_frame() {
@@ -235,6 +237,10 @@ public:
 
     [[nodiscard]] double gpu_frame_time_ms() const noexcept {
         return impl_->gpu_frame_time_ms();
+    }
+
+    [[nodiscard]] bool supports_dynamic_rendering() const noexcept {
+        return impl_->supports_dynamic_rendering();
     }
 
     Device::Impl* impl() noexcept { return impl_.get(); }

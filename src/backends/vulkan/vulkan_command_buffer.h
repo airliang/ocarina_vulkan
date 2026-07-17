@@ -45,6 +45,8 @@ public:
     void copy_image(VulkanBuffer* src, VulkanTexture* dst, const VkBufferImageCopy* regions, uint32_t region_count);
     /// Records vkCmdPipelineBarrier for image layout transitions used by texture upload and rendering.
     void image_layout_barrier(VulkanTexture* texture, VkImageLayout old_layout, VkImageLayout new_layout);
+    void image_layout_barrier(VkImage image, VkImageAspectFlags aspect_mask, uint32_t mip_levels,
+                              VkImageLayout old_layout, VkImageLayout new_layout);
     QueueType queue_type() const noexcept { return queue_type_; }
     [[nodiscard]] VkCommandPool vulkan_command_pool() const noexcept { return command_pool_; }
 private:

@@ -22,7 +22,10 @@ void LoadingImguiTask::render_loading_frame() {
         return;
     }
 
-    device->begin_frame();
+    if (!device->begin_frame()) {
+        return;
+    }
+
     CommandBuffer cmd = device->get_command_buffer();
     cmd.begin();
 

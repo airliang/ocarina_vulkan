@@ -93,6 +93,15 @@ public:
         return color_attachment_count_ == 0;
     }
 
+    void update_swapchain_extent(uint2 extent) {
+        if (!is_swapchain_renderpass()) {
+            return;
+        }
+        size_ = extent;
+        scissor_ = {0, 0, static_cast<int>(extent.x), static_cast<int>(extent.y)};
+        viewport_ = {0, 0, static_cast<float>(extent.x), static_cast<float>(extent.y)};
+    }
+
     const std::unordered_map<PipelineState, PipelineRenderQueue*, PipelineStateHash>& pipeline_render_queues() const {
         return pipeline_render_queues_;
     }

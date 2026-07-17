@@ -57,7 +57,7 @@ public:
     VertexBuffer* create_vertex_buffer() noexcept override;
     IndexBuffer* create_index_buffer(const void *initial_data, uint32_t indices_count, bool bit16) noexcept override;
     VulkanBuffer *create_vulkan_buffer(VkBufferUsageFlags usage_flags, VkMemoryPropertyFlags memory_property_flags, VkDeviceSize size, const void *data = nullptr);
-    void begin_frame() noexcept override;
+    bool begin_frame() noexcept override;
     void end_frame() noexcept override;
     void wait_idle() noexcept override;
     RHIRenderPass *create_render_pass(const RenderPassCreation &render_pass_creation) noexcept override;
@@ -107,6 +107,9 @@ public:
     void attach_swapchain_semaphores(CommandBuffer& cmd) noexcept override;
     Fence create_fence() noexcept override;
     [[nodiscard]] double gpu_frame_time_ms() const noexcept override;
+    [[nodiscard]] bool supports_dynamic_rendering() const noexcept override {
+        return supports_dynamic_rendering_;
+    }
  private:
     void init_vulkan();
     void create_logical_device();
@@ -126,7 +129,9 @@ public:
     uint32_t queueFamilyCount_ = 0;
     VkPhysicalDeviceDescriptorIndexingFeaturesEXT indexing_features_{};
     VkPhysicalDeviceVulkan12Features vulkan12_features_{};
+    VkPhysicalDeviceVulkan13Features vulkan13_features_{};
     bool support_bindless_ = false;
+    bool supports_dynamic_rendering_ = false;
 
     uint32_t getQueueFamilyIndex(uint32_t queueFlags) const;
 

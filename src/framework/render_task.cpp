@@ -107,7 +107,10 @@ void RenderTask::render_one_frame() {
 void RenderTask::execute_default_render_path() {
     Device* device = renderer_.device_;
 
-    device->begin_frame();
+    if (!device->begin_frame()) {
+        return;
+    }
+
     CommandBuffer cmd = device->get_command_buffer();
 
     record_frame_command_buffer(

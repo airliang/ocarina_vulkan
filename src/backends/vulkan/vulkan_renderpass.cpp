@@ -58,7 +58,14 @@ void VulkanRenderPass::setup_render_pass() {
         size_ = swapChain->resolution();
         scissor_ = {0, 0, static_cast<int>(size_.x), static_cast<int>(size_.y)};
         viewport_ = {0, 0, static_cast<float>(size_.x), static_cast<float>(size_.y)};
-        render_pass_ = VulkanDriver::instance().get_framebuffer_render_pass();
+        color_attachment_format_count_ = 1;
+        color_attachment_formats_[0] = swapChain->color_format();
+        depth_attachment_format_ = swapChain->depth_format();
+        if (device_->supports_dynamic_rendering()) {
+            render_pass_ = VK_NULL_HANDLE;
+        } else {
+            render_pass_ = VulkanDriver::instance().get_framebuffer_render_pass();
+        }
         return;
     }
 
