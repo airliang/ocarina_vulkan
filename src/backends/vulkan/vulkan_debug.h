@@ -13,6 +13,9 @@ namespace ocarina {
 		const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
 		void* user_data);
 
+	VkDebugUtilsMessageSeverityFlagsEXT validation_debug_message_severity();
+	VkDebugUtilsMessageTypeFlagsEXT validation_debug_message_types();
+
 	// Load debug function pointers and set debug callback
 	void setup_debugging(VkInstance instance);
 	// Clear debug callback

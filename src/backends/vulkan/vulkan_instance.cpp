@@ -4,6 +4,7 @@
 #include "rhi/device.h"
 #include "vulkan_instance.h"
 #include "util.h"
+#include "core/logging.h"
 #if defined(_WIN32)
 #include <vulkan/vulkan_win32.h>
 #endif
@@ -71,8 +72,8 @@ VulkanInstance::VulkanInstance(const InstanceCreation& instanceCreation) {
     VkDebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCI{};
     if (validation_) {
         debugUtilsMessengerCI.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-        debugUtilsMessengerCI.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-        debugUtilsMessengerCI.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
+        debugUtilsMessengerCI.messageSeverity = validation_debug_message_severity();
+        debugUtilsMessengerCI.messageType = validation_debug_message_types();
         debugUtilsMessengerCI.pfnUserCallback = debug_message_callback;
         debugUtilsMessengerCI.pNext = instanceCreateInfo.pNext;
         instanceCreateInfo.pNext = &debugUtilsMessengerCI;
@@ -98,7 +99,7 @@ VulkanInstance::VulkanInstance(const InstanceCreation& instanceCreation) {
             instanceCreateInfo.ppEnabledLayerNames = &validationLayerName;
             instanceCreateInfo.enabledLayerCount = 1;
         } else {
-            std::cerr << "Validation layer VK_LAYER_KHRONOS_validation not present, validation is disabled";
+            core::warning("Validation layer VK_LAYER_KHRONOS_validation not present, validation is disabled");
         }
     }
     if (instanceExtensions.size() > 0) {
