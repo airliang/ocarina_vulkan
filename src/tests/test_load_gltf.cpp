@@ -105,7 +105,7 @@ int main(int argc, char* argv[]) {
         display_loading_progress(*window->widgets(), &loading_progress, renderer.loading_dt());
     });
 
-    renderer.add_render_pass(render_pass);
+    renderer.pass_group(PassGroupId::UI).add_render_pass(render_pass);
 
     renderer.set_async_loader(&gltf_loader, nullptr, [&]() {
         Scene& scene = gltf_loader.get_scene();

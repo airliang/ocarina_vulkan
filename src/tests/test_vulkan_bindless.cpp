@@ -148,7 +148,7 @@ int main(int argc, char *argv[]) {
 
     renderer.set_scene(&scene);
     renderer.set_camera(&camera);
-    renderer.add_render_pass(render_pass);
+    renderer.pass_group(PassGroupId::UI).add_render_pass(render_pass);
 
     ImguiRenderer imgui_renderer(*window);
     imgui_renderer.init(device);

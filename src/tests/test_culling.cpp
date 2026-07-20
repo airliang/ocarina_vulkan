@@ -193,7 +193,7 @@ int main(int argc, char* argv[]) {
         display_loading_progress(*window->widgets(), nullptr, renderer.loading_dt());
     });
 
-    renderer.add_render_pass(render_pass);
+    renderer.pass_group(PassGroupId::UI).add_render_pass(render_pass);
 
     renderer.set_async_loader(&async_loader, nullptr, [&]() {
         if (scene == nullptr) {

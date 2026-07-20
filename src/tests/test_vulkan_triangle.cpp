@@ -13,6 +13,7 @@
 #include "framework/imgui_renderer.h"
 #include "framework/framework_ui.h"
 #include "framework/renderer.h"
+#include "framework/pass_group_id.h"
 #include "framework/primitive.h"
 #include "framework/scene.h"
 #include "rhi/descriptor_set.h"
@@ -130,7 +131,7 @@ int main(int argc, char *argv[]) {
 
     renderer.set_scene(&scene);
     renderer.set_camera(&camera);
-    renderer.add_render_pass(render_pass);
+    renderer.pass_group(PassGroupId::UI).add_render_pass(render_pass);
 
     ImguiRenderer imgui_renderer(*window);
     imgui_renderer.init(device);

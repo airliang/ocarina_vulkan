@@ -12,6 +12,8 @@
 #include "rhi/graphics_descriptions.h"
 #include "rhi/command_buffer.h"
 #include "render_task.h"
+#include "render_pass_task.h"
+#include "pass_group_id.h"
 #include "loading_progress_listener.h"
 #include "loading_imgui_task.h"
 #include "frustum.h"
@@ -31,6 +33,7 @@ class Camera;
 
 class Renderer : public concepts::Noncopyable {
     friend class RenderTask;
+    friend class RenderPassTask;
     friend class LoadingImguiTask;
 
 public:
@@ -79,27 +82,23 @@ public:
     void shutdown();
     [[nodiscard]] double dt() const noexcept { return render_task_.last_dt(); }
     [[nodiscard]] double loading_dt() const noexcept { return loading_imgui_task_.last_dt(); }
-    void add_render_pass(RHIRenderPass *render_pass)
-    {
-        render_passes_.emplace_back(render_pass);
+
+    /// Returns (and creates if missing) the RenderPassTask for the given group.
+    [[nodiscard]] RenderPassTask& pass_group(PassGroupId id) noexcept;
+    [[nodiscard]] const RenderPassTask* find_pass_group(PassGroupId id) const noexcept;
+    [[nodiscard]] bool has_pass_group(PassGroupId id) const noexcept;
+
+    [[nodiscard]] const std::map<PassGroupId, RenderPassTask>& pass_groups() const noexcept {
+        return render_pass_tasks_;
+    }
+    [[nodiscard]] std::map<PassGroupId, RenderPassTask>& pass_groups() noexcept {
+        return render_pass_tasks_;
     }
 
-    void remove_render_pass(RHIRenderPass *render_pass)
-    {
-        render_passes_.remove(render_pass);
-    }
-
-    // First registered pass (swapchain / main view). Used as the async-load PSO target
-    // when the loader does not set one explicitly.
-    [[nodiscard]] RHIRenderPass* primary_render_pass() const noexcept
-    {
-        return render_passes_.empty() ? nullptr : render_passes_.front();
-    }
-
-    [[nodiscard]] const std::list<RHIRenderPass*>& render_passes() const noexcept
-    {
-        return render_passes_;
-    }
+    /// First swapchain RHIRenderPass found, preferring PassGroupId::UI.
+    [[nodiscard]] RHIRenderPass* find_swapchain_render_pass() const noexcept;
+    /// Default PSO / async-load target: Opaque, then UI, then first non-empty group.
+    [[nodiscard]] RHIRenderPass* find_default_target_render_pass() const noexcept;
 
     void set_scene(Scene* scene) noexcept;
     void set_camera(Camera* camera) noexcept { camera_ = camera; }
@@ -142,9 +141,9 @@ private:
 
     LoadingImguiTask loading_imgui_task_;
     RenderTask render_task_;
+    std::map<PassGroupId, RenderPassTask> render_pass_tasks_;
 
 protected:
-    std::list<RHIRenderPass *> render_passes_;
     Device* device_ = nullptr;
 
     enki::TaskScheduler task_scheduler_;

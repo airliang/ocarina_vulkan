@@ -16,6 +16,7 @@
 #include "framework/imgui_renderer.h"
 #include "framework/framework_ui.h"
 #include "framework/renderer.h"
+#include "framework/pass_group_id.h"
 #include "framework/primitive.h"
 #include "framework/scene.h"
 #include "framework/entity_component_system.h"
@@ -173,8 +174,11 @@ int main(int argc, char *argv[]) {
         (void)entity_index;
         return render_pass == swapchain_pass;
     });
-    renderer.add_render_pass(offscreen_pass);
-    renderer.add_render_pass(swapchain_pass);
+
+    // Pass groups: Offscreen RT first, then UI/swapchain (opaque present + ImGui).
+    renderer.pass_group(PassGroupId::Offscreen).add_render_pass(offscreen_pass);
+    renderer.pass_group(PassGroupId::UI).add_render_pass(swapchain_pass);
+
     async_loader.set_compile_targets({
         PipelineCompileTarget{&pipeline_entries[0], offscreen_pass},
         PipelineCompileTarget{&pipeline_entries[1], swapchain_pass},

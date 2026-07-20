@@ -29,16 +29,7 @@ void LoadingImguiTask::render_loading_frame() {
     CommandBuffer cmd = device->get_command_buffer();
     cmd.begin();
 
-    RHIRenderPass* swapchain_pass = nullptr;
-    for (RHIRenderPass* render_pass : renderer_.render_passes_) {
-        if (render_pass != nullptr && render_pass->is_swapchain_renderpass()) {
-            swapchain_pass = render_pass;
-            break;
-        }
-    }
-    if (swapchain_pass == nullptr && !renderer_.render_passes_.empty()) {
-        swapchain_pass = renderer_.render_passes_.front();
-    }
+    RHIRenderPass* swapchain_pass = renderer_.find_swapchain_render_pass();
 
     if (swapchain_pass != nullptr) {
         if (swapchain_pass->is_swapchain_renderpass()) {

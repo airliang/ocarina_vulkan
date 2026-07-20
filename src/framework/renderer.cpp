@@ -86,7 +86,7 @@ Renderer::Renderer(Device *device)
 
 Renderer::~Renderer() {
     shutdown();
-    render_passes_.clear();
+    render_pass_tasks_.clear();
     ResourceManager::instance().cleanup();
 }
 
@@ -103,6 +103,65 @@ void Renderer::shutdown() {
 
 void Renderer::set_render_callback(RenderCallback cb) {
     render = cb;
+}
+
+RenderPassTask& Renderer::pass_group(PassGroupId id) noexcept {
+    auto [it, inserted] = render_pass_tasks_.try_emplace(id);
+    if (inserted) {
+        it->second.set_group_id(id);
+    }
+    return it->second;
+}
+
+const RenderPassTask* Renderer::find_pass_group(PassGroupId id) const noexcept {
+    auto it = render_pass_tasks_.find(id);
+    return it != render_pass_tasks_.end() ? &it->second : nullptr;
+}
+
+bool Renderer::has_pass_group(PassGroupId id) const noexcept {
+    return find_pass_group(id) != nullptr;
+}
+
+RHIRenderPass* Renderer::find_swapchain_render_pass() const noexcept {
+    if (const RenderPassTask* ui = find_pass_group(PassGroupId::UI)) {
+        if (RHIRenderPass* pass = ui->swapchain_render_pass()) {
+            return pass;
+        }
+    }
+    for (const auto& [id, task] : render_pass_tasks_) {
+        (void)id;
+        if (RHIRenderPass* pass = task.swapchain_render_pass()) {
+            return pass;
+        }
+    }
+    return nullptr;
+}
+
+RHIRenderPass* Renderer::find_default_target_render_pass() const noexcept {
+    static constexpr PassGroupId kPreference[] = {
+        PassGroupId::Opaque,
+        PassGroupId::UI,
+        PassGroupId::GBuffer,
+        PassGroupId::Offscreen,
+        PassGroupId::Lighting,
+        PassGroupId::Transparent,
+        PassGroupId::PostProcess,
+        PassGroupId::Shadow,
+    };
+    for (PassGroupId id : kPreference) {
+        if (const RenderPassTask* task = find_pass_group(id)) {
+            if (RHIRenderPass* pass = task->primary_render_pass()) {
+                return pass;
+            }
+        }
+    }
+    for (const auto& [id, task] : render_pass_tasks_) {
+        (void)id;
+        if (RHIRenderPass* pass = task.primary_render_pass()) {
+            return pass;
+        }
+    }
+    return nullptr;
 }
 
 void Renderer::set_scene(Scene* scene) noexcept {
@@ -335,7 +394,7 @@ void Renderer::run()
             // Render passes (swapchain and/or dynamic-rendering targets) must be
             // registered before async load so PSOs can be compiled against them.
             if (async_loader->target_render_pass() == nullptr) {
-                async_loader->set_target_render_pass(primary_render_pass());
+                async_loader->set_target_render_pass(find_default_target_render_pass());
             }
             if (loading_progress_listener_ != nullptr) {
                 async_loader->set_progress_listener(loading_progress_listener_);

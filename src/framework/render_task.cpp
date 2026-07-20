@@ -1,64 +1,16 @@
 #include "render_task.h"
 #include "renderer.h"
 #include "pipeline_manager.h"
-#include "enki_task_debug.h"
+#include "render_pass_task.h"
+#include "pass_group_id.h"
 #include "camera.h"
 #include "rhi/device.h"
 #include "rhi/command_buffer.h"
-#include "rhi/renderpass.h"
+#include "rhi/graphics_descriptions.h"
 #include "frame_resources.h"
 #include "TaskScheduler.h"
 
 namespace ocarina {
-
-namespace {
-
-void attach_swapchain_semaphores(Device* device, CommandBuffer& cmd) noexcept {
-    device->attach_swapchain_semaphores(cmd);
-}
-
-void record_render_pass(
-    Renderer& renderer,
-    Device* device,
-    CommandBuffer& cmd,
-    RHIRenderPass* render_pass,
-    const Renderer::RenderGUIImplCallback& render_gui) noexcept
-{
-    if (render_pass->is_swapchain_renderpass()) {
-        attach_swapchain_semaphores(device, cmd);
-    }
-
-    cmd.begin_render_pass(render_pass);
-    renderer.draw_render_queues(cmd, render_pass);
-
-    if (render_gui) {
-        render_gui(cmd);
-    }
-
-    cmd.end_render_pass();
-}
-
-void record_frame_command_buffer(
-    Renderer& renderer,
-    Device* device,
-    CommandBuffer& cmd,
-    const std::list<RHIRenderPass*>& render_passes,
-    const Renderer::RenderGUIImplCallback& render_gui) noexcept
-{
-    cmd.begin();
-
-    for (RHIRenderPass* render_pass : render_passes) {
-        renderer.populate_render_pass_queues(render_pass);
-
-        const Renderer::RenderGUIImplCallback& pass_render_gui =
-            render_pass->is_swapchain_renderpass() ? render_gui : Renderer::RenderGUIImplCallback{};
-        record_render_pass(renderer, device, cmd, render_pass, pass_render_gui);
-    }
-
-    cmd.end();
-}
-
-}// namespace
 
 RenderTask::RenderTask(Renderer& renderer) noexcept
     : enki::IPinnedTask(1),
@@ -111,17 +63,36 @@ void RenderTask::execute_default_render_path() {
         return;
     }
 
-    CommandBuffer cmd = device->get_command_buffer();
+    CommandBuffer recorded_cmds[MAX_COMMAND_BUFFERS_PER_SUBMIT];
+    uint32_t recorded_count = 0;
 
-    record_frame_command_buffer(
-        renderer_,
-        device,
-        cmd,
-        renderer_.render_passes_,
-        renderer_.render_gui_impl_);
+    // std::map iterates PassGroupId in numeric order (Shadow → … → UI).
+    for (auto& [group_id, record_task] : renderer_.render_pass_tasks_) {
+        if (record_task.empty()) {
+            continue;
+        }
+        if (recorded_count >= MAX_COMMAND_BUFFERS_PER_SUBMIT) {
+            break;
+        }
 
-    device->execute_command_buffers(&cmd, 1);
-    device->release_command_buffer(cmd);
+        CommandBuffer cmd = device->get_command_buffer();
+        const RenderPassGUICallback gui =
+            (group_id == PassGroupId::UI) ? renderer_.render_gui_impl_ : RenderPassGUICallback{};
+
+        record_task.configure(&renderer_, device, cmd, gui);
+        renderer_.task_scheduler_.AddTaskSetToPipe(&record_task);
+        renderer_.task_scheduler_.WaitforTask(&record_task);
+
+        recorded_cmds[recorded_count++] = cmd;
+    }
+
+    if (recorded_count > 0) {
+        device->execute_command_buffers(recorded_cmds, recorded_count);
+        for (uint32_t i = 0; i < recorded_count; ++i) {
+            device->release_command_buffer(recorded_cmds[i]);
+        }
+    }
+
     device->end_frame();
 
     // Dispatch PSOs enqueued during populate_render_pass_queues this frame.
