@@ -114,16 +114,89 @@ sequenceDiagram
 
 ---
 
-## 4. Building and Examples
+## 4. Building, glTF Scenes, and Examples
+
+### Build
 
 **Requirements:** CMake 3.x, Visual Studio 2022 (or compatible C++20 toolchain), Vulkan SDK.
 
 ```bash
 cmake -B build -G "Visual Studio 17 2022"
-cmake --build build --config Debug --target test-vulkan-triangle
+cmake --build build --config Debug --target test-asyncLoadGLTF
 ```
 
-Binaries are written to `bin/Debug/` (or `Release`).
+Binaries are written to `bin/Debug/` (or `Release`). Run from the repository root so relative paths to `res/` resolve correctly.
+
+### glTF scene resources in this repo
+
+Sample scenes live under `res/`. Each scene is a folder with a `glTF/` subfolder containing the `.gltf` file, a `.bin` buffer, and texture images referenced by URI.
+
+| Scene | Path | Notes |
+|-------|------|-------|
+| **Sponza** | `res/Sponza/glTF/Sponza.gltf` | Large interior; many `.jpg` / `.png` textures + `Sponza.bin` |
+| **Flight Helmet** | `res/FlightHelmet/glTF/FlightHelmet.gltf` | Smaller PBR asset; textures + `FlightHelmet.bin` |
+
+PBR mesh shading for glTF uses the built-in shaders:
+
+- `res/shaderlibrary/builtin/mesh.vert`
+- `res/shaderlibrary/builtin/mesh.frag`
+
+Parsing is done with **tinygltf** (`src/ext/tinygltf/`). Geometry is staged into `GlobalGPUStorage`; textures and materials are created on the loader worker thread.
+
+### How glTF loading works
+
+`GltfAsyncLoader` extends `AsyncLoader` and runs on an enkiTS **worker thread** when you call `renderer.run()`:
+
+1. **Compile pipelines** — resolve shaders, cache pipeline layouts, kick off async PSO creation for the swapchain pass.
+2. **Parse glTF** — load `.gltf` / `.glb` via tinygltf; resolve external images relative to the glTF file’s directory.
+3. **Build scene** — walk the node graph, append mesh geometry, create `Material`s and `Texture`s, populate a `Scene` of `Primitive`s.
+4. **Complete callback** (main thread, after load) — wire push constants, assign `renderer.set_scene()`, then `GlobalGPUStorage::finalize()` uploads mega vertex/index buffers before the render loop starts.
+
+While loading, the **render thread** shows a loading UI (`LoadingImguiTask`); the **main thread** can continue processing SDL events.
+
+### glTF loading example
+
+Based on `src/tests/test_load_gltf.cpp`:
+
+```cpp
+#include "framework/gltf_async_loader.h"
+#include "framework/pipeline_compile_task.h"
+#include "framework/pass_group_id.h"
+// ...
+
+const fs::path repo_root = /* path to project root */;
+const fs::path gltf_path = repo_root / "res/Sponza/glTF/Sponza.gltf";
+
+std::vector<PipelineCompileTask::Entry> pipeline_entries;
+pipeline_entries.push_back(PipelineCompileTask::Entry::make_graphics(
+    fs::absolute(repo_root / "res/shaderlibrary/builtin/mesh.vert").string(),
+    fs::absolute(repo_root / "res/shaderlibrary/builtin/mesh.frag").string()));
+
+GltfAsyncLoader gltf_loader(
+    &renderer.task_scheduler(),
+    &device,
+    &pipeline_entries,
+    fs::absolute(gltf_path).string());
+
+RHIRenderPass* render_pass = device.create_render_pass(swapchain_pass_creation);
+renderer.pass_group(PassGroupId::UI).add_render_pass(render_pass);
+
+renderer.set_async_loader(&gltf_loader, nullptr, [&]() {
+    Scene& scene = gltf_loader.get_scene();
+    for (uint32_t i = 0; i < scene.primitive_count(); ++i) {
+        Primitive& primitive = scene.primitive(i);
+        primitive.set_update_push_constant_function(update_push_constant);
+    }
+    renderer.set_scene(&scene);
+});
+
+renderer.run();
+window->run([](double) {});
+```
+
+To switch scenes, point `gltf_path` at `res/FlightHelmet/glTF/FlightHelmet.gltf` instead. Optional `LoadingProgressListener` can be passed to `renderer.set_loading_progress_listener()` for per-primitive progress in the loading UI.
+
+### Other test targets
 
 | Target | Description |
 |--------|-------------|
@@ -132,9 +205,9 @@ Binaries are written to `bin/Debug/` (or `Release`).
 | `test-vulkan-texture` | Textured quad |
 | `test-vulkan-bindless` | Bindless sampling |
 | `test-culling` | Parallel frustum culling |
-| `test-asyncLoadGLTF` | glTF scene via `GltfAsyncLoader` |
+| `test-asyncLoadGLTF` | Full glTF load (Sponza or Flight Helmet) |
 
-Pass registration example:
+Pass group registration example:
 
 ```cpp
 renderer.pass_group(PassGroupId::Offscreen).add_render_pass(offscreen_pass);
