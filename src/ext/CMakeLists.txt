@@ -45,6 +45,24 @@ set_property(TARGET SDL_uclibc PROPERTY FOLDER "ext/SDL3")
 set_property(TARGET SDL3_test PROPERTY FOLDER "ext/SDL3")
 set_property(TARGET SDL3-shared PROPERTY FOLDER "ext/SDL3")
 
+# Shared ImGui core — used by framework (SDL backend) and vulkan backend (Vulkan backend).
+# Keeps ocarina-backend-vulkan from linking ocarina-framework.
+file(GLOB OCARINA_IMGUI_CORE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/imgui/*.cpp")
+add_library(ocarina-imgui SHARED ${OCARINA_IMGUI_CORE_SOURCES})
+set_target_properties(ocarina-imgui PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+        WINDOWS_EXPORT_ALL_SYMBOLS ON
+        FOLDER "ext")
+target_include_directories(ocarina-imgui PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/imgui
+        ${CMAKE_CURRENT_SOURCE_DIR}/imgui/backends)
+if(WIN32)
+    target_compile_definitions(ocarina-imgui
+            PRIVATE "IMGUI_API=__declspec(dllexport)"
+            INTERFACE "IMGUI_API=__declspec(dllimport)")
+endif()
+
 cmake_policy(SET CMP0148 NEW)
 
 if (${OCARINA_PY})

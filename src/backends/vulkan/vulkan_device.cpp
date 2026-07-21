@@ -20,6 +20,8 @@
 #include "rhi/command_buffer.h"
 #include "vulkan_command_buffer.h"
 #include "vulkan_fence.h"
+#include "imgui.h"
+#include "imgui_impl_vulkan.h"
 
 namespace ocarina {
 
@@ -642,6 +644,64 @@ void VulkanDevice::get_imgui_creation(ImguiCreation& imgui_creation) noexcept
         imgui_creation.swapchain_render_pass_ =
             reinterpret_cast<handle_ty>(VulkanDriver::instance().get_framebuffer_render_pass());
     }
+}
+
+void VulkanDevice::imgui_rhi_initialize(const ImguiCreation& imgui_creation) noexcept
+{
+    ImGui_ImplVulkan_InitInfo init_info = {};
+    init_info.ApiVersion = imgui_creation.api_version_ != 0
+        ? imgui_creation.api_version_
+        : VK_API_VERSION_1_3;
+    init_info.Instance = reinterpret_cast<VkInstance>(imgui_creation.instance_);
+    init_info.PhysicalDevice = reinterpret_cast<VkPhysicalDevice>(imgui_creation.physical_device_);
+    init_info.Device = reinterpret_cast<VkDevice>(imgui_creation.device_);
+    init_info.QueueFamily = imgui_creation.queue_family_;
+    init_info.Queue = reinterpret_cast<VkQueue>(imgui_creation.queue_);
+    init_info.PipelineCache = reinterpret_cast<VkPipelineCache>(imgui_creation.pipeline_cache_);
+    init_info.DescriptorPool = reinterpret_cast<VkDescriptorPool>(imgui_creation.descriptor_pool_);
+    init_info.MinImageCount = imgui_creation.image_count_;
+    init_info.ImageCount = imgui_creation.image_count_;
+    init_info.Allocator = reinterpret_cast<VkAllocationCallbacks*>(imgui_creation.allocator_callback_);
+    init_info.PipelineInfoMain.Subpass = 0;
+    init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    init_info.CheckVkResultFn = nullptr;
+
+    VkFormat color_format = static_cast<VkFormat>(imgui_creation.color_attachment_format_);
+    if (imgui_creation.use_dynamic_rendering_) {
+        init_info.UseDynamicRendering = true;
+        init_info.PipelineInfoMain.RenderPass = VK_NULL_HANDLE;
+#ifdef IMGUI_IMPL_VULKAN_HAS_DYNAMIC_RENDERING
+        VkPipelineRenderingCreateInfoKHR rendering_info = {};
+        rendering_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
+        rendering_info.colorAttachmentCount = 1;
+        rendering_info.pColorAttachmentFormats = &color_format;
+        rendering_info.depthAttachmentFormat = static_cast<VkFormat>(imgui_creation.depth_attachment_format_);
+        init_info.PipelineInfoMain.PipelineRenderingCreateInfo = rendering_info;
+#endif
+    } else {
+        init_info.UseDynamicRendering = false;
+        init_info.PipelineInfoMain.RenderPass =
+            reinterpret_cast<VkRenderPass>(imgui_creation.swapchain_render_pass_);
+    }
+
+    ImGui_ImplVulkan_Init(&init_info);
+}
+
+void VulkanDevice::imgui_rhi_new_frame() noexcept
+{
+    ImGui_ImplVulkan_NewFrame();
+}
+
+void VulkanDevice::imgui_rhi_render_draw_data(void* draw_data, handle_ty command_buffer) noexcept
+{
+    ImGui_ImplVulkan_RenderDrawData(
+        static_cast<ImDrawData*>(draw_data),
+        reinterpret_cast<VkCommandBuffer>(command_buffer));
+}
+
+void VulkanDevice::imgui_rhi_shutdown() noexcept
+{
+    ImGui_ImplVulkan_Shutdown();
 }
 
 CommandBuffer VulkanDevice::get_command_buffer() noexcept

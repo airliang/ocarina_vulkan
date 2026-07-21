@@ -98,6 +98,10 @@ public:
 
     VkInstance get_instance() const { return m_instance.instance(); }
     void get_imgui_creation(ImguiCreation& imgui_creation) noexcept override;
+    void imgui_rhi_initialize(const ImguiCreation& imgui_creation) noexcept override;
+    void imgui_rhi_new_frame() noexcept override;
+    void imgui_rhi_render_draw_data(void* draw_data, handle_ty command_buffer) noexcept override;
+    void imgui_rhi_shutdown() noexcept override;
     CommandBuffer get_command_buffer() noexcept override;
     CommandBuffer get_command_buffer(QueueType queue_type) noexcept;
     void release_command_buffer(const CommandBuffer& cmd_buffer) noexcept override;

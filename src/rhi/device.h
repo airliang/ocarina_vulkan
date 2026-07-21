@@ -83,6 +83,12 @@ public:
         virtual uint64_t export_handle(handle_ty handle_) { return 0; }
 #endif
         virtual void get_imgui_creation(ImguiCreation& imgui_creation) noexcept { }
+        /// Backend-specific ImGui renderer init (e.g. ImGui_ImplVulkan_Init). No-op if unsupported.
+        virtual void imgui_rhi_initialize(const ImguiCreation& imgui_creation) noexcept {}
+        virtual void imgui_rhi_new_frame() noexcept {}
+        /// @param draw_data Opaque ImDrawData* from ImGui::GetDrawData().
+        virtual void imgui_rhi_render_draw_data(void* draw_data, handle_ty command_buffer) noexcept {}
+        virtual void imgui_rhi_shutdown() noexcept {}
         virtual CommandBuffer get_command_buffer() = 0;
         virtual void release_command_buffer(const CommandBuffer& cmd_buffer) = 0;
         virtual void execute_command_buffers(CommandBuffer* cmd_buffer, uint32_t count) noexcept {}
@@ -205,6 +211,22 @@ public:
 
     void get_imgui_creation(ImguiCreation& imgui_creation) {
         return impl_->get_imgui_creation(imgui_creation);
+    }
+
+    void imgui_rhi_initialize(const ImguiCreation& imgui_creation) noexcept {
+        impl_->imgui_rhi_initialize(imgui_creation);
+    }
+
+    void imgui_rhi_new_frame() noexcept {
+        impl_->imgui_rhi_new_frame();
+    }
+
+    void imgui_rhi_render_draw_data(void* draw_data, handle_ty command_buffer) noexcept {
+        impl_->imgui_rhi_render_draw_data(draw_data, command_buffer);
+    }
+
+    void imgui_rhi_shutdown() noexcept {
+        impl_->imgui_rhi_shutdown();
     }
 
     CommandBuffer get_command_buffer() noexcept {

@@ -76,7 +76,7 @@ Scheduling uses **enkiTS** with `hardware_concurrency()` worker threads. Thread 
 | Thread | Responsibility |
 |--------|----------------|
 | **Main (0)** | Application setup, `Renderer::run()`, waits on async load, SDL event loop after load |
-| **Render (1, pinned)** | `RenderTask` — per-frame update, dispatch recording jobs, **swapchain acquire** (`begin_frame`), **graphics queue submit** (`execute_command_buffers`), **present** (`end_frame`); `LoadingImguiTask` during load |
+| **Render (1, pinned)** | `RenderTask` — per-frame update, **dispatch culling job** (`RendererPrimitiveCullTask` via enkiTS) and wait, dispatch recording jobs, **swapchain acquire** (`begin_frame`), **graphics queue submit** (`execute_command_buffers`), **present** (`end_frame`); `LoadingImguiTask` during load |
 | **Cmd record (workers)** | `RenderPassTask` — command buffer recording (`begin` / render passes / draw / `end`) per `PassGroupId`; dispatched from the render thread, executed on an enkiTS worker (`m_SetSize = 1` per group) |
 | **Workers (2…N−1)** | `AsyncLoader`, parallel frustum cull (`RendererPrimitiveCullTask`), async `PipelineCompileTask` (PSO creation) |
 
@@ -108,7 +108,7 @@ sequenceDiagram
 
 **Main thread** kicks off loading and then runs the window loop. It does not record draw commands after the render thread starts.
 
-**Render thread** owns the frame loop: camera update, culling, queue population, and orchestration of **RenderPassTask** instances (grouped by `PassGroupId` — e.g. Offscreen, GBuffer, UI). Each non-empty group records on a worker; the render thread waits, submits recorded command buffers to the graphics queue, and presents the swapchain image when the frame ends.
+**Render thread** owns the frame loop: camera update, **dispatch of the parallel frustum culling job** (`RendererPrimitiveCullTask` onto worker threads, then wait), queue population, and orchestration of **RenderPassTask** instances (grouped by `PassGroupId` — e.g. Offscreen, GBuffer, UI). Each non-empty group records on a worker; the render thread waits, submits recorded command buffers to the graphics queue, and presents the swapchain image when the frame ends.
 
 **Worker threads** handle CPU-heavy work that should not block presentation: asset loading, SIMD frustum culling, pipeline creation, and **command buffer recording** when `RenderPassTask` runs. The render thread dispatches one recording task per non-empty pass group, waits for completion, then submits the recorded buffers. Missing PSOs are skipped for the current frame rather than stalling the render thread.
 

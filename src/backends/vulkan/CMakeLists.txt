@@ -47,7 +47,14 @@ if(AUTO_LOCATE_VULKAN)
 	endforeach()
 
     ocarina_add_backend(vulkan SOURCES ${HEADER_FILES} ${SOURCE_FILES})
-    target_link_libraries(ocarina-backend-vulkan PRIVATE Vulkan::Vulkan)
+    target_link_libraries(ocarina-backend-vulkan PRIVATE Vulkan::Vulkan ocarina-imgui)
+    target_include_directories(ocarina-backend-vulkan PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/ext/imgui
+        ${CMAKE_SOURCE_DIR}/src/ext/imgui/backends)
+    target_sources(ocarina-backend-vulkan PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/ext/imgui/backends/imgui_impl_vulkan.cpp)
+    # imgui_impl_vulkan is compiled into this MODULE; do not treat it as dllimport.
+    target_compile_definitions(ocarina-backend-vulkan PRIVATE "IMGUI_IMPL_API=")
 
     option(OCARINA_VULKAN_FRAME_SYNC_TIMELINE "Use Vulkan timeline semaphores for per-frame GPU sync" ON)
     if(OCARINA_VULKAN_FRAME_SYNC_TIMELINE)

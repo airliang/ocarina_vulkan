@@ -4,7 +4,6 @@
 #include "core/stl.h"
 #include "core/concepts.h"
 #include "sdl_event_listener.h"
-#include "rhi/imgui_creation.h"
 
 namespace ocarina {
 
@@ -28,7 +27,6 @@ public:
     void set_frame_callback(FrameCallback cb) noexcept { frame_callback_ = std::move(cb); }
 
     void render(const CommandBuffer& command_buffer) noexcept;
-    void render_loading(const CommandBuffer& command_buffer, double time_seconds) noexcept;
 
     [[nodiscard]] bool is_initialized() const noexcept { return initialized_; }
 
@@ -37,7 +35,6 @@ public:
 private:
     SDLWindow* window_ = nullptr;
     Device* device_ = nullptr;
-    ImguiCreation imgui_creation_{};
     FrameCallback frame_callback_;
     bool initialized_ = false;
 };
