@@ -34,6 +34,8 @@ public:
     void submit_to_queue(QueueType queue_type, Fence* fence) override;
     void begin() override;
     void end() override;
+    void set_viewport(float x, float y, float width, float height, float min_depth = 0.0f, float max_depth = 1.0f) override;
+    void set_scissor(int32_t x, int32_t y, uint32_t width, uint32_t height) override;
     void set_record_gpu_timestamps(bool enabled) noexcept { record_gpu_timestamps_ = enabled; }
     OC_MAKE_MEMBER_GETTER(vulkan_command_buffer, )
     //OC_MAKE_MEMBER_GETTER_SETTER(pipeline_stage_flags, )

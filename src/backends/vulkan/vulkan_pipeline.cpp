@@ -261,8 +261,9 @@ VulkanPipeline* create_vulkan_graphics_pipeline(
         vulkan_pipeline_layout->layout_,
         dynamic_formats);
 
-    const bool use_dynamic_rendering = dynamic_formats != nullptr && dynamic_formats->color_attachment_count > 0;
-    const uint32_t color_attachment_count = use_dynamic_rendering ? dynamic_formats->color_attachment_count : 1u;
+    const bool use_dynamic_rendering = dynamic_formats != nullptr;
+    const uint32_t color_attachment_count =
+        use_dynamic_rendering ? dynamic_formats->color_attachment_count : 1u;
 
     VulkanPipeline* pipeline_entry = ocarina::new_with_allocator<VulkanPipeline>();
     pipeline_entry->push_constant_size = vulkan_pipeline_layout->push_constant_size;

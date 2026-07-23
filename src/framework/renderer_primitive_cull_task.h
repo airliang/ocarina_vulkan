@@ -9,6 +9,7 @@
 #include "mesh.h"
 #include "simd_frustum_cull.h"
 #include "enki_task_debug.h"
+#include "core/profiler.h"
 #include "ext/enkiTS/src/TaskScheduler.h"
 #include <atomic>
 
@@ -70,6 +71,7 @@ public:
     [[nodiscard]] uint64_t execute_thread_id() const noexcept { return execute_thread_id_; }
 
     void ExecuteRange(enki::TaskSetPartition range, uint32_t threadnum) override {
+        OC_PROFILE_FUNCTION;
         (void)threadnum;
         if (scene_ == nullptr || visible_cell_indices_ == nullptr || frustum_ == nullptr) {
             return;

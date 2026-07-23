@@ -8,6 +8,7 @@
 #include "rhi/device.h"
 #include "rhi/command_buffer.h"
 #include "rhi/renderpass.h"
+#include "core/profiler.h"
 
 namespace ocarina {
 
@@ -97,6 +98,8 @@ RHIRenderPass* RenderPassTask::swapchain_render_pass() const noexcept {
 }
 
 void RenderPassTask::ExecuteRange(enki::TaskSetPartition range, uint32_t threadnum) {
+    OC_PROFILE_FUNCTION;
+
     //log_enki_task_execute_range("RenderPassTask", threadnum, range.start, range.end, execute_thread_id_);
 
     if (range.start != 0 || renderer_ == nullptr || device_ == nullptr) {

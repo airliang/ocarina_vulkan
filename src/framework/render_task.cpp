@@ -8,6 +8,7 @@
 #include "rhi/command_buffer.h"
 #include "rhi/graphics_descriptions.h"
 #include "frame_resources.h"
+#include "core/profiler.h"
 #include "TaskScheduler.h"
 
 namespace ocarina {
@@ -35,12 +36,15 @@ void RenderTask::Execute() {
 }
 
 void RenderTask::render_one_frame() {
+    OC_PROFILE_FUNCTION;
+
     // Kick pending PSO creates first so workers can compile while we cull / update components.
     PipelineManager::instance().update();
 
     if (renderer_.camera_ != nullptr) {
         renderer_.camera_->update(dt_);
     }
+
     renderer_.cull_scene();
     renderer_.update_visible_render_components();
 
@@ -66,7 +70,7 @@ void RenderTask::execute_default_render_path() {
     CommandBuffer recorded_cmds[MAX_COMMAND_BUFFERS_PER_SUBMIT];
     uint32_t recorded_count = 0;
 
-    // std::map iterates PassGroupId in numeric order (Shadow → … → UI).
+    // std::map iterates PassGroupId in numeric order (Offscreen → … → UI).
     for (auto& [group_id, record_task] : renderer_.render_pass_tasks_) {
         if (record_task.empty()) {
             continue;
@@ -94,6 +98,7 @@ void RenderTask::execute_default_render_path() {
     }
 
     device->end_frame();
+    OC_PROFILE_FRAME_MARK;
 
     // Dispatch PSOs enqueued during populate_render_pass_queues this frame.
     // Creation overlaps with GPU work / next frame; we never wait here.

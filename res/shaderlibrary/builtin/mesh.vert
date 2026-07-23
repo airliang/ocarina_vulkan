@@ -22,6 +22,7 @@ struct VSOutput
 [[vk::location(2)]] float2 UV : TEXCOORD0;
 [[vk::location(3)]] float3 ViewVec : TEXCOORD1;
 [[vk::location(4)]] float3 LightVec : TEXCOORD2;
+[[vk::location(5)]] float3 WorldPos : TEXCOORD3;
 };
 
 VSOutput main(VSInput input)
@@ -37,5 +38,6 @@ VSOutput main(VSInput input)
 	output.UV = input.UV;
 	output.LightVec = lightPos.xyz - worldPos.xyz;
 	output.ViewVec = cameraPos.xyz - worldPos.xyz;
+	output.WorldPos = worldPos.xyz;
 	return output;
 }

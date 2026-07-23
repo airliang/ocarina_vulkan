@@ -61,6 +61,3 @@ bool IsFinite(float x)
 	float4 cameraPos;
 	float4 lightPos;
 };
-
-//[[vk::binding(1, GLOBAL_SET)]]Texture2D shadow_map : register(t1);
-

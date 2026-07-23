@@ -36,6 +36,8 @@ public:
         virtual void submit_to_queue(QueueType queue_type, Fence* fence) = 0;
         virtual void begin() = 0;
         virtual void end() = 0;
+        virtual void set_viewport(float x, float y, float width, float height, float min_depth = 0.0f, float max_depth = 1.0f) = 0;
+        virtual void set_scissor(int32_t x, int32_t y, uint32_t width, uint32_t height) = 0;
 
         SmallVector<Semaphore, MAX_COMMAND_BUFFERS_PER_SUBMIT> wait_semaphores;
         SmallVector<Semaphore, MAX_COMMAND_BUFFERS_PER_SUBMIT> signal_semaphores;
@@ -140,6 +142,12 @@ public:
     }
     void end() {
         impl_->end();
+    }
+    void set_viewport(float x, float y, float width, float height, float min_depth = 0.0f, float max_depth = 1.0f) {
+        impl_->set_viewport(x, y, width, height, min_depth, max_depth);
+    }
+    void set_scissor(int32_t x, int32_t y, uint32_t width, uint32_t height) {
+        impl_->set_scissor(x, y, width, height);
     }
 private:
     Impl* impl_ = nullptr;

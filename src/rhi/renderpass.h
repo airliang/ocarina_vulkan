@@ -55,14 +55,24 @@ public:
         color_attachments_[color_attachment_count_++] = texture;
     }
 
+    /// Swapchain path: no explicit color/depth attachments (backbuffer + swapchain depth).
     bool is_swapchain_renderpass() const
     {
-        return color_attachment_count_ == 0;
+        return color_attachment_count_ == 0 && depth_attachment_ == nullptr;
     }
 
+    /// Offscreen path: explicit color and/or depth attachments.
     bool is_offscreen_renderpass() const
     {
-        return color_attachment_count_ > 0;
+        return color_attachment_count_ > 0 || depth_attachment_ != nullptr;
+    }
+
+    void set_viewport(const float4& viewport) noexcept {
+        viewport_ = viewport;
+    }
+
+    void set_scissor(const int4& scissor) noexcept {
+        scissor_ = scissor;
     }
 
     handle_ty get_command_buffer() const

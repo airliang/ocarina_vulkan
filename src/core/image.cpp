@@ -16,7 +16,7 @@
 #include <limits>
 #include "math/base.h"
 #include "ext/tinyexr/tinyexr.h"
-#include "core/util.h"
+#include "core/profiler.h"
 
 namespace ocarina {
 

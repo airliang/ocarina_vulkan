@@ -127,6 +127,18 @@ cmake --build build --config Debug --target test-asyncLoadGLTF
 
 Binaries are written to `bin/Debug/` (or `Release`). Run from the repository root so relative paths to `res/` resolve correctly.
 
+### Tracy profiler (optional)
+
+[Tracy](https://github.com/wolfpld/tracy) is integrated as a git submodule at `src/ext/tracy` (v0.11.1).
+
+```bash
+git submodule update --init src/ext/tracy
+cmake -B build -DOCARINA_ENABLE_TRACY=ON
+cmake --build build --config Debug --target test-vulkan-triangle
+```
+
+Run the test, then connect with the [Tracy desktop app](https://github.com/wolfpld/tracy/releases). Instrument code with `core/profiler.h` macros (`OC_PROFILE_FUNCTION`, `OC_PROFILE_SCOPE_N`, `OC_PROFILE_FRAME_MARK`). See `src/ext/tracy/INTEGRATION.md` for manual setup without a submodule.
+
 ### glTF scene resources in this repo
 
 Sample scenes live under `res/`. Each scene is a folder with a `glTF/` subfolder containing the `.gltf` file, a `.bin` buffer, and texture images referenced by URI.

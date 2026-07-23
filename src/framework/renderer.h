@@ -127,12 +127,12 @@ public:
     void cull_scene();
     void cull_visible_primitives_parallel(Scene& scene, const Frustum& frustum);
 
+    void update_entity_render_component(uint32_t entity_index);
+
     [[nodiscard]] enki::TaskScheduler& task_scheduler() noexcept { return task_scheduler_; }
     [[nodiscard]] const enki::TaskScheduler& task_scheduler() const noexcept { return task_scheduler_; }
 
 private:
-    void update_entity_render_component(uint32_t entity_index);
-
     RenderCallback render = nullptr;
     RenderGUIImplCallback render_gui_impl_ = nullptr;
     LoadingGUIImplCallback loading_gui_impl_ = nullptr;

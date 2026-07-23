@@ -19,8 +19,7 @@
 #include "rhi/descriptor_set.h"
 #include "frame_resources.h"
 #include "enki_task_debug.h"
-#include "core/logging.h"
-#include <chrono>
+#include "core/profiler.h"
 #include <algorithm>
 #include <cstdio>
 
@@ -146,7 +145,6 @@ RHIRenderPass* Renderer::find_default_target_render_pass() const noexcept {
         PassGroupId::Lighting,
         PassGroupId::Transparent,
         PassGroupId::PostProcess,
-        PassGroupId::Shadow,
     };
     for (PassGroupId id : kPreference) {
         if (const RenderPassTask* task = find_pass_group(id)) {
@@ -192,6 +190,7 @@ void Renderer::update_visible_render_components() {
 }
 
 void Renderer::populate_render_pass_queues(RHIRenderPass* render_pass) {
+    OC_PROFILE_FUNCTION;
     if (render_pass == nullptr || scene_ == nullptr) {
         return;
     }
@@ -234,6 +233,7 @@ void Renderer::populate_render_pass_queues(RHIRenderPass* render_pass) {
 }
 
 void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass) {
+    OC_PROFILE_FUNCTION;
     if (render_pass == nullptr) {
         return;
     }
@@ -302,9 +302,8 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
 }
 
 void Renderer::cull_visible_primitives_parallel(Scene& scene, const Frustum& frustum) {
-#if defined(_DEBUG) || !defined(NDEBUG)
-    const auto t0 = std::chrono::high_resolution_clock::now();
-#endif
+    OC_PROFILE_FUNCTION;
+
     primitive_cull_task_.prepare(scene.primitive_count());
 
     const uint32_t visible_cell_count = scene.visible_cell_count();
@@ -313,14 +312,8 @@ void Renderer::cull_visible_primitives_parallel(Scene& scene, const Frustum& fru
         return;
     }
 
-#if defined(_DEBUG) || !defined(NDEBUG)
-    const auto t_after_prepare = std::chrono::high_resolution_clock::now();
-#endif
     const size_t max_cells_per_batch = 1; // requirement: one visible cell per range
 
-#if defined(_DEBUG) || !defined(NDEBUG)
-    const auto t_after_batch_size = std::chrono::high_resolution_clock::now();
-#endif
     primitive_cull_task_.configure(
         &scene,
         &scene.visible_cell_indices(),
@@ -328,37 +321,10 @@ void Renderer::cull_visible_primitives_parallel(Scene& scene, const Frustum& fru
         &frustum,
         max_cells_per_batch);
 
-#if defined(_DEBUG) || !defined(NDEBUG)
-    const auto t_after_configure = std::chrono::high_resolution_clock::now();
-#endif
     task_scheduler_.AddTaskSetToPipe(&primitive_cull_task_);
     task_scheduler_.WaitforTask(&primitive_cull_task_);
 
-#if defined(_DEBUG) || !defined(NDEBUG)
-    const auto t_after_wait = std::chrono::high_resolution_clock::now();
-#endif
     primitive_cull_task_.commit_visible_results();
-
-#if defined(_DEBUG) || !defined(NDEBUG)
-    const auto t_end = std::chrono::high_resolution_clock::now();
-    auto ms = [](auto a, auto b) -> double {
-        return std::chrono::duration<double, std::milli>(b - a).count();
-    };
-
-    const double total_ms = ms(t0, t_end);
-    const double prepare_ms = ms(t0, t_after_prepare);
-    const double batch_size_ms = ms(t_after_prepare, t_after_batch_size);
-    const double configure_ms = ms(t_after_batch_size, t_after_configure);
-    const double wait_ms = ms(t_after_configure, t_after_wait);
-    const double write_back_ms = ms(t_after_wait, t_end);
-
-    (void)total_ms;
-    (void)prepare_ms;
-    (void)batch_size_ms;
-    (void)configure_ms;
-    (void)wait_ms;
-    (void)write_back_ms;
-#endif
 }
 
 void Renderer::cull_scene() {

@@ -22,3 +22,6 @@
 [submodule "src/ext/tinygltf"]
 	path = src/ext/tinygltf
 	url = https://github.com/syoyo/tinygltf.git
+[submodule "src/ext/tracy"]
+	path = src/ext/tracy
+	url = https://github.com/wolfpld/tracy.git

@@ -171,32 +171,4 @@ public:
 #define TIMER(task_name) ocarina::Guard<Clock> __##task_name(Clock(#task_name));
 #define TIMER_TAG(task_name, tag) ocarina::Guard<Clock> __##task_name(Clock(tag));
 
-class Timer
-{
-public:
-    Timer(const char* output_text) : output_text_(output_text)
-    {
-        start_time_ = std::chrono::steady_clock::now();
-    }
-
-    ~Timer()
-    {
-        auto end = std::chrono::steady_clock::now();
-
-        auto ms =
-            std::chrono::duration<double, std::milli>(end - start_time_).count();
-
-        //std::cout << output_text_ << " cost: " << ms << " ms\n";
-        OC_INFO_FORMAT(
-            "{} cost: {:.3f} ms",
-            output_text_, ms);
-    }
-
-private:
-    std::chrono::steady_clock::time_point start_time_;
-    const char* output_text_;
-};
-
-#define PROFILE_SCOPE() Timer timer(__FUNCTION__)
-
 }// namespace ocarina

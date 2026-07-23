@@ -63,6 +63,23 @@ if(WIN32)
             INTERFACE "IMGUI_API=__declspec(dllimport)")
 endif()
 
+# Tracy profiler — https://github.com/wolfpld/tracy
+if(OCARINA_ENABLE_TRACY)
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tracy/CMakeLists.txt")
+        message(FATAL_ERROR
+            "OCARINA_ENABLE_TRACY is ON but Tracy sources are missing.\n"
+            "Run: git submodule update --init src/ext/tracy\n"
+            "Or see src/ext/tracy/INTEGRATION.md for manual setup.")
+    endif()
+
+    set(TRACY_ENABLE ON CACHE BOOL "" FORCE)
+    set(TRACY_STATIC OFF CACHE BOOL "" FORCE)
+    add_subdirectory(tracy EXCLUDE_FROM_ALL)
+    set_target_properties(TracyClient PROPERTIES FOLDER "ext/tracy")
+    target_link_libraries(ocarina-ext INTERFACE Tracy::TracyClient)
+    target_compile_definitions(ocarina-ext INTERFACE OCARINA_ENABLE_TRACY=1)
+endif()
+
 cmake_policy(SET CMP0148 NEW)
 
 if (${OCARINA_PY})
@@ -97,6 +114,9 @@ foreach(_t IN LISTS _ocarina_ext_targets)
         set_target_properties(${_t} PROPERTIES FOLDER "ext")
     endif()
 endforeach()
+if(TARGET TracyClient)
+    set_target_properties(TracyClient PROPERTIES FOLDER "ext/tracy")
+endif()
 
 target_link_libraries(ocarina-ext INTERFACE
         ocarina-ext-stb

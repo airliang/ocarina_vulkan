@@ -22,4 +22,6 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/")
 set(CMAKE_FIND_PACKAGE_SORT_ORDER NATURAL)
 set(CMAKE_FIND_PACKAGE_SORT_DIRECTION DEC)
 
+option(OCARINA_ENABLE_TRACY "Build with Tracy profiler client (connect with Tracy desktop app)" OFF)
+
 add_subdirectory(src)

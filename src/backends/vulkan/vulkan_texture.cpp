@@ -4,6 +4,7 @@
 
 #include "vulkan_texture.h"
 #include "util.h"
+#include "core/profiler.h"
 #include "vulkan_device.h"
 #include "vulkan_driver.h"
 #include "vulkan_command_buffer.h"

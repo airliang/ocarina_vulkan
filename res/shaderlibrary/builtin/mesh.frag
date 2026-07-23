@@ -12,6 +12,7 @@ struct VSOutput
 [[vk::location(2)]] float2 UV : TEXCOORD0;
 [[vk::location(3)]] float3 ViewVec : TEXCOORD1;
 [[vk::location(4)]] float3 LightVec : TEXCOORD2;
+[[vk::location(5)]] float3 WorldPos : TEXCOORD3;
 };
 
 float DistributionGGX(float NdotH, float roughness)

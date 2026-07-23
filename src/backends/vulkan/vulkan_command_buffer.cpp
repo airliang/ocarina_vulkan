@@ -129,7 +129,11 @@ void VulkanCommandBuffer::begin_swapchain_render_pass(RHIRenderPass* render_pass
 
 void VulkanCommandBuffer::begin_offscreen_render_pass(RHIRenderPass* render_pass, VulkanRenderPass* vulkan_render_pass) {
     use_dynamic_rendering_ = true;
-    set_pipeline_stage_flags(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+    if (render_pass->color_attachment_count() > 0) {
+        set_pipeline_stage_flags(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+    } else {
+        set_pipeline_stage_flags(VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT);
+    }
 
     for (uint32_t i = 0; i < render_pass->color_attachment_count(); ++i) {
         auto* texture = static_cast<VulkanTexture*>(render_pass->color_attachment(i)->impl());
@@ -361,6 +365,24 @@ void VulkanCommandBuffer::end() {
         VulkanDriver::instance().write_gpu_timestamp_end(vulkan_command_buffer_);
     }
     VK_CHECK_RESULT(vkEndCommandBuffer(vulkan_command_buffer_));
+}
+
+void VulkanCommandBuffer::set_viewport(float x, float y, float width, float height, float min_depth, float max_depth) {
+    VkViewport viewport{};
+    viewport.x = x;
+    viewport.y = y;
+    viewport.width = width;
+    viewport.height = height;
+    viewport.minDepth = min_depth;
+    viewport.maxDepth = max_depth;
+    vkCmdSetViewport(vulkan_command_buffer_, 0, 1, &viewport);
+}
+
+void VulkanCommandBuffer::set_scissor(int32_t x, int32_t y, uint32_t width, uint32_t height) {
+    VkRect2D scissor{};
+    scissor.offset = {x, y};
+    scissor.extent = {width, height};
+    vkCmdSetScissor(vulkan_command_buffer_, 0, 1, &scissor);
 }
 
 void VulkanCommandBuffer::reset() {

@@ -69,9 +69,14 @@ void VulkanRenderPass::setup_render_pass() {
         return;
     }
 
-    OC_ASSERT(color_attachment_count_ > 0);
-    auto *color0 = static_cast<VulkanTexture *>(color_attachments_[0]->impl());
-    size_ = {color0->width(), color0->height()};
+    if (color_attachment_count_ > 0) {
+        auto *color0 = static_cast<VulkanTexture *>(color_attachments_[0]->impl());
+        size_ = {color0->width(), color0->height()};
+    } else {
+        OC_ASSERT(depth_attachment_ != nullptr);
+        auto *depth0 = static_cast<VulkanTexture *>(depth_attachment_->impl());
+        size_ = {depth0->width(), depth0->height()};
+    }
     scissor_ = {0, 0, static_cast<int>(size_.x), static_cast<int>(size_.y)};
     viewport_ = {0, 0, static_cast<float>(size_.x), static_cast<float>(size_.y)};
 
