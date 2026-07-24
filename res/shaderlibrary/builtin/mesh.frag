@@ -72,7 +72,7 @@ float4 main(VSOutput input) : SV_TARGET
     float3 diffuse = kD * albedo / 3.14159265;
 
     float3 ambient = float3(0.4, 0.4, 0.4) * albedo * ao;
-    float3 radiance = float3(10.0, 10.0, 10.0);
+    float3 radiance = sunColor.rgb * sunIntensity;
     float3 color = ambient + (diffuse + specular) * radiance * NdotL;
 
     return float4(color, sampled.a * material.baseColorFactor.a);

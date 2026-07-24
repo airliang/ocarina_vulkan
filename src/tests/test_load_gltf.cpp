@@ -22,13 +22,6 @@
 
 using namespace ocarina;
 
-struct GlobalUniformBuffer {
-    math3d::Matrix4 projection_matrix;
-    math3d::Matrix4 view_matrix;
-    float4 camera_pos;
-    float4 light_pos;
-};
-
 int main(int argc, char* argv[]) {
     RHIContext& context = RHIContext::instance();
 
@@ -121,17 +114,6 @@ int main(int argc, char* argv[]) {
         imgui_renderer.set_frame_callback([&]() {
             display_frame_info(*window->widgets());
         });
-    });
-
-    FrameResources::instance().set_update_callback([&](FrameResources&, double dt) {
-        DescriptorSet* global_descriptor_set = FrameResources::instance().get_global_descriptor_set("global_ubo");
-        const math3d::Vector3D& cam_position = camera.get_position();
-        GlobalUniformBuffer global_ubo_data = {
-            camera.get_projection_matrix().transpose(),
-            camera.get_view_matrix().transpose(),
-            make_float4(cam_position[0], cam_position[1], cam_position[2], 1.0f),
-            make_float4(5.0f, 10.0f, 5.0f, 1.0f)};
-        global_descriptor_set->update_buffer(hash64("global_ubo"), &global_ubo_data, sizeof(GlobalUniformBuffer));
     });
 
     renderer.set_loading_gui_impl_callback([&](const CommandBuffer& cmd_buffer) {

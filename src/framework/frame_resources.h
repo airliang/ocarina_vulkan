@@ -6,12 +6,14 @@
 #include "rhi/graphics_descriptions.h"
 #include "rhi/pipeline_state.h"
 #include "rhi/resources/texture.h"
+#include "global_uniform_buffer.h"
 #include <algorithm>
 #include <mutex>
 
 namespace ocarina {
 class DescriptorSetLayout;
 class DescriptorSet;
+class Camera;
 
 class OC_FRAMEWORK_API FrameResources : public concepts::Noncopyable {
 public:
@@ -56,20 +58,27 @@ public:
 
     bool is_global_descriptor_set_index(uint32_t set_index) const;
 
+    [[nodiscard]] GlobalUniformBuffer& global_uniform_buffer() noexcept { return global_ubo_; }
+    [[nodiscard]] const GlobalUniformBuffer& global_uniform_buffer() const noexcept { return global_ubo_; }
+
+    void set_sun_direction(const float3& direction) noexcept;
+    void set_sun_color(const float3& color) noexcept;
+    void set_sun_intensity(float intensity) noexcept;
+    void set_light_position(const float3& position) noexcept;
+
+    /// Optional extension hook (global UBO is always updated by the framework first).
     void set_update_callback(UpdateCallback cb) {
         update_ = std::move(cb);
     }
 
-    void update_per_frame(double dt) {
-        if (update_) {
-            update_(*this, dt);
-        }
-    }
+    /// Called on the render thread each frame. Uploads `global_ubo` from @p camera (if set).
+    void update_per_frame(double dt, Camera* camera = nullptr);
 
 private:
     FrameResources() = default;
 
     void rebuild_global_descriptor_sets_array_locked();
+    void upload_global_uniform_buffer(Camera* camera);
 
     mutable std::mutex global_descriptor_sets_mutex_;
     std::unordered_map<uint64_t, DescriptorSet*> global_descriptor_sets_;
@@ -81,6 +90,7 @@ private:
     DescriptorSet* bindless_descriptor_set_ = nullptr;
     uint32_t bindless_descriptor_set_index_ = InvalidUI32;
 
+    GlobalUniformBuffer global_ubo_{};
     UpdateCallback update_ = nullptr;
 };
 

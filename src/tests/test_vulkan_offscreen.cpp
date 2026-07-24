@@ -36,11 +36,6 @@ using namespace ocarina;
 
 namespace {
 
-struct GlobalUniformBuffer {
-    math3d::Matrix4 projection_matrix;
-    math3d::Matrix4 view_matrix;
-};
-
 Mesh* create_triangle_mesh() {
     Mesh* mesh = ocarina::new_with_allocator<Mesh>();
     Vector3 positions[3] = {
@@ -241,28 +236,6 @@ int main(int argc, char *argv[]) {
         imgui_renderer.set_frame_callback([&]() {
             display_frame_info(*window->widgets());
         });
-    });
-
-    FrameResources::instance().set_update_callback([&](FrameResources&, double dt) {
-        (void)dt;
-        if (triangle_material == nullptr) {
-            return;
-        }
-
-        Primitive& triangle = ecs.primitive(triangle_entity_index);
-        triangle.update_render_component(
-            &device,
-            ecs.render_component(triangle_entity_index),
-            ecs.transform_component(triangle_entity_index));
-
-        DescriptorSet* global_descriptor_set = FrameResources::instance().get_global_descriptor_set("global_ubo");
-        if (global_descriptor_set == nullptr) {
-            return;
-        }
-        GlobalUniformBuffer global_ubo_data = {
-            camera.get_projection_matrix().transpose(),
-            camera.get_view_matrix().transpose()};
-        global_descriptor_set->update_buffer(hash64("global_ubo"), &global_ubo_data, sizeof(GlobalUniformBuffer));
     });
 
     auto image_io = Image::pure_color(make_float4(1, 0, 0, 1), ColorSpace::LINEAR, make_uint2(500));

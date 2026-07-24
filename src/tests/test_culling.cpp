@@ -26,13 +26,6 @@
 
 using namespace ocarina;
 
-struct GlobalUniformBuffer {
-    math3d::Matrix4 projection_matrix;
-    math3d::Matrix4 view_matrix;
-    float4 camera_pos;
-    float4 light_pos;
-};
-
 namespace {
 
 constexpr uint32_t kGridCount = 50;
@@ -168,6 +161,7 @@ int main(int argc, char* argv[]) {
     frame_info.window_title = window_name;
     frame_info.extra = [&](Widgets& widgets) {
         widgets.check_box("Frustum culling", &frustum_culling_enabled);
+        renderer.set_frustum_culling_enabled(frustum_culling_enabled);
         if (scene != nullptr) {
             widgets.text("Total grids: %u", scene->grid_cell_count());
             widgets.text("Visible grids: %u", scene->visible_grid_count());
@@ -212,20 +206,6 @@ int main(int argc, char* argv[]) {
         imgui_renderer.set_frame_callback([&]() {
             display_frame_info(*window->widgets());
         });
-    });
-
-    FrameResources::instance().set_update_callback([&](FrameResources&, double dt) {
-        (void)dt;
-        renderer.set_frustum_culling_enabled(frustum_culling_enabled);
-
-        DescriptorSet* global_descriptor_set = FrameResources::instance().get_global_descriptor_set("global_ubo");
-        const math3d::Vector3D& cam_position = camera.get_position();
-        GlobalUniformBuffer global_ubo_data = {
-            camera.get_projection_matrix().transpose(),
-            camera.get_view_matrix().transpose(),
-            make_float4(cam_position[0], cam_position[1], cam_position[2], 1.0f),
-            make_float4(200.0f, 300.0f, 200.0f, 1.0f)};
-        global_descriptor_set->update_buffer(hash64("global_ubo"), &global_ubo_data, sizeof(GlobalUniformBuffer));
     });
 
     renderer.set_loading_gui_impl_callback([&](const CommandBuffer& cmd_buffer) {

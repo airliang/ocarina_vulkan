@@ -48,7 +48,7 @@ void RenderTask::render_one_frame() {
     renderer_.cull_scene();
     renderer_.update_visible_render_components();
 
-    FrameResources::instance().update_per_frame(dt_);
+    FrameResources::instance().update_per_frame(dt_, renderer_.camera_);
 
     if (renderer_.render) {
         renderer_.render(dt_);

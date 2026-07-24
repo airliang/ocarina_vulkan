@@ -36,7 +36,7 @@ VSOutput main(VSInput input)
 	output.Normal = normalize(mul(normalMatrix, input.Normal));
 	output.Color = input.Color.rgb;
 	output.UV = input.UV;
-	output.LightVec = lightPos.xyz - worldPos.xyz;
+	output.LightVec = -sunDirection.xyz;
 	output.ViewVec = cameraPos.xyz - worldPos.xyz;
 	output.WorldPos = worldPos.xyz;
 	return output;

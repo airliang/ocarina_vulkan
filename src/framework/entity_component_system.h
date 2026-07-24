@@ -5,6 +5,7 @@
 #include "primitive.h"
 #include "render_component.h"
 #include "transform_component.h"
+#include "light_component.h"
 
 namespace ocarina {
 
@@ -17,6 +18,7 @@ public:
         const uint32_t entity_index = static_cast<uint32_t>(primitives_.size());
         render_components_.emplace_back();
         transform_components_.emplace_back();
+        light_components_.emplace_back();
         primitives_.emplace_back(OC_FORWARD(args)...);
         primitives_.back().set_entity_index(entity_index);
         return entity_index;
@@ -26,6 +28,7 @@ public:
         const uint32_t entity_index = static_cast<uint32_t>(primitives_.size());
         render_components_.emplace_back();
         transform_components_.emplace_back();
+        light_components_.emplace_back();
         primitives_.push_back(std::move(primitive));
         primitives_.back().set_entity_index(entity_index);
         return entity_index;
@@ -53,9 +56,14 @@ public:
         transform_components_.resize(count);
     }
 
+    void resize_light_components(size_t count) {
+        light_components_.resize(count);
+    }
+
     void resize(size_t count) {
         resize_render_components(count);
         resize_transform_components(count);
+        resize_light_components(count);
     }
 
     [[nodiscard]] size_t render_component_count() const noexcept {
@@ -64,6 +72,10 @@ public:
 
     [[nodiscard]] size_t transform_component_count() const noexcept {
         return transform_components_.size();
+    }
+
+    [[nodiscard]] size_t light_component_count() const noexcept {
+        return light_components_.size();
     }
 
     [[nodiscard]] uint32_t primitive_count() const noexcept {
@@ -84,6 +96,14 @@ public:
 
     [[nodiscard]] const TransformComponent& transform_component(uint32_t entity_index) const {
         return transform_components_[entity_index];
+    }
+
+    [[nodiscard]] LightComponent& light_component(uint32_t entity_index) {
+        return light_components_[entity_index];
+    }
+
+    [[nodiscard]] const LightComponent& light_component(uint32_t entity_index) const {
+        return light_components_[entity_index];
     }
 
     [[nodiscard]] Primitive& primitive(uint32_t entity_index) {
@@ -110,6 +130,14 @@ public:
         return transform_components_;
     }
 
+    [[nodiscard]] std::vector<LightComponent>& light_components() noexcept {
+        return light_components_;
+    }
+
+    [[nodiscard]] const std::vector<LightComponent>& light_components() const noexcept {
+        return light_components_;
+    }
+
     [[nodiscard]] std::vector<Primitive>& primitives() noexcept {
         return primitives_;
     }
@@ -124,6 +152,7 @@ private:
     std::vector<Primitive> primitives_;
     std::vector<RenderComponent> render_components_;
     std::vector<TransformComponent> transform_components_;
+    std::vector<LightComponent> light_components_;
     std::vector<uint8_t> material_parameters_buffer_;
 };
 

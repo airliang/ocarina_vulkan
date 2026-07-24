@@ -1,8 +1,23 @@
 #include "frame_resources.h"
 #include "bindless_texture_registry.h"
+#include "camera.h"
 #include "rhi/descriptor_set.h"
+#include <cmath>
 
 namespace ocarina {
+
+namespace {
+
+float3 normalize_or_default(const float3& v, const float3& fallback) noexcept {
+    const float len_sq = v.x * v.x + v.y * v.y + v.z * v.z;
+    if (len_sq < 1e-12f) {
+        return fallback;
+    }
+    const float inv_len = 1.0f / std::sqrt(len_sq);
+    return make_float3(v.x * inv_len, v.y * inv_len, v.z * inv_len);
+}
+
+}// namespace
 
 FrameResources& FrameResources::instance() {
     static FrameResources s_instance;
@@ -100,6 +115,55 @@ bool FrameResources::is_global_descriptor_set_index(uint32_t set_index) const {
         return true;
     }
     return bindless_descriptor_set_index_ != InvalidUI32 && set_index == bindless_descriptor_set_index_;
+}
+
+void FrameResources::set_sun_direction(const float3& direction) noexcept {
+    const float3 n = normalize_or_default(direction, make_float3(-0.4f, -1.0f, -0.3f));
+    global_ubo_.sun_direction = make_float4(n.x, n.y, n.z, 0.0f);
+}
+
+void FrameResources::set_sun_color(const float3& color) noexcept {
+    global_ubo_.sun_color = make_float4(color.x, color.y, color.z, 1.0f);
+}
+
+void FrameResources::set_sun_intensity(float intensity) noexcept {
+    global_ubo_.sun_intensity = intensity;
+}
+
+void FrameResources::set_light_position(const float3& position) noexcept {
+    global_ubo_.light_pos = make_float4(position.x, position.y, position.z, 1.0f);
+}
+
+void FrameResources::upload_global_uniform_buffer(Camera* camera) {
+    DescriptorSet* global_descriptor_set = get_global_descriptor_set("global_ubo");
+    if (global_descriptor_set == nullptr) {
+        return;
+    }
+
+    if (camera != nullptr) {
+        global_ubo_.projection_matrix = camera->get_projection_matrix().transpose();
+        global_ubo_.view_matrix = camera->get_view_matrix().transpose();
+        const math3d::Vector3D& cam_position = camera->get_position();
+        global_ubo_.camera_pos = make_float4(cam_position[0], cam_position[1], cam_position[2], 1.0f);
+    }
+
+    // Keep sun direction normalized for the shader.
+    set_sun_direction(make_float3(
+        global_ubo_.sun_direction.x,
+        global_ubo_.sun_direction.y,
+        global_ubo_.sun_direction.z));
+
+    global_descriptor_set->update_buffer(
+        hash64("global_ubo"),
+        &global_ubo_,
+        sizeof(GlobalUniformBuffer));
+}
+
+void FrameResources::update_per_frame(double dt, Camera* camera) {
+    upload_global_uniform_buffer(camera);
+    if (update_) {
+        update_(*this, dt);
+    }
 }
 
 void FrameResources::rebuild_global_descriptor_sets_array_locked() {

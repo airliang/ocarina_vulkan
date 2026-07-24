@@ -8,6 +8,7 @@
 #include "entity_component_system.h"
 #include "primitive.h"
 #include "transform_component.h"
+#include "light_component.h"
 #include <utility>
 
 namespace ocarina {
@@ -80,6 +81,14 @@ public:
 
     [[nodiscard]] const TransformComponent& transform_component(uint32_t scene_index) const {
         return EntityComponentSystem::instance().transform_component(entity_indices_[scene_index]);
+    }
+
+    [[nodiscard]] LightComponent& light_component(uint32_t scene_index) {
+        return EntityComponentSystem::instance().light_component(entity_indices_[scene_index]);
+    }
+
+    [[nodiscard]] const LightComponent& light_component(uint32_t scene_index) const {
+        return EntityComponentSystem::instance().light_component(entity_indices_[scene_index]);
     }
 
     [[nodiscard]] const std::vector<uint32_t>& entity_indices() const noexcept {
