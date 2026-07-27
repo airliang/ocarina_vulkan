@@ -12,13 +12,13 @@ namespace ocarina {
 class Renderer;
 class LoadingProgressListener;
 
-class LoadingImguiTask : public enki::IPinnedTask {
+class LoadingImguiTask : public enki::ITaskSet {
 public:
     explicit LoadingImguiTask(Renderer& renderer) noexcept;
 
     void configure(const enki::ICompletable* loader_task, LoadingProgressListener* progress_listener = nullptr) noexcept;
 
-    void Execute() override;
+    void ExecuteRange(enki::TaskSetPartition range, uint32_t threadnum) override;
 
     [[nodiscard]] double last_dt() const noexcept { return dt_; }
     [[nodiscard]] uint64_t execute_thread_id() const noexcept { return execute_thread_id_; }

@@ -28,7 +28,7 @@ public:
     void initialize(Device* device, enki::TaskScheduler* scheduler);
     void shutdown() noexcept;
 
-    // Runtime: acquire a pooled PipelineCompileTask and AddPinnedTask immediately.
+    // Runtime: acquire a pooled PipelineCompileTask and AddTaskSetToPipe immediately.
     void enqueue(const PipelineState& pipeline_state, RHIRenderPass* render_pass);
 
     // Reclaim finished pooled tasks (safe to call every frame from the render thread).
@@ -64,7 +64,6 @@ public:
         RHIRenderPass* render_pass) noexcept;
 
     [[nodiscard]] PipelineCompileTaskPool& task_pool() noexcept { return task_pool_; }
-    [[nodiscard]] uint32_t next_worker_thread_num() noexcept;
 
     [[nodiscard]] Device* device() const noexcept { return device_; }
     [[nodiscard]] enki::TaskScheduler* scheduler() const noexcept { return scheduler_; }
@@ -89,7 +88,6 @@ private:
     std::mutex pending_mutex_;
     std::unordered_set<PipelineCacheKey, PipelineCacheKeyHash> pending_keys_;
 
-    std::atomic<uint32_t> worker_thread_rr_{0};
     std::atomic<bool> shutdown_requested_{false};
     bool initialized_ = false;
 };

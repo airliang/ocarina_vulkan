@@ -3,6 +3,7 @@
 #include "pipeline_manager.h"
 #include "render_pass_task.h"
 #include "pass_group_id.h"
+#include "pinned_task_ids.h"
 #include "camera.h"
 #include "rhi/device.h"
 #include "rhi/command_buffer.h"
@@ -14,7 +15,7 @@
 namespace ocarina {
 
 RenderTask::RenderTask(Renderer& renderer) noexcept
-    : enki::IPinnedTask(1),
+    : enki::IPinnedTask(pinned_task_thread_num(PinnedTaskIds::RenderTask)),
       renderer_(renderer) {}
 
 void RenderTask::Execute() {

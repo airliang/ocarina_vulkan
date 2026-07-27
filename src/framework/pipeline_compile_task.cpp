@@ -157,7 +157,8 @@ void PipelineCompileTask::reset() noexcept {
     pipeline_state_ = {};
     render_pass_ = nullptr;
     compile_from_entry_ = false;
-    threadNum = 1;
+    m_SetSize = 1;
+    m_MinRange = 1;
 }
 
 void PipelineCompileTask::Initialize(
@@ -166,7 +167,6 @@ void PipelineCompileTask::Initialize(
     PipelineCompileTaskPool* pool,
     Entry* entry,
     RHIRenderPass* render_pass,
-    uint32_t worker_thread_num,
     LoadingProgressListener* progress_listener) noexcept {
     reset();
     device_ = device;
@@ -177,7 +177,6 @@ void PipelineCompileTask::Initialize(
     progress_listener_ = progress_listener;
     compile_from_entry_ = true;
     pipeline_state_ = MakePipelineStateFromEntry(entry);
-    threadNum = worker_thread_num == 0 ? 1 : worker_thread_num;
 }
 
 void PipelineCompileTask::Initialize(
@@ -185,8 +184,7 @@ void PipelineCompileTask::Initialize(
     PipelineManager* manager,
     PipelineCompileTaskPool* pool,
     const PipelineState& pipeline_state,
-    RHIRenderPass* render_pass,
-    uint32_t worker_thread_num) noexcept {
+    RHIRenderPass* render_pass) noexcept {
     reset();
     device_ = device;
     manager_ = manager;
@@ -194,7 +192,6 @@ void PipelineCompileTask::Initialize(
     pipeline_state_ = pipeline_state;
     render_pass_ = render_pass;
     compile_from_entry_ = false;
-    threadNum = worker_thread_num == 0 ? 1 : worker_thread_num;
 }
 
 PipelineState PipelineCompileTask::MakePipelineStateFromEntry(const Entry* entry) noexcept {
@@ -282,7 +279,12 @@ void PipelineCompileTask::finish_and_release() noexcept {
     }
 }
 
-void PipelineCompileTask::Execute() {
+void PipelineCompileTask::ExecuteRange(enki::TaskSetPartition range, uint32_t threadnum) {
+    (void)threadnum;
+    if (range.start != 0) {
+        return;
+    }
+
     if (compile_from_entry_) {
         resolve_shaders_from_entry();
     }

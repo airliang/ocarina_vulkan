@@ -21,7 +21,7 @@ class RHIRenderPass;
 // Compiles shaders (or hits the shader cache), builds descriptor-set / pipeline layouts,
 // creates the graphics PSO, and inserts it into PipelineManager's cache.
 // Each task handles exactly one PipelineCompileTarget or one runtime PipelineState + pass.
-class PipelineCompileTask : public enki::IPinnedTask {
+class PipelineCompileTask : public enki::ITaskSet {
 public:
     struct ShaderSource {
         std::string file_path;
@@ -95,7 +95,10 @@ public:
         void move_from(Entry&& other) noexcept;
     };
 
-    PipelineCompileTask() = default;
+    PipelineCompileTask() noexcept {
+        m_SetSize = 1;
+        m_MinRange = 1;
+    }
 
     // Async load: one Entry + one render pass.
     void Initialize(
@@ -104,7 +107,6 @@ public:
         PipelineCompileTaskPool* pool,
         PipelineCompileTask::Entry* entry,
         RHIRenderPass* render_pass,
-        uint32_t worker_thread_num,
         LoadingProgressListener* progress_listener = nullptr) noexcept;
 
     // Runtime: shaders already resolved in pipeline_state.
@@ -113,10 +115,9 @@ public:
         PipelineManager* manager,
         PipelineCompileTaskPool* pool,
         const PipelineState& pipeline_state,
-        RHIRenderPass* render_pass,
-        uint32_t worker_thread_num) noexcept;
+        RHIRenderPass* render_pass) noexcept;
 
-    void Execute() override;
+    void ExecuteRange(enki::TaskSetPartition range, uint32_t threadnum) override;
 
     [[nodiscard]] static PipelineState MakePipelineStateFromEntry(const Entry* entry) noexcept;
     static void ResolveEntryShaders(

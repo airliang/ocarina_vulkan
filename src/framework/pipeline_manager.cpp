@@ -15,7 +15,6 @@ void PipelineManager::initialize(Device* device, enki::TaskScheduler* scheduler)
     device_ = device;
     scheduler_ = scheduler;
     shutdown_requested_.store(false, std::memory_order_release);
-    worker_thread_rr_.store(0, std::memory_order_relaxed);
     initialized_ = device_ != nullptr && scheduler_ != nullptr;
 }
 
@@ -89,9 +88,8 @@ void PipelineManager::enqueue(const PipelineState& pipeline_state, RHIRenderPass
         this,
         &task_pool_,
         pipeline_state,
-        render_pass,
-        next_worker_thread_num());
-    scheduler_->AddPinnedTask(task);
+        render_pass);
+    scheduler_->AddTaskSetToPipe(task);
 }
 
 void PipelineManager::update() {
@@ -116,9 +114,8 @@ void PipelineManager::submit_compile_target(
             &task_pool_,
             target.entry,
             target.render_pass,
-            next_worker_thread_num(),
             progress_listener);
-        scheduler_->AddPinnedTask(task);
+        scheduler_->AddTaskSetToPipe(task);
         return;
     }
 
@@ -139,9 +136,8 @@ void PipelineManager::submit_compile_target(
         &task_pool_,
         target.entry,
         target.render_pass,
-        next_worker_thread_num(),
         progress_listener);
-    scheduler_->AddPinnedTask(task);
+    scheduler_->AddTaskSetToPipe(task);
 }
 
 void PipelineManager::compile_targets(
@@ -172,24 +168,6 @@ void PipelineManager::compile_targets(
     for (const PipelineCompileTarget& target : targets) {
         submit_compile_target(target, progress_listener);
     }
-}
-
-uint32_t PipelineManager::next_worker_thread_num() noexcept {
-    if (scheduler_ == nullptr) {
-        return 1;
-    }
-
-    const uint32_t num_threads = scheduler_->GetNumTaskThreads();
-    if (num_threads <= 1) {
-        return 0;
-    }
-    if (num_threads == 2) {
-        return 1;
-    }
-
-    const uint32_t worker_count = num_threads - 2;
-    const uint32_t index = worker_thread_rr_.fetch_add(1, std::memory_order_relaxed) % worker_count;
-    return 2 + index;
 }
 
 RHIPipeline* PipelineManager::get_pipeline(const PipelineState& pipeline_state, RHIRenderPass* render_pass) const noexcept {

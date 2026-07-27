@@ -8,8 +8,10 @@
 namespace ocarina {
 
 LoadingImguiTask::LoadingImguiTask(Renderer& renderer) noexcept
-    : enki::IPinnedTask(1),
-      renderer_(renderer) {}
+    : renderer_(renderer) {
+    m_SetSize = 1;
+    m_MinRange = 1;
+}
 
 void LoadingImguiTask::configure(const enki::ICompletable* loader_task, LoadingProgressListener* progress_listener) noexcept {
     loader_task_ = loader_task;
@@ -51,8 +53,9 @@ void LoadingImguiTask::render_loading_frame() {
     device->end_frame();
 }
 
-void LoadingImguiTask::Execute() {
-    if (loader_task_ == nullptr) {
+void LoadingImguiTask::ExecuteRange(enki::TaskSetPartition range, uint32_t threadnum) {
+    (void)threadnum;
+    if (range.start != 0 || loader_task_ == nullptr) {
         return;
     }
 

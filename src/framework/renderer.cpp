@@ -377,7 +377,7 @@ void Renderer::run()
         }
 
         loading_imgui_task_.configure(async_loader_task_, loading_progress_listener_);
-        task_scheduler_.AddPinnedTask(&loading_imgui_task_);
+        task_scheduler_.AddTaskSetToPipe(&loading_imgui_task_);
 
         task_scheduler_.WaitforTask(async_loader_task_);
         task_scheduler_.WaitforTask(&loading_imgui_task_);
