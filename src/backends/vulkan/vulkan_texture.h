@@ -84,10 +84,19 @@ public:
         image_layout_ = new_image_layout;
     }
 
+    /// Layout expected by COMBINED_IMAGE_SAMPLER / SAMPLED_IMAGE descriptors (not the
+    /// current tracked layout, which may be UNDEFINED or an attachment layout).
+    [[nodiscard]] VkImageLayout sampling_image_layout() const noexcept {
+        if (is_depth_stencil()) {
+            return VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+        }
+        return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    }
+
     VkDescriptorImageInfo get_descriptor_info() const
     {
         VkDescriptorImageInfo image_info{};
-        image_info.imageLayout = image_layout_;
+        image_info.imageLayout = sampling_image_layout();
         image_info.imageView = image_view_;
         image_info.sampler = sampler_;
         return image_info;
@@ -96,7 +105,7 @@ public:
     VkDescriptorImageInfo get_sampled_image_descriptor_info() const
     {
         VkDescriptorImageInfo image_info{};
-        image_info.imageLayout = image_layout_;
+        image_info.imageLayout = sampling_image_layout();
         image_info.imageView = image_view_;
         image_info.sampler = VK_NULL_HANDLE;
         return image_info;
