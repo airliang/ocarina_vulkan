@@ -7,7 +7,7 @@
 The project exists for two main goals:
 
 - **Vulkan graphics API learning** — swapchain and offscreen passes, dynamic rendering (Vulkan 1.3 with classic render-pass fallback), descriptor sets, pipeline state, texture upload, and glTF loading.
-- **Multithreaded, modern rendering architecture** — job scheduling with enkiTS, a dedicated render thread for GPU submission, async pipeline (PSO) compilation, parallel frustum culling, and staged resource loading without blocking the main SDL event loop.
+- **Multithreaded, modern rendering architecture** — job scheduling with enkiTS, a dedicated render thread for GPU submission, a dedicated GPU resource thread for CPU→GPU uploads, async pipeline (PSO) compilation, parallel frustum culling, and staged resource loading without blocking the main SDL event loop.
 
 Sample applications under `src/tests/` exercise triangle rendering, offscreen targets, bindless textures, culling, and glTF scenes.
 
@@ -50,7 +50,7 @@ Vulkan implementation of the RHI, loaded as a backend module. It owns instance/d
 
 ### ocarina-framework
 
-High-level rendering and scene layer: `Renderer`, ECS (`EntityComponentSystem`), scene/camera/primitives, `PipelineManager` and async `PipelineCompileTask`, `GlobalGPUStorage`, `FrameResources`, glTF/async loaders, ImGui integration, and pass-group recording (`PassGroupId` → `RenderPassTask`). This is where multithread scheduling and the per-frame render loop live.
+High-level rendering and scene layer: `Renderer`, ECS (`EntityComponentSystem`), scene/camera/primitives, `PipelineManager` and async `PipelineCompileTask`, `GPUResourceThread` / `MeshBufferAllocator` / `GlobalGPUStorage`, `FrameResources`, glTF/async loaders, ImGui integration, and pass-group recording (`PassGroupId` → `RenderPassTask`). This is where multithread scheduling and the per-frame render loop live.
 
 ### Third-party references (under `src/ext/`)
 
@@ -69,16 +69,44 @@ High-level rendering and scene layer: `Renderer`, ECS (`EntityComponentSystem`),
 
 ## 3. Multithread Rendering Architecture
 
-Scheduling uses **enkiTS** with `hardware_concurrency()` worker threads. Thread **0** is the thread that constructs `Renderer` (typically the main thread).
+Scheduling uses **enkiTS**. `Renderer` requests at least **3** task threads so pinned roles stay distinct from the worker pool. Thread **0** is the thread that constructs `Renderer` (typically the main thread).
 
 ### Thread roles
 
 | Thread | Responsibility |
 |--------|----------------|
 | **Main (0)** | Application setup, `Renderer::run()`, waits on async load, SDL event loop after load |
-| **Render (1, pinned)** | `RenderTask` — per-frame update, **dispatch culling job** (`RendererPrimitiveCullTask` via enkiTS) and wait, dispatch recording jobs, **swapchain acquire** (`begin_frame`), **graphics queue submit** (`execute_command_buffers`), **present** (`end_frame`); `LoadingImguiTask` during load |
+| **Render (1, pinned)** | `RenderTask` — per-frame update, **dispatch culling job** (`RendererPrimitiveCullTask` via enkiTS) and wait, dispatch recording jobs, **swapchain acquire** (`begin_frame`), flush pending bindless updates, **graphics queue submit** (`execute_command_buffers`), **present** (`end_frame`) |
+| **GPU resource (2, pinned)** | `GPUResourceThread` — serializes Vulkan **CPU→GPU uploads**: mesh geometry into paged mega VB/IB (`MeshBufferAllocator`), sampler texture creation, and bindless descriptor update queues |
 | **Cmd record (workers)** | `RenderPassTask` — command buffer recording (`begin` / render passes / draw / `end`) per `PassGroupId`; dispatched from the render thread, executed on an enkiTS worker (`m_SetSize = 1` per group) |
-| **Workers (2…N−1)** | `AsyncLoader`, parallel frustum cull (`RendererPrimitiveCullTask`), async `PipelineCompileTask` (PSO creation) |
+| **Workers (3…N−1)** | `AsyncLoader` / `GltfAsyncLoader`, parallel frustum cull (`RendererPrimitiveCullTask`), async `PipelineCompileTask` (PSO creation), **`LoadingImguiTask`** during load (worker records and presents the loading UI until the loader completes) |
+
+### GPU resource uploads (`GPUResourceThread`)
+
+Loader and main threads prepare CPU data, then **enqueue** work; they do not call Vulkan create/upload APIs for meshes and sampler textures directly.
+
+```mermaid
+flowchart LR
+    Loader["AsyncLoader / glTF worker"]
+    Queue["GPUResourceThread queue"]
+    GPURes["GPU resource thread (pinned 2)"]
+    Copy["Vulkan copy / create"]
+    Draw["Render thread draw"]
+
+    Loader -->|"enqueue Mesh / Texture request"| Queue
+    Queue --> GPURes
+    GPURes --> Copy
+    Copy -->|"Mesh GPU_Ready / bindless update"| Draw
+```
+
+| Resource | What the loader does | What the GPU resource thread does | When it becomes drawable |
+|----------|----------------------|-----------------------------------|---------------------------|
+| **Mesh** | Build CPU geometry, `GlobalGPUStorage::upload_mesh` → enqueue `MeshGPUResourceRequest` | Allocate into **32MB first-fit pages** (`MeshBufferAllocator`), upload VB/IB streams, set `Mesh` to `GPU_Ready` | Draw skips until `Mesh` is `GPU_Ready` and the page VB/IB are bound |
+| **Sampler texture** | `ResourceManager::create_texture` **reserves a bindless index immediately**, returns `TextureHandle`, enqueues `TextureGPUResourceRequest` | Create Vulkan texture, bind into the reserved slot, `queue_bindless_texture_update` | Draw skips until the texture is `GPU_Visible` (after the render thread flushes bindless updates) |
+
+`RenderComponent` stores a **mesh id** (resolved via `ResourceManager`); geometry offsets live on `Mesh` as a page-local `MeshGeometrySlice`. The draw loop binds VB/IB **by page** and avoids rebinding when the page does not change.
+
+Render targets used as framebuffer attachments are still created immediately on the caller (they must exist before render-pass setup); sampler textures and meshes stay fully async on the GPU resource thread.
 
 ### How work is dispatched
 
@@ -86,31 +114,38 @@ Scheduling uses **enkiTS** with `hardware_concurrency()` worker threads. Thread 
 sequenceDiagram
     participant Main as Main thread
     participant Render as Render thread
+    participant GPURes as GPU resource thread
     participant Worker as Worker threads
 
     Note over Main,Worker: Startup / load
-    Main->>Worker: AsyncLoader (shaders, meshes, materials)
-    Main->>Render: LoadingImguiTask (loading UI)
-    Main->>Main: Wait for load, finalize GPU buffers
+    Main->>Worker: AsyncLoader (parse assets, build CPU data)
+    Worker->>GPURes: Enqueue mesh / texture uploads
+    GPURes->>GPURes: Page allocate, copy-queue upload, bindless queue
+    Main->>Worker: LoadingImguiTask (loading UI record / present)
+    Main->>Main: Wait for AsyncLoader and LoadingImguiTask
     Main->>Render: Start RenderTask
 
     Note over Main,Worker: Steady state (each frame)
     Render->>Render: Acquire swapchain image (begin_frame)
+    Render->>Render: Flush pending bindless updates
     Render->>Render: Cull, update components
-  loop Each PassGroupId in order
+    loop Each PassGroupId in order
         Render->>Worker: RenderPassTask (record command buffer)
         Render->>Render: Wait, queue submit
     end
     Render->>Render: Present swapchain (end_frame)
     Main->>Main: SDL events (parallel)
     Worker->>Worker: PSO compile / cull (overlap with GPU)
+    GPURes->>GPURes: Drain remaining upload requests
 ```
 
 **Main thread** kicks off loading and then runs the window loop. It does not record draw commands after the render thread starts.
 
 **Render thread** owns the frame loop: camera update, **dispatch of the parallel frustum culling job** (`RendererPrimitiveCullTask` onto worker threads, then wait), queue population, and orchestration of **RenderPassTask** instances (grouped by `PassGroupId` — e.g. Offscreen, GBuffer, UI). Each non-empty group records on a worker; the render thread waits, submits recorded command buffers to the graphics queue, and presents the swapchain image when the frame ends.
 
-**Worker threads** handle CPU-heavy work that should not block presentation: asset loading, SIMD frustum culling, pipeline creation, and **command buffer recording** when `RenderPassTask` runs. The render thread dispatches one recording task per non-empty pass group, waits for completion, then submits the recorded buffers. Missing PSOs are skipped for the current frame rather than stalling the render thread.
+**GPU resource thread** owns a single-producer/consumer queue of `GPUResourceRequest`s so Vulkan buffer/texture creation and copy-queue uploads stay serialized and off the render and loader threads.
+
+**Worker threads** handle CPU-heavy work that should not block presentation: asset parsing, SIMD frustum culling, pipeline creation, **command buffer recording** when `RenderPassTask` runs, and **`LoadingImguiTask`** during startup (a worker records and presents the loading UI while the loader runs). The render thread dispatches one recording task per non-empty pass group, waits for completion, then submits the recorded buffers. Missing PSOs or resources that are not yet `GPU_Ready` / `GPU_Visible` are skipped for the current frame rather than stalling the render thread.
 
 ---
 
@@ -153,7 +188,7 @@ PBR mesh shading for glTF uses the built-in shaders:
 - `res/shaderlibrary/builtin/mesh.vert`
 - `res/shaderlibrary/builtin/mesh.frag`
 
-Parsing is done with **tinygltf** (`src/ext/tinygltf/`). Geometry is staged into `GlobalGPUStorage`; textures and materials are created on the loader worker thread.
+Parsing is done with **tinygltf** (`src/ext/tinygltf/`). Geometry and textures are prepared on the loader worker, then uploaded on **`GPUResourceThread`** via `GlobalGPUStorage` / `ResourceManager` (paged mesh buffers and early bindless indices).
 
 ### How glTF loading works
 
@@ -161,10 +196,10 @@ Parsing is done with **tinygltf** (`src/ext/tinygltf/`). Geometry is staged into
 
 1. **Compile pipelines** — resolve shaders, cache pipeline layouts, kick off async PSO creation for the swapchain pass.
 2. **Parse glTF** — load `.gltf` / `.glb` via tinygltf; resolve external images relative to the glTF file’s directory.
-3. **Build scene** — walk the node graph, append mesh geometry, create `Material`s and `Texture`s, populate a `Scene` of `Primitive`s.
-4. **Complete callback** (main thread, after load) — wire push constants, assign `renderer.set_scene()`, then `GlobalGPUStorage::finalize()` uploads mega vertex/index buffers before the render loop starts.
+3. **Build scene** — walk the node graph, enqueue mesh uploads, create `Material`s, reserve bindless texture indices and enqueue texture uploads, populate a `Scene` of `Primitive`s.
+4. **Complete callback** (main thread, after load) — wire push constants and assign `renderer.set_scene()`. GPU uploads continue (or finish) on `GPUResourceThread`; the first drawable frames skip meshes/textures that are not yet `GPU_Ready` / `GPU_Visible`.
 
-While loading, the **render thread** shows a loading UI (`LoadingImguiTask`); the **main thread** can continue processing SDL events.
+While loading, a **worker thread** runs `LoadingImguiTask` to record and present the loading UI; the **main thread** can continue processing SDL events.
 
 ### glTF loading example
 
