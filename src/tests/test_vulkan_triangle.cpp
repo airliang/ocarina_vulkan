@@ -32,25 +32,19 @@ using namespace ocarina;
 
 static Mesh* create_triangle_mesh() {
     Mesh* mesh = ocarina::new_with_allocator<Mesh>();
-    Vector3 positions[3] = {
+    OwnedMeshGeometry geometry;
+    geometry.positions = {
         {-1.0f, 1.0f, 0.0f},
         {1.0f, 1.0f, 0.0f},
         {0.0f, -1.0f, 0.0f},
     };
-    Vector4 colors[3] = {
+    geometry.colors = {
         {1.0f, 0.0f, 0.0f, 1.0f},
         {0.0f, 1.0f, 0.0f, 1.0f},
         {0.0f, 0.0f, 1.0f, 1.0f},
     };
-    const std::vector<uint16_t> indices{0, 1, 2};
-
-    MeshGeometryInput input{};
-    input.vertex_count = 3;
-    input.positions = positions;
-    input.colors = colors;
-    input.indices = indices.data();
-    input.index_count = static_cast<uint32_t>(indices.size());
-    mesh->set_geometry_slice(GlobalGPUStorage::instance().append_mesh(input));
+    geometry.indices = {0, 1, 2};
+    GlobalGPUStorage::instance().upload_mesh(std::move(geometry), mesh);
     return mesh;
 }
 

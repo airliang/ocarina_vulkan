@@ -21,6 +21,7 @@
 #include "framework/internal_textures.h"
 #include "framework/bindless_texture_registry.h"
 #include "rhi/bindless_sampler.h"
+#include "rhi/resources/texture_sampler.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/renderpass.h"
 
@@ -43,13 +44,12 @@ static void apply_mesh_material_defaults(Primitive& primitive) {
     primitive.set_material_parameter("normalSamplerIndex", 0u);
 }
 
-static void apply_mesh_bindless_indices(Primitive& primitive, Texture* albedo_texture) {
-    const uint32_t albedo_index = BindlessTextureRegistry::instance().get_index(albedo_texture);
-    primitive.set_material_parameter("albedoIndex", albedo_index);
-    OC_ASSERT(albedo_texture != nullptr);
+static void apply_mesh_bindless_indices(Primitive& primitive, const Material::TextureHandle& albedo_handle) {
+    primitive.set_material_parameter("albedoIndex", albedo_handle.bindless_index_);
     primitive.set_material_parameter(
         "albedoSamplerIndex",
-        get_bindless_sampler_index(*albedo_texture));
+        get_bindless_sampler_index(
+            TextureSampler{TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT}));
 }
 
 int main(int argc, char* argv[]) {
@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
     Material* material = nullptr;
     Mesh* cube_mesh = nullptr;
     Scene* scene = nullptr;
-    Texture* white_texture = nullptr;
+    Material::TextureHandle white_handle{};
 
     Renderer renderer(&device);
 
@@ -91,9 +91,8 @@ int main(int argc, char* argv[]) {
             pipeline_entries[0].vertex_shader(),
             pipeline_entries[0].pixel_shader());
         cube_mesh = Mesh::create_cube();
-        white_texture = InternalTextures::instance().get_white_texture(load_device);
-        const uint32_t white_bindless_index = BindlessTextureRegistry::instance().allocate_index(white_texture);
-        FrameResources::instance().update_bindless_texture_at_index(white_bindless_index, white_texture);
+        white_handle = InternalTextures::instance().get_white_texture_handle(load_device);
+        material->add_bindless_texture(hash64("albedo"), white_handle);
 
         scene = ocarina::new_with_allocator<Scene>();
         scene->reserve_primitives(kTotalCubes);
@@ -110,7 +109,7 @@ int main(int argc, char* argv[]) {
                     primitive.set_mesh(cube_mesh);
                     primitive.set_material(material);
                     apply_mesh_material_defaults(primitive);
-                    apply_mesh_bindless_indices(primitive, white_texture);
+                    apply_mesh_bindless_indices(primitive, white_handle);
                 }
             }
         }

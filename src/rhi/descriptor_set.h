@@ -6,8 +6,6 @@
 
 #include "core/concepts.h"
 
-
-
 namespace ocarina {
 struct RHIPipeline;
 class Texture;
@@ -16,13 +14,11 @@ class CommandBuffer;
 
 class DescriptorSet : concepts::Noncopyable {
 public:
-    //DescriptorSet() {}
     virtual ~DescriptorSet() {}
 
     virtual void update_buffer(uint64_t name_id, const void *data, uint32_t size) = 0;
     virtual void update_texture(uint64_t name_id, Texture *texture) = 0;
     virtual void update_sampler(uint64_t name_id, const TextureSampler& sampler) = 0;
-    virtual uint32_t update_bindless_texture(uint64_t name_id, Texture *texture) = 0;
     virtual void update_bindless_texture_at_index(uint32_t index, Texture *texture) = 0;
 
 private:
@@ -63,20 +59,10 @@ class DescriptorSetWriter : concepts::Noncopyable {
 public:
     DescriptorSetWriter() {}
     virtual ~DescriptorSetWriter() {}
-    //virtual void write_descriptor_set(DescriptorSet &descriptor_set) = 0;
-    //// Add more methods to set different types of descriptors
-    //virtual void set_uniform_buffer(uint32_t binding, const void *data, size_t size) = 0;
-    //virtual void set_storage_buffer(uint32_t binding, const void *data, size_t size) = 0;
-    //virtual void set_texture(uint32_t binding, const void *texture) = 0;
-    //virtual void set_sampler(uint32_t binding, const void *sampler) = 0;
-    //virtual void bind_buffer(uint64_t name_id, handle_ty buffer) = 0;
-    //virtual void bind_texture(uint64_t name_id, handle_ty texture) = 0;
     virtual void update_buffer(uint64_t name_id, const void *data, uint32_t size) = 0;
-    virtual void update_push_constants(const CommandBuffer& cmd_buffer, uint64_t name_id, const void *data, uint32_t size, RHIPipeline* pipeline) = 0;
     virtual void update_texture(uint64_t name_id, Texture* texture) = 0;
 
 protected:
-    //unique_ptr<DescriptorSet> descriptor_set_ = nullptr;
     DescriptorSetLayout *descriptor_set_layout_ = nullptr;
 };
 

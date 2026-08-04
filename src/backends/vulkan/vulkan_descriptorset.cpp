@@ -58,22 +58,6 @@ void VulkanDescriptorSet::update_sampler(uint64_t name_id, const TextureSampler&
     }
 }
 
-uint32_t VulkanDescriptorSet::update_bindless_texture(uint64_t name_id, Texture *texture) {
-    size_t binding_count = layout_->get_bindings_count();
-    for (size_t i = 0; i < binding_count; ++i)
-    {
-        VulkanShaderVariableBinding *binding = layout_->get_binding(i);
-        if (binding && binding->is_bindless &&
-            (binding->type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
-             binding->type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)) {
-            if (writer_) {
-                return writer_->update_bindless_texture(name_id, texture);
-            }
-        }
-    }
-    return InvalidUI32;
-}
-
 void VulkanDescriptorSet::update_bindless_texture_at_index(uint32_t index, Texture *texture) {
     size_t binding_count = layout_->get_bindings_count();
     for (size_t i = 0; i < binding_count; ++i) {

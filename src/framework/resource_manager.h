@@ -5,11 +5,11 @@
 #include "core/concepts.h"
 #include "core/hash.h"
 #include "rhi/graphics_descriptions.h"
+#include "material.h"
 #include <mutex>
 
 namespace ocarina {
 
-class Material;
 class Mesh;
 class Texture;
 class Image;
@@ -33,21 +33,57 @@ public:
 
     Mesh* create_mesh(const std::string& name);
     Mesh* get_mesh(const std::string& name) const noexcept;
+    [[nodiscard]] Mesh* get_mesh(uint32_t mesh_id) const noexcept;
     void add_mesh(const std::string& name, Mesh* mesh);
 
-    Texture* create_texture(Device* device, const Image& image, const TextureViewCreation& texture_view, const TextureSampler& sampler);
-    Texture* create_texture(Device* device, const std::string& name, uint32_t width, uint32_t height, PixelStorage pixel_storage,
-                            const TextureViewCreation& texture_view, const TextureSampler& sampler, const void* data = nullptr);
-    Texture* create_render_target_texture(Device* device, const std::string& name, uint32_t width, uint32_t height,
-                                          PixelStorage pixel_storage, TextureUsageFlags usage);
-    Texture* get_texture(const std::string& name, const TextureViewCreation& texture_view, const TextureSampler& sampler) const noexcept;
-private:
+    /// Assign a stable mesh id (called from Mesh construction).
+    uint32_t register_mesh(Mesh* mesh);
+    void unregister_mesh(Mesh* mesh);
 
+    /// Async GPU create: reserves bindless index immediately and enqueues upload.
+    [[nodiscard]] Material::TextureHandle create_texture(
+        Device* device,
+        const Image& image,
+        const TextureViewCreation& texture_view,
+        const TextureSampler& sampler);
+    [[nodiscard]] Material::TextureHandle create_texture(
+        Device* device,
+        const std::string& name,
+        uint32_t width,
+        uint32_t height,
+        PixelStorage pixel_storage,
+        const TextureViewCreation& texture_view,
+        const TextureSampler& sampler,
+        const void* data = nullptr);
+    /// Render targets are created immediately (needed for framebuffer setup).
+    [[nodiscard]] Texture* create_render_target_texture(
+        Device* device,
+        const std::string& name,
+        uint32_t width,
+        uint32_t height,
+        PixelStorage pixel_storage,
+        TextureUsageFlags usage);
+
+    [[nodiscard]] Material::TextureHandle get_texture_handle(
+        const std::string& name,
+        const TextureViewCreation& texture_view,
+        const TextureSampler& sampler) const noexcept;
+    [[nodiscard]] Texture* get_texture(
+        const std::string& name,
+        const TextureViewCreation& texture_view,
+        const TextureSampler& sampler) const noexcept;
+
+    /// Called from the GPU resource thread when a texture finishes creating.
+    void complete_texture(uint64_t key, Texture* texture);
+
+private:
     std::unordered_map<uint64_t, Material*> materials_;
     std::vector<Material*> unique_materials_;
     std::unordered_map<uint64_t, Mesh*> meshes_;
-    std::unordered_map<uint64_t, Texture*> textures_;
-    std::mutex mutex_;
+    std::vector<Mesh*> meshes_by_id_;
+    std::unordered_map<Mesh*, uint32_t> mesh_to_id_;
+    std::unordered_map<uint64_t, Material::TextureHandle> textures_;
+    mutable std::mutex mutex_;
 };
 
 }// namespace ocarina

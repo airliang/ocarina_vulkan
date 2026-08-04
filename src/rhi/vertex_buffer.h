@@ -3,7 +3,7 @@
 #include "core/header.h"
 #include "core/stl.h"
 #include "graphics_descriptions.h"
-#include "device.h"
+#include "resources/resource.h"
 
 namespace ocarina {
 
@@ -38,17 +38,17 @@ struct VertexStream {
     }
 };
 
-class OC_RHI_API VertexBuffer {
+class OC_RHI_API VertexBuffer : public RHIResource {
 public:
-    VertexBuffer(Device::Impl* device) : device_(device) {}
-    virtual ~VertexBuffer();
+    explicit VertexBuffer(Device::Impl* device)
+        : RHIResource(device, Tag::BUFFER, 0) {}
+    ~VertexBuffer() override;
 
     static VertexBuffer* create_vertex_buffer(Device::Impl* device);
 
     void add_vertex_stream(VertexAttributeType::Enum type, uint32_t count, uint32_t stride, const void* data);
 
     OC_MAKE_MEMBER_GETTER(vertex_count, );
-    OC_MAKE_MEMBER_GETTER(device, );
 
     Vector3* get_positions() {
         return static_cast<Vector3*>(vertex_streams_[(uint8_t)VertexAttributeType::Enum::Position].data);
@@ -75,11 +75,19 @@ public:
 
     void upload_data();
 
+    /// Pre-allocate a GPU attribute stream with capacity (no CPU upload).
+    virtual void allocate_stream_capacity(VertexAttributeType::Enum type, uint32_t capacity, uint32_t stride) = 0;
+    /// Upload a contiguous vertex range into an allocated stream (dst offset = vertex_offset * stride).
+    virtual void upload_attribute_range(
+        VertexAttributeType::Enum type,
+        const void* data,
+        uint32_t vertex_offset,
+        uint32_t vertex_count) = 0;
+
 protected:
     virtual void upload_attribute_data(VertexAttributeType::Enum type, const void* data, uint64_t offset = 0) = 0;
 
     uint32_t vertex_count_ = 0;
-    Device::Impl* device_ = nullptr;
     VertexStream vertex_streams_[(uint8_t)VertexAttributeType::Enum::Count];
     bool dirty_ = false;
 };

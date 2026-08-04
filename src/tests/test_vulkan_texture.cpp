@@ -28,6 +28,7 @@
 #include "framework/transform.h"
 #include "framework/async_loader.h"
 #include "framework/pipeline_compile_task.h"
+#include "framework/bindless_texture_registry.h"
 #include "framework/frame_resources.h"
 
 using namespace ocarina;
@@ -49,7 +50,7 @@ int main(int argc, char *argv[]) {
     Primitive& quad = scene.emplace_primitive();
     Material* material = nullptr;
     Mesh* quad_mesh = nullptr;
-    Texture* texture = nullptr;
+    Material::TextureHandle texture_handle{};
 
     Renderer renderer(&device);
 
@@ -68,7 +69,7 @@ int main(int argc, char *argv[]) {
         &renderer.task_scheduler(),
         &device,
         &pipeline_entries,
-        [&material, &quad_mesh, &texture, &pipeline_entries, &texture_path](Device* device) {
+        [&material, &quad_mesh, &texture_handle, &pipeline_entries, &texture_path](Device* device) {
         material = ResourceManager::instance().create_material(
             device,
             pipeline_entries[0].vertex_shader(),
@@ -79,7 +80,7 @@ int main(int argc, char *argv[]) {
         texture_view.mip_level_count = 0;
         texture_view.usage = TextureUsageFlags::ShaderReadOnly;
         TextureSampler sampler{TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT};
-        texture = ResourceManager::instance().create_texture(device, image, texture_view, sampler);
+        texture_handle = ResourceManager::instance().create_texture(device, image, texture_view, sampler);
 
         quad_mesh = ResourceManager::instance().create_mesh("quad");
     });
@@ -88,8 +89,15 @@ int main(int argc, char *argv[]) {
         quad.set_mesh(quad_mesh);
         quad.set_material(material);
 
-        material->add_texture(hash64("albedo"), texture);
-        material->add_sampler(hash64("sampler_albedo"), *texture->get_sampler_pointer());
+        Texture* texture = texture_handle.texture_;
+        if (texture == nullptr) {
+            texture = BindlessTextureRegistry::instance().get_texture(texture_handle.bindless_index_);
+            texture_handle.texture_ = texture;
+        }
+        if (texture != nullptr) {
+            material->add_texture(hash64("albedo"), texture);
+            material->add_sampler(hash64("sampler_albedo"), *texture->get_sampler_pointer());
+        }
     };
 
     Camera camera;

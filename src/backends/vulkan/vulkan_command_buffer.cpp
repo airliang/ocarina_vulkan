@@ -394,9 +394,16 @@ void VulkanCommandBuffer::reset() {
 
 void VulkanCommandBuffer::copy_buffer(VulkanBuffer* src, VulkanBuffer* dst)
 {
-    VkBufferCopy buffer_copy{};
+    copy_buffer(src, dst, 0, 0, src->size());
+}
 
-    buffer_copy.size = src->size();
+void VulkanCommandBuffer::copy_buffer(VulkanBuffer* src, VulkanBuffer* dst,
+                                     VkDeviceSize src_offset, VkDeviceSize dst_offset, VkDeviceSize size)
+{
+    VkBufferCopy buffer_copy{};
+    buffer_copy.srcOffset = src_offset;
+    buffer_copy.dstOffset = dst_offset;
+    buffer_copy.size = size;
 
     vkCmdCopyBuffer(vulkan_command_buffer_, src->buffer_handle(), dst->buffer_handle(), 1, &buffer_copy);
 }

@@ -11,15 +11,21 @@ InternalTextures& InternalTextures::instance() {
     return s_instance;
 }
 
-Texture* InternalTextures::get_white_texture(Device* device) {
-    if (white_texture_ != nullptr && device_ == device) {
-        return white_texture_;
-    }
-
+Material::TextureHandle InternalTextures::get_white_texture_handle(Device* device) {
     TextureViewCreation texture_view{};
     texture_view.mip_level_count = 1;
     texture_view.usage = TextureUsageFlags::ShaderReadOnly;
     TextureSampler sampler{TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT};
+
+    if (white_handle_.bindless_index_ != InvalidUI32 && device_ == device) {
+        if (white_handle_.texture_ == nullptr) {
+            white_handle_ = ResourceManager::instance().get_texture_handle(
+                "__internal_white__",
+                texture_view,
+                sampler);
+        }
+        return white_handle_;
+    }
 
     static const uint8_t white_pixels[4 * 4 * 4] = {
         255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
@@ -28,7 +34,7 @@ Texture* InternalTextures::get_white_texture(Device* device) {
         255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
     };
 
-    white_texture_ = ResourceManager::instance().create_texture(
+    white_handle_ = ResourceManager::instance().create_texture(
         device,
         "__internal_white__",
         4,
@@ -38,11 +44,15 @@ Texture* InternalTextures::get_white_texture(Device* device) {
         sampler,
         white_pixels);
     device_ = device;
-    return white_texture_;
+    return white_handle_;
+}
+
+Texture* InternalTextures::get_white_texture(Device* device) {
+    return get_white_texture_handle(device).texture_;
 }
 
 void InternalTextures::cleanup() {
-    white_texture_ = nullptr;
+    white_handle_ = {};
     device_ = nullptr;
 }
 

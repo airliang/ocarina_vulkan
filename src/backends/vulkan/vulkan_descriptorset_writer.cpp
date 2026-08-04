@@ -2,8 +2,6 @@
 // Created by Zero on 06/08/2022.
 //
 
-#pragma once
-
 #include "vulkan_descriptorset_writer.h"
 #include "vulkan_shader.h"
 #include "vulkan_buffer.h"
@@ -184,21 +182,7 @@ void VulkanDescriptorSetWriter::update_buffer(uint64_t name_id, const void *data
     auto it = descriptors_.find(name_id);
     if (it != descriptors_.end()) {
         VulkanDescriptorBuffer *descriptor_buffer = static_cast<VulkanDescriptorBuffer *>(it->second);
-        //descriptor_buffer->buffer_->load_from_cpu(data, 0, size);
         descriptor_buffer->buffer_->copy_from_immediately(data, size);
-    }
-}
-
-void VulkanDescriptorSetWriter::update_push_constants(const CommandBuffer& cmd_buffer, uint64_t name_id, const void *data, uint32_t size, RHIPipeline *pipeline) {
-    auto it = descriptors_.find(name_id);
-    if (it != descriptors_.end()) {
-        VulkanDescriptorPushConstants *push_constants_descriptor = static_cast<VulkanDescriptorPushConstants *>(it->second);
-        // Assuming push constants are handled in a specific way
-        // This is a placeholder for actual push constant update logic
-        VulkanPipeline *vulkan_pipeline = static_cast<VulkanPipeline *>(pipeline);
-        VkPipelineLayout layout = vulkan_pipeline->pipeline_layout_;
-        VkCommandBuffer cmd = reinterpret_cast<VkCommandBuffer>(cmd_buffer.command_buffer);
-        VulkanDriver::instance().push_constants(cmd, layout, data, size, 0);
     }
 }
 
@@ -239,49 +223,6 @@ void VulkanDescriptorSetWriter::update_sampler(uint64_t name_id, VkSampler sampl
     }
 }
 
-uint32_t VulkanDescriptorSetWriter::update_bindless_texture(uint64_t name_id, Texture *texture) {
-    // Implementation for bindless textures can be added here
-    // This is a placeholder for actual bindless texture update logic
-    //auto it = descriptors_.find(name_id);
-    if (bindless_textures_descriptor_) {
-        auto it_index = bindless_textures_indices_.find(texture);
-        if (it_index == bindless_textures_indices_.end()) {
-            uint32_t index = static_cast<uint32_t>(bindless_textures_.size());
-            bindless_textures_.push_back(texture);
-            bindless_textures_indices_.insert(std::make_pair(texture, index));
-
-            VulkanTexture *vulkan_texture = static_cast<VulkanTexture *>(texture->impl());
-            //VulkanDescriptorImage *descriptor_image = static_cast<VulkanDescriptorImage *>(it->second);
-            const VkDescriptorType descriptor_type = bindless_textures_descriptor_->descriptor_type_;
-            VkDescriptorImageInfo descriptor_info = descriptor_type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
-                ? vulkan_texture->get_sampled_image_descriptor_info()
-                : vulkan_texture->get_descriptor_info();
-
-            VkWriteDescriptorSet update{};
-            update.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            update.dstSet = descriptor_set_->descriptor_set();
-            update.dstBinding = bindless_textures_descriptor_->binding;
-            update.dstArrayElement = index;
-            update.descriptorType = descriptor_type;
-            update.descriptorCount = 1;
-            update.pImageInfo = &descriptor_info;
-
-            VulkanDevice *device = VulkanDriver::instance().get_device();
-            vkUpdateDescriptorSets(device->logicalDevice(), 1, &update, 0, nullptr);
-            //VulkanDevice *device = VulkanDriver::instance().get_device();
-            //build(device);
-
-            return index;
-        }
-        else
-        {
-            return it_index->second;
-        }
-    }
-
-    return InvalidUI32;
-}
-
 void VulkanDescriptorSetWriter::update_bindless_texture_at_index(uint32_t index, Texture *texture) {
     if (!bindless_textures_descriptor_ || texture == nullptr || index == InvalidUI32) {
         return;
@@ -290,12 +231,6 @@ void VulkanDescriptorSetWriter::update_bindless_texture_at_index(uint32_t index,
     if (index >= MAX_BINDLESS_TEXTURE_ARRAY_SIZE) {
         return;
     }
-
-    if (bindless_textures_.size() <= index) {
-        bindless_textures_.resize(index + 1, nullptr);
-    }
-    bindless_textures_[index] = texture;
-    bindless_textures_indices_[texture] = index;
 
     VulkanTexture* vulkan_texture = static_cast<VulkanTexture*>(texture->impl());
     const VkDescriptorType descriptor_type = bindless_textures_descriptor_->descriptor_type_;

@@ -6,9 +6,7 @@ namespace ocarina {
 VertexBuffer::~VertexBuffer() {}
 
 VertexBuffer* VertexBuffer::create_vertex_buffer(Device::Impl* device) {
-    VertexBuffer* buffer = device->create_vertex_buffer();
-    buffer->device_ = device;
-    return buffer;
+    return device->create_vertex_buffer();
 }
 
 void VertexBuffer::add_vertex_stream(
@@ -18,6 +16,7 @@ void VertexBuffer::add_vertex_stream(
     const void* data) {
     if (vertex_streams_[(uint8_t)type].data) {
         delete[] vertex_streams_[(uint8_t)type].data;
+        vertex_streams_[(uint8_t)type].data = nullptr;
     }
 
     if (data != nullptr) {
@@ -29,6 +28,9 @@ void VertexBuffer::add_vertex_stream(
     vertex_streams_[(uint8_t)type].count = count;
     vertex_streams_[(uint8_t)type].stride = stride;
     vertex_streams_[(uint8_t)type].offset = 0;
+    if (type == VertexAttributeType::Enum::Position) {
+        vertex_count_ = count;
+    }
     dirty_ = true;
 }
 
@@ -39,6 +41,7 @@ void VertexBuffer::upload_data() {
         }
     }
     dirty_ = false;
+    set_gpu_resource_state(GPUResourceState::GPU_Ready);
 }
 
 }// namespace ocarina

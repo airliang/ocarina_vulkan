@@ -69,26 +69,29 @@ DescriptorSet* FrameResources::get_or_create_bindless_descriptor_set(
     uint32_t descriptor_set_index,
     const std::vector<uint64_t>& binding_name_ids,
     ocarina::function<DescriptorSet* ()> create_descriptor_set) {
-    std::lock_guard<std::mutex> lock(global_descriptor_sets_mutex_);
+    {
+        std::lock_guard<std::mutex> lock(global_descriptor_sets_mutex_);
 
-    if (bindless_descriptor_set_ != nullptr) {
-        return bindless_descriptor_set_;
-    }
+        if (bindless_descriptor_set_ != nullptr) {
+            return bindless_descriptor_set_;
+        }
 
-    bindless_descriptor_set_ = create_descriptor_set();
-    bindless_descriptor_set_index_ = descriptor_set_index;
+        bindless_descriptor_set_ = create_descriptor_set();
+        bindless_descriptor_set_index_ = descriptor_set_index;
 
-    for (uint64_t name_id : binding_name_ids) {
-        global_descriptor_sets_.insert(std::make_pair(name_id, bindless_descriptor_set_));
+        for (uint64_t name_id : binding_name_ids) {
+            global_descriptor_sets_.insert(std::make_pair(name_id, bindless_descriptor_set_));
+        }
+
+        rebuild_global_descriptor_sets_array_locked();
     }
 
     BindlessTextureRegistry::instance().for_each([this](uint32_t index, Texture* texture) {
         if (texture != nullptr) {
-            bindless_descriptor_set_->update_bindless_texture_at_index(index, texture);
+            queue_bindless_texture_update(index, texture);
         }
     });
 
-    rebuild_global_descriptor_sets_array_locked();
     return bindless_descriptor_set_;
 }
 
@@ -102,10 +105,47 @@ DescriptorSet* FrameResources::get_bindless_descriptor_set() const {
     return bindless_descriptor_set_;
 }
 
-void FrameResources::update_bindless_texture_at_index(uint32_t index, Texture* texture) {
+void FrameResources::queue_bindless_texture_update(uint32_t index, Texture* texture) {
+    if (texture == nullptr || index == InvalidUI32) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(pending_bindless_mutex_);
+    for (PendingBindlessUpdate& pending : pending_bindless_updates_) {
+        if (pending.index == index) {
+            pending.texture = texture;
+            return;
+        }
+    }
+    pending_bindless_updates_.push_back(PendingBindlessUpdate{index, texture});
+}
+
+void FrameResources::flush_pending_bindless_updates() {
+    std::vector<PendingBindlessUpdate> pending;
+    {
+        std::lock_guard<std::mutex> lock(pending_bindless_mutex_);
+        pending.swap(pending_bindless_updates_);
+    }
+
+    if (pending.empty()) {
+        return;
+    }
+
     DescriptorSet* bindless_set = get_bindless_descriptor_set();
-    if (bindless_set != nullptr && texture != nullptr && index != InvalidUI32) {
-        bindless_set->update_bindless_texture_at_index(index, texture);
+    if (bindless_set == nullptr) {
+        // Bindless set not created yet — re-queue for a later frame.
+        std::lock_guard<std::mutex> lock(pending_bindless_mutex_);
+        pending_bindless_updates_.insert(
+            pending_bindless_updates_.end(),
+            pending.begin(),
+            pending.end());
+        return;
+    }
+
+    for (const PendingBindlessUpdate& update : pending) {
+        if (update.texture != nullptr && update.index != InvalidUI32) {
+            bindless_set->update_bindless_texture_at_index(update.index, update.texture);
+            update.texture->set_gpu_resource_state(GPUResourceState::GPU_Visible);
+        }
     }
 }
 

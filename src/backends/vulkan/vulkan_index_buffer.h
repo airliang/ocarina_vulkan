@@ -15,8 +15,11 @@ class VulkanDevice;
 class VulkanIndexBuffer : public IndexBuffer {
 public:
     VulkanIndexBuffer(VulkanDevice* device, const void* initial_data, uint32_t indices_count, bool bit16);
-    ~VulkanIndexBuffer();
+    ~VulkanIndexBuffer() override;
 
+    void upload_indices(const void* data, uint32_t indices_count) override;
+    void allocate_capacity(uint32_t max_indices) override;
+    void upload_indices_range(const void* data, uint32_t index_offset, uint32_t index_count) override;
     void load_from_cpu(const void* cpu_data, uint32_t byte_offset, uint32_t num_bytes);
 
     VkBuffer buffer_handle() const {
@@ -24,8 +27,8 @@ public:
     }
 
 private:
-    VulkanDevice* device_ = nullptr;
     VulkanBuffer* vulkan_buffer_ = nullptr;
+    uint32_t capacity_indices_ = 0;
 };
 
 }// namespace ocarina

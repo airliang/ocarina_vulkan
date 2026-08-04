@@ -53,8 +53,17 @@ public:
     uint32_t bindless_descriptor_set_index() const { return bindless_descriptor_set_index_; }
     bool has_bindless_descriptor_set() const { return bindless_descriptor_set_ != nullptr; }
 
-    /// Writes into the global bindless set using the process-wide BindlessTextureRegistry index.
-    void update_bindless_texture_at_index(uint32_t index, Texture* texture);
+    /// Queue a bindless descriptor write (safe from loader / GPU-resource threads).
+    /// Flushed on the render thread after begin_frame via flush_pending_bindless_updates().
+    void queue_bindless_texture_update(uint32_t index, Texture* texture);
+
+    /// Legacy name: queues the update (does not write descriptors immediately).
+    void update_bindless_texture_at_index(uint32_t index, Texture* texture) {
+        queue_bindless_texture_update(index, texture);
+    }
+
+    /// Apply pending bindless descriptor writes and clear the queue.
+    void flush_pending_bindless_updates();
 
     bool is_global_descriptor_set_index(uint32_t set_index) const;
 
@@ -89,6 +98,13 @@ private:
 
     DescriptorSet* bindless_descriptor_set_ = nullptr;
     uint32_t bindless_descriptor_set_index_ = InvalidUI32;
+
+    struct PendingBindlessUpdate {
+        uint32_t index = InvalidUI32;
+        Texture* texture = nullptr;
+    };
+    mutable std::mutex pending_bindless_mutex_;
+    std::vector<PendingBindlessUpdate> pending_bindless_updates_;
 
     GlobalUniformBuffer global_ubo_{};
     UpdateCallback update_ = nullptr;

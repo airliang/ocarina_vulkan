@@ -3,12 +3,14 @@
 #include "pipeline_manager.h"
 #include "render_task.h"
 #include "resource_manager.h"
+#include "gpu_resource_thread.h"
 #include "scene.h"
 #include "entity_component_system.h"
 #include "primitive.h"
 #include "material.h"
 #include "camera.h"
-#include "mesh_geometry.h"
+#include "mesh.h"
+#include "resource_manager.h"
 #include "global_gpu_storage.h"
 #include "frustum.h"
 #include "renderer_primitive_cull_task.h"
@@ -20,6 +22,7 @@
 #include "frame_resources.h"
 #include "enki_task_debug.h"
 #include "core/profiler.h"
+#include "rhi/resources/resource.h"
 #include <algorithm>
 #include <cstdio>
 
@@ -78,9 +81,12 @@ Renderer::Renderer(Device *device)
 {
     GlobalGPUStorage::instance().initialize(device);
     enki::TaskSchedulerConfig scheduler_config = task_scheduler_.GetConfig();
+    // Need dedicated pinned threads for Render (1) and GPUResource (2), plus workers.
+    scheduler_config.numTaskThreadsToCreate = std::max(scheduler_config.numTaskThreadsToCreate, 3u);
     scheduler_config.profilerCallbacks.threadStart = enki_thread_start_profiler_callback;
     task_scheduler_.Initialize(scheduler_config);
     PipelineManager::instance().initialize(device, &task_scheduler_);
+    GPUResourceThread::instance().start(task_scheduler_);
 }
 
 Renderer::~Renderer() {
@@ -94,7 +100,8 @@ void Renderer::shutdown() {
         return;
     }
     shutdown_called_ = true;
-    
+
+    GPUResourceThread::instance().request_shutdown();
     task_scheduler_.WaitforAllAndShutdown();
     PipelineManager::instance().shutdown();
     GlobalGPUStorage::instance().cleanup();
@@ -239,11 +246,7 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
     }
 
     EntityComponentSystem& ecs = EntityComponentSystem::instance();
-    VertexBuffer* vertex_buffer = GlobalGPUStorage::instance().vertex_buffer();
-    IndexBuffer* index_buffer = GlobalGPUStorage::instance().index_buffer();
-    if (vertex_buffer != nullptr && index_buffer != nullptr) {
-        cmd.set_index_buffer(index_buffer);
-    }
+    GlobalGPUStorage& gpu_storage = GlobalGPUStorage::instance();
 
     for (const auto& queue : render_pass->pipeline_render_queues()) {
         const PipelineState& pipeline_state = queue.first;
@@ -255,9 +258,8 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
         cmd.bind_pipeline(pipeline);
         bind_global_descriptor_sets(cmd, pipeline->pipeline_layout);
 
-        if (vertex_buffer != nullptr) {
-            cmd.set_vertex_buffer(vertex_buffer);
-        }
+        uint32_t bound_vertex_page = InvalidUI32;
+        uint32_t bound_index_page = InvalidUI32;
 
         for (uint32_t entity_index : queue.second->draw_call_items) {
             if (entity_index >= ecs.render_component_count()) {
@@ -265,12 +267,42 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
             }
 
             RenderComponent& item = ecs.render_component(entity_index);
-            if (item.push_constant_data && item.push_constant_size > 0) {
-                cmd.push_constants(item.push_constant_data, 0, item.push_constant_size);
+            Mesh* mesh = ResourceManager::instance().get_mesh(item.mesh_id);
+            if (mesh == nullptr ||
+                mesh->gpu_resource_state() != GPUResourceState::GPU_Ready) {
+                continue;
+            }
+
+            const MeshGeometrySlice& geometry = mesh->geometry_slice();
+            if (!is_valid_geometry_slice(geometry)) {
+                continue;
+            }
+
+            VertexBuffer* vertex_buffer = gpu_storage.vertex_buffer(geometry.vertex_page);
+            IndexBuffer* index_buffer = gpu_storage.index_buffer(geometry.index_page);
+            if (vertex_buffer == nullptr || index_buffer == nullptr) {
+                continue;
             }
 
             Primitive& primitive = ecs.primitive(entity_index);
             Material* material = primitive.get_material();
+            if (material != nullptr && !material->are_bindless_textures_gpu_visible()) {
+                continue;
+            }
+
+            if (geometry.vertex_page != bound_vertex_page) {
+                cmd.set_vertex_buffer(vertex_buffer);
+                bound_vertex_page = geometry.vertex_page;
+            }
+            if (geometry.index_page != bound_index_page) {
+                cmd.set_index_buffer(index_buffer);
+                bound_index_page = geometry.index_page;
+            }
+
+            if (item.push_constant_data && item.push_constant_size > 0) {
+                cmd.push_constants(item.push_constant_data, 0, item.push_constant_size);
+            }
+
             if (material != nullptr) {
                 primitive.upload_material_parameters();
                 if (material->has_material_descriptor_set()) {
@@ -283,19 +315,11 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
                 }
             }
 
-            if (!is_valid_geometry_slice(item.geometry)) {
-                continue;
-            }
-
-            if (vertex_buffer == nullptr || index_buffer == nullptr) {
-                continue;
-            }
-
             cmd.draw_indexed(
-                item.geometry.index_count,
+                geometry.index_count,
                 1,
-                item.geometry.index_offset,
-                static_cast<int32_t>(item.geometry.vertex_offset),
+                geometry.index_offset,
+                static_cast<int32_t>(geometry.vertex_offset),
                 0);
         }
     }
@@ -381,8 +405,6 @@ void Renderer::run()
 
         task_scheduler_.WaitforTask(async_loader_task_);
         task_scheduler_.WaitforTask(&loading_imgui_task_);
-
-        GlobalGPUStorage::instance().finalize();
 
         async_loader_task_ = nullptr;
         async_wait_fn_ = nullptr;

@@ -12,18 +12,26 @@ namespace ocarina {
 
 using handle_ty = uint64_t;
 
+enum class GPUResourceState : uint8_t {
+    CPU_Loaded = 0,///< Default: CPU-side data ready (or object constructed).
+    GPU_Ready,     ///< Uploaded to GPU.
+    GPU_Visible,   ///< Bound in a descriptor / bindless slot with a valid index.
+};
+
 class OC_RHI_API RHIResource : public concepts::Noncopyable {
 public:
     enum Tag : uint8_t {
         BUFFER,
         TEXTURE,
         SHADER,
+        MESH,
     };
 
 protected:
     Tag tag_{};
     handle_ty handle_{};
     Device::Impl *device_{nullptr};
+    GPUResourceState gpu_resource_state_{GPUResourceState::CPU_Loaded};
 
 protected:
     RHIResource(Device::Impl *device, Tag tag, handle_ty handle)
@@ -39,7 +47,10 @@ public:
         tag_ = other.tag_;
         device_ = other.device_;
         handle_ = other.handle_;
+        gpu_resource_state_ = other.gpu_resource_state_;
         other.device_ = nullptr;
+        other.handle_ = 0;
+        other.gpu_resource_state_ = GPUResourceState::CPU_Loaded;
     }
 
     RHIResource &operator=(RHIResource &&other) noexcept {
@@ -47,13 +58,18 @@ public:
         tag_ = other.tag_;
         device_ = other.device_;
         handle_ = other.handle_;
+        gpu_resource_state_ = other.gpu_resource_state_;
         other.device_ = nullptr;
+        other.handle_ = 0;
+        other.gpu_resource_state_ = GPUResourceState::CPU_Loaded;
         return *this;
     }
     [[nodiscard]] Tag tag() const noexcept { return tag_; }
     [[nodiscard]] virtual handle_ty handle() const noexcept { return handle_; }
     virtual void set_device(Device::Impl *device) noexcept { device_ = device; }
     OC_MAKE_MEMBER_GETTER(device, )
+    [[nodiscard]] GPUResourceState gpu_resource_state() const noexcept { return gpu_resource_state_; }
+    void set_gpu_resource_state(GPUResourceState state) noexcept { gpu_resource_state_ = state; }
     [[nodiscard]] virtual const void *handle_ptr() const noexcept { return &handle_; }
     [[nodiscard]] virtual void *handle_ptr() noexcept { return &handle_; }
     [[nodiscard]] virtual size_t data_size() const noexcept { return sizeof(handle_ty); }

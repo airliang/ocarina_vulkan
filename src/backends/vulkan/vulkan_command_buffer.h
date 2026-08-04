@@ -43,6 +43,8 @@ public:
     void set_pipeline_stage_flags(VkPipelineStageFlags2 flags) { pipeline_stage_flags_ = flags; }
     void reset();
     void copy_buffer(VulkanBuffer* src, VulkanBuffer* dst);
+    void copy_buffer(VulkanBuffer* src, VulkanBuffer* dst,
+                     VkDeviceSize src_offset, VkDeviceSize dst_offset, VkDeviceSize size);
     void copy_image(VulkanBuffer* src, VulkanTexture* dst);
     void copy_image(VulkanBuffer* src, VulkanTexture* dst, const VkBufferImageCopy* regions, uint32_t region_count);
     /// Records vkCmdPipelineBarrier for image layout transitions used by texture upload and rendering.

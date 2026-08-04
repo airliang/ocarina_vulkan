@@ -1,6 +1,7 @@
 #include "resource_manager.h"
+#include "gpu_resource_thread.h"
+#include "bindless_texture_registry.h"
 #include "core/logging.h"
-#include "material.h"
 #include "mesh.h"
 #include "rhi/resources/texture.h"
 #include "rhi/resources/texture_sampler.h"
@@ -31,10 +32,12 @@ void ResourceManager::cleanup() {
         ocarina::delete_with_allocator<Mesh>(mesh);
     }
     meshes_.clear();
-    for (auto& [key, texture] : textures_) {
-        if (texture) {
-            texture->destroy();
-            ocarina::delete_with_allocator<Texture>(texture);
+    meshes_by_id_.clear();
+    mesh_to_id_.clear();
+    for (auto& [key, handle] : textures_) {
+        if (handle.texture_ != nullptr) {
+            handle.texture_->destroy();
+            ocarina::delete_with_allocator<Texture>(handle.texture_);
         }
     }
     textures_.clear();
@@ -108,11 +111,53 @@ Mesh* ResourceManager::get_mesh(const string& name) const noexcept {
     return it != meshes_.end() ? it->second : nullptr;
 }
 
+Mesh* ResourceManager::get_mesh(uint32_t mesh_id) const noexcept {
+    if (mesh_id == InvalidUI32) {
+        return nullptr;
+    }
+    std::lock_guard<std::mutex> l{mutex_};
+    if (mesh_id >= meshes_by_id_.size()) {
+        return nullptr;
+    }
+    return meshes_by_id_[mesh_id];
+}
+
+uint32_t ResourceManager::register_mesh(Mesh* mesh) {
+    if (mesh == nullptr) {
+        return InvalidUI32;
+    }
+    std::lock_guard<std::mutex> l{mutex_};
+    auto it = mesh_to_id_.find(mesh);
+    if (it != mesh_to_id_.end()) {
+        return it->second;
+    }
+    const uint32_t id = static_cast<uint32_t>(meshes_by_id_.size());
+    meshes_by_id_.push_back(mesh);
+    mesh_to_id_.insert(std::make_pair(mesh, id));
+    return id;
+}
+
+void ResourceManager::unregister_mesh(Mesh* mesh) {
+    if (mesh == nullptr) {
+        return;
+    }
+    std::lock_guard<std::mutex> l{mutex_};
+    auto it = mesh_to_id_.find(mesh);
+    if (it == mesh_to_id_.end()) {
+        return;
+    }
+    const uint32_t id = it->second;
+    if (id < meshes_by_id_.size()) {
+        meshes_by_id_[id] = nullptr;
+    }
+    mesh_to_id_.erase(it);
+}
+
 void ResourceManager::add_mesh(const std::string& name, Mesh* mesh) {
     Mesh* existing_mesh = get_mesh(name);
     if (existing_mesh) {
         if (existing_mesh == mesh) {
-            return; // Same mesh already exists, do nothing
+            return;
         }
         else {
             OC_ERROR("Mesh with name '{}' already exists. Cannot add a different mesh with the same name.", name);
@@ -124,52 +169,183 @@ void ResourceManager::add_mesh(const std::string& name, Mesh* mesh) {
 }
 
 Texture* ResourceManager::get_texture(const std::string& name, const TextureViewCreation& texture_view, const TextureSampler& sampler) const noexcept {
-    uint64_t key = make_texture_key(name, texture_view, sampler);
-    auto it = textures_.find(key);
-    return it != textures_.end() ? it->second : nullptr;
+    return get_texture_handle(name, texture_view, sampler).texture_;
 }
 
-Texture* ResourceManager::create_texture(Device* device, const Image& image, const TextureViewCreation& texture_view, const TextureSampler& sampler) {
+Material::TextureHandle ResourceManager::get_texture_handle(
+    const std::string& name,
+    const TextureViewCreation& texture_view,
+    const TextureSampler& sampler) const noexcept {
+    uint64_t key = make_texture_key(name, texture_view, sampler);
+    std::lock_guard<std::mutex> l{mutex_};
+    auto it = textures_.find(key);
+    if (it == textures_.end()) {
+        return Material::TextureHandle{};
+    }
+    Material::TextureHandle handle = it->second;
+    if (handle.texture_ == nullptr && handle.bindless_index_ != InvalidUI32) {
+        handle.texture_ = BindlessTextureRegistry::instance().get_texture(handle.bindless_index_);
+    }
+    return handle;
+}
+
+void ResourceManager::complete_texture(uint64_t key, Texture* texture) {
+    std::lock_guard<std::mutex> l{mutex_};
+    auto it = textures_.find(key);
+    if (it == textures_.end()) {
+        return;
+    }
+    it->second.texture_ = texture;
+}
+
+Material::TextureHandle ResourceManager::create_texture(
+    Device* device,
+    const Image& image,
+    const TextureViewCreation& texture_view,
+    const TextureSampler& sampler) {
     std::string image_name = image.name();
     uint64_t key = make_texture_key(image_name, texture_view, sampler);
-    auto it = textures_.find(key);
-    if (it != textures_.end()) {
-        return it->second;
+    {
+        std::lock_guard<std::mutex> l{mutex_};
+        auto it = textures_.find(key);
+        if (it != textures_.end()) {
+            return it->second;
+        }
     }
 
-    Texture* texture = ocarina::new_with_allocator<Texture>(device->impl(), const_cast<Image*>(&image), texture_view, sampler);
-    std::lock_guard<std::mutex> l{ mutex_ };
-    textures_.emplace(key, texture);
-    return texture;
+    const uint32_t bindless_index = BindlessTextureRegistry::instance().allocate_slot();
+    Material::TextureHandle handle{bindless_index, nullptr};
+    {
+        std::lock_guard<std::mutex> l{mutex_};
+        auto [it, inserted] = textures_.emplace(key, handle);
+        if (!inserted) {
+            return it->second;
+        }
+    }
+
+    auto request = std::make_shared<TextureGPUResourceRequest>();
+    request->kind = GPUResourceRequestType::TextureFromData;
+    request->device = device;
+    request->name = std::move(image_name);
+    request->width = image.width();
+    request->height = image.height();
+    request->depth = 1;
+    request->pixel_storage = image.pixel_storage();
+    request->texture_view = texture_view;
+    request->sampler = sampler;
+    request->bindless_index = bindless_index;
+    request->cache_key = key;
+    request->has_cache_key = true;
+    const size_t byte_count = image.size_in_bytes();
+    const uint8_t* src = image.pixel_ptr<uint8_t>();
+    if (src != nullptr && byte_count > 0) {
+        request->pixel_data.assign(src, src + byte_count);
+    }
+
+    GPUResourceThread::instance().enqueue(std::move(request));
+    return handle;
 }
 
-Texture* ResourceManager::create_texture(Device* device, const std::string& name, uint32_t width, uint32_t height,
-                                         PixelStorage pixel_storage, const TextureViewCreation& texture_view,
-                                         const TextureSampler& sampler, const void* data) {
+Material::TextureHandle ResourceManager::create_texture(
+    Device* device,
+    const std::string& name,
+    uint32_t width,
+    uint32_t height,
+    PixelStorage pixel_storage,
+    const TextureViewCreation& texture_view,
+    const TextureSampler& sampler,
+    const void* data) {
     uint64_t key = make_texture_key(name, texture_view, sampler);
-    auto it = textures_.find(key);
-    if (it != textures_.end()) {
-        return it->second;
+    {
+        std::lock_guard<std::mutex> l{mutex_};
+        auto it = textures_.find(key);
+        if (it != textures_.end()) {
+            return it->second;
+        }
     }
 
-    Texture* texture = ocarina::new_with_allocator<Texture>(
-        device->impl(), width, height, 1, pixel_storage, texture_view, sampler, uint4(0, 0, 0, 255), data);
-    std::lock_guard<std::mutex> l{ mutex_ };
-    textures_.emplace(key, texture);
-    return texture;
+    const uint32_t bindless_index = BindlessTextureRegistry::instance().allocate_slot();
+    Material::TextureHandle handle{bindless_index, nullptr};
+    {
+        std::lock_guard<std::mutex> l{mutex_};
+        auto [it, inserted] = textures_.emplace(key, handle);
+        if (!inserted) {
+            return it->second;
+        }
+    }
+
+    auto request = std::make_shared<TextureGPUResourceRequest>();
+    request->kind = GPUResourceRequestType::TextureFromData;
+    request->device = device;
+    request->name = name;
+    request->width = width;
+    request->height = height;
+    request->depth = 1;
+    request->pixel_storage = pixel_storage;
+    request->texture_view = texture_view;
+    request->sampler = sampler;
+    request->bindless_index = bindless_index;
+    request->cache_key = key;
+    request->has_cache_key = true;
+    if (data != nullptr) {
+        const size_t byte_count = static_cast<size_t>(width) * height * pixel_size(pixel_storage);
+        const auto* src = static_cast<const uint8_t*>(data);
+        request->pixel_data.assign(src, src + byte_count);
+    }
+
+    GPUResourceThread::instance().enqueue(std::move(request));
+    return handle;
 }
 
-Texture* ResourceManager::create_render_target_texture(Device* device, const std::string& name, uint32_t width, uint32_t height,
-                                                       PixelStorage pixel_storage, TextureUsageFlags usage) {
+Texture* ResourceManager::create_render_target_texture(
+    Device* device,
+    const std::string& name,
+    uint32_t width,
+    uint32_t height,
+    PixelStorage pixel_storage,
+    TextureUsageFlags usage) {
     uint64_t key = hash64(name, width, height, pixel_storage, usage);
-    auto it = textures_.find(key);
-    if (it != textures_.end()) {
-        return it->second;
+    {
+        std::lock_guard<std::mutex> l{mutex_};
+        auto it = textures_.find(key);
+        if (it != textures_.end() && it->second.texture_ != nullptr) {
+            return it->second.texture_;
+        }
     }
 
-    Texture* texture = ocarina::new_with_allocator<Texture>(device->impl(), width, height, pixel_storage, usage);
+    // Render targets must exist immediately for framebuffer / attachment setup.
+    auto request = std::make_shared<TextureGPUResourceRequest>();
+    request->kind = GPUResourceRequestType::RenderTarget;
+    request->device = device;
+    request->name = name;
+    request->width = width;
+    request->height = height;
+    request->pixel_storage = pixel_storage;
+    request->usage = usage;
+
+    const bool bindless =
+        (static_cast<uint32_t>(usage) & static_cast<uint32_t>(TextureUsageFlags::ShaderReadOnly)) != 0;
+    uint32_t bindless_index = InvalidUI32;
+    if (bindless) {
+        bindless_index = BindlessTextureRegistry::instance().allocate_slot();
+        request->bindless_index = bindless_index;
+    }
+
+    Texture* texture = nullptr;
+    request->out_texture = &texture;
+    request->process();
+    if (texture == nullptr) {
+        return nullptr;
+    }
+
     std::lock_guard<std::mutex> l{mutex_};
-    textures_.emplace(key, texture);
+    auto it = textures_.find(key);
+    if (it != textures_.end() && it->second.texture_ != nullptr) {
+        texture->destroy();
+        ocarina::delete_with_allocator<Texture>(texture);
+        return it->second.texture_;
+    }
+    textures_[key] = Material::TextureHandle{bindless_index, texture};
     return texture;
 }
 

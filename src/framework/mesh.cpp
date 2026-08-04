@@ -5,6 +5,16 @@
 
 namespace ocarina {
 
+Mesh::Mesh()
+    : RHIResource(nullptr, Tag::MESH, 0) {
+    mesh_id_ = ResourceManager::instance().register_mesh(this);
+    set_gpu_resource_state(GPUResourceState::CPU_Loaded);
+}
+
+Mesh::~Mesh() {
+    ResourceManager::instance().unregister_mesh(this);
+}
+
 namespace {
 
 constexpr float kPi = 3.14159265358979323846f;
@@ -82,35 +92,28 @@ Mesh* Mesh::create_sphere() {
     return mesh;
 }
 
-void BuildinMesh::create_buildin_mesh(Device* device) {
-    (void)device;
-    is_created_ = true;
-}
-
-void BuildinMesh::cleanup() {
-    is_created_ = false;
-}
-
 Quad::Quad() {
-
-    Vector3 positions[4] = { {-1.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}, {1.0f, -1.0f, 0.0f}, {-1.0f, -1.0f, 0.0f} };
-    Vector2 uvs[4] = { {1.0f, 1.0f}, {0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f} };
-    Vector4 colors[4] = {
+    OwnedMeshGeometry geometry;
+    geometry.positions = {
+        {-1.0f, 1.0f, 0.0f},
+        {1.0f, 1.0f, 0.0f},
+        {1.0f, -1.0f, 0.0f},
+        {-1.0f, -1.0f, 0.0f},
+    };
+    geometry.uvs = {
+        {1.0f, 1.0f},
+        {0.0f, 1.0f},
+        {0.0f, 0.0f},
+        {1.0f, 0.0f},
+    };
+    geometry.colors = {
         {1.0f, 1.0f, 1.0f, 1.0f},
         {1.0f, 1.0f, 1.0f, 1.0f},
         {1.0f, 1.0f, 1.0f, 1.0f},
         {1.0f, 1.0f, 1.0f, 1.0f},
     };
-    const std::vector<uint16_t> indices{0, 1, 2, 2, 3, 0};
-
-    MeshGeometryInput input{};
-    input.vertex_count = 4;
-    input.positions = positions;
-    input.uvs = uvs;
-    input.colors = colors;
-    input.indices = indices.data();
-    input.index_count = static_cast<uint32_t>(indices.size());
-    set_geometry_slice(GlobalGPUStorage::instance().append_mesh(input));
+    geometry.indices = {0, 1, 2, 2, 3, 0};
+    GlobalGPUStorage::instance().upload_mesh(std::move(geometry), this);
 }
 
 Quad::~Quad() {
@@ -172,15 +175,13 @@ Cube::Cube() {
         Vector3(-half_extent, half_extent, -half_extent),
         Vector3(-1.0f, 0.0f, 0.0f));
 
-    MeshGeometryInput input{};
-    input.vertex_count = static_cast<uint32_t>(positions.size());
-    input.positions = positions.data();
-    input.normals = normals.data();
-    input.uvs = uvs.data();
-    input.colors = colors.data();
-    input.indices = indices.data();
-    input.index_count = static_cast<uint32_t>(indices.size());
-    set_geometry_slice(GlobalGPUStorage::instance().append_mesh(input));
+    OwnedMeshGeometry geometry;
+    geometry.positions = std::move(positions);
+    geometry.normals = std::move(normals);
+    geometry.uvs = std::move(uvs);
+    geometry.colors = std::move(colors);
+    geometry.indices = std::move(indices);
+    GlobalGPUStorage::instance().upload_mesh(std::move(geometry), this);
     set_local_bounds(
         make_float3(-half_extent, -half_extent, -half_extent),
         make_float3(half_extent, half_extent, half_extent));
@@ -239,15 +240,13 @@ Sphere::Sphere(uint32_t slice_count, uint32_t stack_count) {
         }
     }
 
-    MeshGeometryInput input{};
-    input.vertex_count = static_cast<uint32_t>(positions.size());
-    input.positions = positions.data();
-    input.normals = normals.data();
-    input.uvs = uvs.data();
-    input.colors = colors.data();
-    input.indices = indices.data();
-    input.index_count = static_cast<uint32_t>(indices.size());
-    set_geometry_slice(GlobalGPUStorage::instance().append_mesh(input));
+    OwnedMeshGeometry geometry;
+    geometry.positions = std::move(positions);
+    geometry.normals = std::move(normals);
+    geometry.uvs = std::move(uvs);
+    geometry.colors = std::move(colors);
+    geometry.indices = std::move(indices);
+    GlobalGPUStorage::instance().upload_mesh(std::move(geometry), this);
     set_local_bounds(make_float3(-1.0f, -1.0f, -1.0f), make_float3(1.0f, 1.0f, 1.0f));
 }
 

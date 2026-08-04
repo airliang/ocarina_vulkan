@@ -1,6 +1,7 @@
 #include "loading_imgui_task.h"
 #include "renderer.h"
 #include "enki_task_debug.h"
+#include "frame_resources.h"
 #include "rhi/device.h"
 #include "rhi/command_buffer.h"
 #include "rhi/renderpass.h"
@@ -27,6 +28,8 @@ void LoadingImguiTask::render_loading_frame() {
     if (!device->begin_frame()) {
         return;
     }
+
+    FrameResources::instance().flush_pending_bindless_updates();
 
     CommandBuffer cmd = device->get_command_buffer();
     cmd.begin();

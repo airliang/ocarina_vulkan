@@ -68,6 +68,8 @@ void RenderTask::execute_default_render_path() {
         return;
     }
 
+    FrameResources::instance().flush_pending_bindless_updates();
+
     CommandBuffer recorded_cmds[MAX_COMMAND_BUFFERS_PER_SUBMIT];
     uint32_t recorded_count = 0;
 

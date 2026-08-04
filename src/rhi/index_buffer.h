@@ -3,14 +3,16 @@
 #include "core/header.h"
 #include "core/stl.h"
 #include "graphics_descriptions.h"
-#include "device.h"
+#include "resources/resource.h"
 
 namespace ocarina {
 
-class OC_RHI_API IndexBuffer {
+class OC_RHI_API IndexBuffer : public RHIResource {
 public:
     IndexBuffer() = default;
-    virtual ~IndexBuffer();
+    explicit IndexBuffer(Device::Impl* device)
+        : RHIResource(device, Tag::BUFFER, 0) {}
+    ~IndexBuffer() override;
 
     static IndexBuffer* create_index_buffer(
         Device::Impl* device,
@@ -30,9 +32,16 @@ public:
         return bit16_;
     }
 
+    /// Upload index data to GPU (creates/replaces the device buffer).
+    virtual void upload_indices(const void* data, uint32_t indices_count) = 0;
+
+    /// Pre-allocate a fixed-capacity GPU index buffer (no CPU upload).
+    virtual void allocate_capacity(uint32_t max_indices) = 0;
+    /// Upload a contiguous index range into an allocated buffer.
+    virtual void upload_indices_range(const void* data, uint32_t index_offset, uint32_t index_count) = 0;
+
 protected:
     std::vector<uint16_t> indices_;
-    Device::Impl* device_ = nullptr;
     bool bit16_ = true;
 };
 

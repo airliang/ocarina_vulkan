@@ -37,7 +37,11 @@ public:
     };
 
     void add_bindless_texture(uint64_t name_id, Texture* texture);
+    void add_bindless_texture(uint64_t name_id, const TextureHandle& handle);
     TextureHandle get_bindless_texture_handle(uint64_t name_id) const;
+
+    /// True when every bindless texture is GPU_Visible (or the material has none).
+    [[nodiscard]] bool are_bindless_textures_gpu_visible() const noexcept;
 
     void add_texture(uint64_t name_id, Texture* texture);
     void add_sampler(uint64_t name_id, const TextureSampler& sampler);

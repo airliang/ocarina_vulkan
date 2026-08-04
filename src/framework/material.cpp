@@ -209,16 +209,53 @@ void Material::upload_material_uniform_buffer(const void* data, uint32_t size) {
 
 void Material::add_bindless_texture(uint64_t name_id, Texture* texture) {
     const uint32_t bindless_index = BindlessTextureRegistry::instance().allocate_index(texture);
-    FrameResources::instance().update_bindless_texture_at_index(bindless_index, texture);
-    bindless_textures_.insert_or_assign(name_id, TextureHandle{bindless_index, texture});
+    add_bindless_texture(name_id, TextureHandle{bindless_index, texture});
+}
+
+void Material::add_bindless_texture(uint64_t name_id, const TextureHandle& handle) {
+    if (handle.bindless_index_ == InvalidUI32) {
+        return;
+    }
+    Texture* texture = handle.texture_;
+    if (texture == nullptr) {
+        texture = BindlessTextureRegistry::instance().get_texture(handle.bindless_index_);
+    }
+    if (texture != nullptr && texture->gpu_resource_state() != GPUResourceState::GPU_Visible) {
+        FrameResources::instance().queue_bindless_texture_update(handle.bindless_index_, texture);
+    }
+    bindless_textures_.insert_or_assign(
+        name_id,
+        TextureHandle{handle.bindless_index_, texture});
 }
 
 Material::TextureHandle Material::get_bindless_texture_handle(uint64_t name_id) const {
     const auto it = bindless_textures_.find(name_id);
     if (it != bindless_textures_.end()) {
-        return it->second;
+        TextureHandle handle = it->second;
+        if (handle.texture_ == nullptr && handle.bindless_index_ != InvalidUI32) {
+            handle.texture_ = BindlessTextureRegistry::instance().get_texture(handle.bindless_index_);
+        }
+        return handle;
     }
     return TextureHandle{InvalidUI32, nullptr};
+}
+
+bool Material::are_bindless_textures_gpu_visible() const noexcept {
+    for (const auto& [name_id, handle] : bindless_textures_) {
+        (void)name_id;
+        if (handle.bindless_index_ == InvalidUI32) {
+            continue;
+        }
+        Texture* texture = handle.texture_;
+        if (texture == nullptr) {
+            texture = BindlessTextureRegistry::instance().get_texture(handle.bindless_index_);
+        }
+        if (texture == nullptr ||
+            texture->gpu_resource_state() != GPUResourceState::GPU_Visible) {
+            return false;
+        }
+    }
+    return true;
 }
 
 void Material::add_texture(uint64_t name_id, Texture* texture) {

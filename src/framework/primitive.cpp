@@ -114,7 +114,7 @@ void Primitive::initialize_render_component(
         return;
     }
 
-    render_component.geometry = {};
+    render_component.mesh_id = InvalidUI32;
     render_component.push_constant_data = nullptr;
     render_component.push_constant_size = 0;
     render_component.material_buffer_offset = InvalidUI32;
@@ -128,7 +128,7 @@ void Primitive::initialize_render_component(
     upload_material_parameters(true);
 
     if (mesh_ != nullptr) {
-        render_component.geometry = mesh_->geometry_slice();
+        render_component.mesh_id = mesh_->mesh_id();
     }
 
     const PipelineState& pipeline_state = material_->get_pipeline_state();

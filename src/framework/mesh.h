@@ -4,19 +4,22 @@
 #include "core/stl.h"
 #include "bounding_box.h"
 #include "mesh_geometry.h"
+#include "rhi/resources/resource.h"
 
 namespace ocarina {
 
 class Device;
 
-class Mesh {
+class Mesh : public RHIResource {
 public:
-    Mesh() = default;
-    virtual ~Mesh() = default;
+    Mesh();
+    ~Mesh() override;
 
     static Mesh* create_quad();
     static Mesh* create_cube();
     static Mesh* create_sphere();
+
+    [[nodiscard]] uint32_t mesh_id() const noexcept { return mesh_id_; }
 
     void set_geometry_slice(const MeshGeometrySlice& slice) { geometry_slice_ = slice; }
     [[nodiscard]] const MeshGeometrySlice& geometry_slice() const { return geometry_slice_; }
@@ -28,50 +31,25 @@ public:
 protected:
     BoundingBox local_bounds_;
     MeshGeometrySlice geometry_slice_{};
-};
-
-constexpr uint32_t MAX_BUILDIN_MESH = 3;
-
-class BuildinMesh : public concepts::Noncopyable {
-public:
-    enum BuildinMeshType {
-        Quad = 0,
-        Cube = 1,
-        Sphere = 2,
-        Custom = MAX_BUILDIN_MESH
-    };
-public:
-    BuildinMesh() = default;
-    ~BuildinMesh() {}
-    static BuildinMesh& instance()
-    {
-        static BuildinMesh s_instance;
-        return s_instance;
-    }
-
-    void create_buildin_mesh(Device* device);
-    void cleanup();
-    bool is_created() const { return is_created_; }
-private:
-    bool is_created_ = false;
+    uint32_t mesh_id_ = InvalidUI32;
 };
 
 class Quad : public Mesh {
 public:
     Quad();
-    ~Quad();
+    ~Quad() override;
 };
 
 class Cube : public Mesh {
 public:
     Cube();
-    ~Cube();
+    ~Cube() override;
 };
 
 class Sphere : public Mesh {
 public:
     explicit Sphere(uint32_t slice_count = 32, uint32_t stack_count = 16);
-    ~Sphere();
+    ~Sphere() override;
 };
 
 }// namespace ocarina

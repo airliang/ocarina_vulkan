@@ -10,9 +10,7 @@ IndexBuffer* IndexBuffer::create_index_buffer(
     void* initial_data,
     uint32_t indices_count,
     bool bit16) {
-    IndexBuffer* buffer = device->create_index_buffer(initial_data, indices_count, bit16);
-    buffer->device_ = device;
-    return buffer;
+    return device->create_index_buffer(initial_data, indices_count, bit16);
 }
 
 }// namespace ocarina

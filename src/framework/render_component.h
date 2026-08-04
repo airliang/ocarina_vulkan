@@ -1,12 +1,11 @@
 #pragma once
 
 #include "core/stl.h"
-#include "mesh_geometry.h"
 
 namespace ocarina {
 
 struct RenderComponent {
-    MeshGeometrySlice geometry{};
+    uint32_t mesh_id = InvalidUI32;
 
     std::byte* push_constant_data = nullptr;
     uint8_t push_constant_size = 0;

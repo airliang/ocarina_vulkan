@@ -324,9 +324,8 @@ void GltfAsyncLoader::load_gltf_node(
                 mesh_obj = ocarina::new_with_allocator<Mesh>();
                 mesh_storage_.push_back(mesh_obj);
 
-                MeshGeometrySlice geometry_slice{};
-                const BoundingBox local_bounds = append_primitive_geometry(gltf_primitive, model, geometry_slice);
-                mesh_obj->set_geometry_slice(geometry_slice);
+                const BoundingBox local_bounds = append_primitive_geometry(
+                    gltf_primitive, model, mesh_obj);
                 if (local_bounds.valid) {
                     mesh_obj->set_local_bounds(local_bounds.min, local_bounds.max);
                 }
@@ -369,7 +368,7 @@ void GltfAsyncLoader::load_gltf_node(
 BoundingBox GltfAsyncLoader::append_primitive_geometry(
     const tinygltf::Primitive& primitive,
     const tinygltf::Model& model,
-    MeshGeometrySlice& out_slice) {
+    Mesh* mesh) {
     const auto start = std::chrono::steady_clock::now();
     const uint64_t geometry_key = make_geometry_key(primitive);
     BoundingBox local_bounds;
@@ -487,15 +486,19 @@ BoundingBox GltfAsyncLoader::append_primitive_geometry(
         }
     }
 
-    MeshGeometryInput input{};
-    input.vertex_count = vertex_count;
-    input.positions = positions.data();
-    input.normals = has_normals ? normals.data() : nullptr;
-    input.uvs = has_uvs ? uvs.data() : nullptr;
-    input.colors = has_colors ? colors.data() : nullptr;
-    input.indices = indices.data();
-    input.index_count = static_cast<uint32_t>(indices.size());
-    out_slice = GlobalGPUStorage::instance().append_mesh(input);
+    OwnedMeshGeometry geometry;
+    geometry.positions = std::move(positions);
+    if (has_normals) {
+        geometry.normals = std::move(normals);
+    }
+    if (has_uvs) {
+        geometry.uvs = std::move(uvs);
+    }
+    if (has_colors) {
+        geometry.colors = std::move(colors);
+    }
+    geometry.indices = std::move(indices);
+    GlobalGPUStorage::instance().upload_mesh(std::move(geometry), mesh);
 
     OC_INFO_FORMAT(
         "GltfAsyncLoader::append_primitive_geometry: geometry key={:#x}, {} vertices, {:.3f} ms",
@@ -506,9 +509,9 @@ BoundingBox GltfAsyncLoader::append_primitive_geometry(
     return local_bounds;
 }
 
-Texture* GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::Model& model) {
+Material::TextureHandle GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::Model& model) {
     if (image_index < 0 || image_index >= static_cast<int>(model.images.size())) {
-        return nullptr;
+        return Material::TextureHandle{};
     }
 
     const auto cached = image_textures_.find(image_index);
@@ -536,7 +539,7 @@ Texture* GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::Model
     GltfPixelSource pixels = resolve_gltf_image_pixels(gltf_image, gltf_directory_);
     if (pixels.data == nullptr || pixels.width == 0 || pixels.height == 0) {
         OC_WARNING_FORMAT("Failed to resolve pixel data for glTF image index {}", image_index);
-        return nullptr;
+        return Material::TextureHandle{};
     }
 
     TextureViewCreation texture_view{};
@@ -545,9 +548,10 @@ Texture* GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::Model
     TextureSampler sampler{TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT};
 
     const std::string texture_name = image_path.filename().string();
-    Texture* texture = ResourceManager::instance().get_texture(texture_name, texture_view, sampler);
-    if (texture == nullptr) {
-        texture = ResourceManager::instance().create_texture(
+    Material::TextureHandle handle = ResourceManager::instance().get_texture_handle(
+        texture_name, texture_view, sampler);
+    if (handle.bindless_index_ == InvalidUI32) {
+        handle = ResourceManager::instance().create_texture(
             device_,
             texture_name,
             pixels.width,
@@ -558,13 +562,14 @@ Texture* GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::Model
             pixels.data);
     }
 
-    image_textures_.emplace(image_index, texture);
+    image_textures_.emplace(image_index, handle);
     OC_INFO_FORMAT(
-        "GltfAsyncLoader::load_gltf_image: image_index {} ({}), {:.3f} ms",
+        "GltfAsyncLoader::load_gltf_image: image_index {} ({}), bindless={}, {:.3f} ms",
         image_index,
         texture_name.c_str(),
+        handle.bindless_index_,
         elapsed_ms(start));
-    return texture;
+    return handle;
 }
 
 void GltfAsyncLoader::load_material(Primitive& prim, const tinygltf::Material& material, const tinygltf::Model& model) {
@@ -600,8 +605,8 @@ void GltfAsyncLoader::load_material(Primitive& prim, const tinygltf::Material& m
     }
 
     const int image_index = model.textures[texture_index].source;
-    Texture* texture = load_gltf_image(image_index, model);
-    if (texture == nullptr) {
+    const Material::TextureHandle albedo_handle = load_gltf_image(image_index, model);
+    if (albedo_handle.bindless_index_ == InvalidUI32) {
         return;
     }
 
@@ -610,11 +615,12 @@ void GltfAsyncLoader::load_material(Primitive& prim, const tinygltf::Material& m
         return;
     }
 
-    prim_material->add_bindless_texture(hash64("albedo"), texture);
-
-    const Material::TextureHandle albedo_handle = prim_material->get_bindless_texture_handle(hash64("albedo"));
+    prim_material->add_bindless_texture(hash64("albedo"), albedo_handle);
     prim.set_material_parameter("albedoIndex", albedo_handle.bindless_index_);
-    prim.set_material_parameter("albedoSamplerIndex", get_bindless_sampler_index(*texture));
+    prim.set_material_parameter(
+        "albedoSamplerIndex",
+        get_bindless_sampler_index(
+            TextureSampler{TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT}));
     prim.set_material_parameter("normalIndex", 0u);
     prim.set_material_parameter("normalSamplerIndex", 0u);
 }

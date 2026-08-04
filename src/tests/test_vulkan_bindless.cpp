@@ -57,7 +57,7 @@ int main(int argc, char *argv[]) {
     Primitive& quad = scene.emplace_primitive();
     Material* material = nullptr;
     Mesh* quad_mesh = nullptr;
-    Texture* texture = nullptr;
+    Material::TextureHandle texture_handle{};
     const fs::path source_dir = fs::path(__FILE__).parent_path();
     const fs::path project_root = source_dir.parent_path().parent_path();
     const fs::path shader_vert = project_root / "res/shaderlibrary/builtin/texture.vert";
@@ -75,7 +75,7 @@ int main(int argc, char *argv[]) {
         &renderer.task_scheduler(),
         &device,
         &pipeline_entries,
-        [&material, &quad_mesh, &texture, &pipeline_entries, &texture_path](Device* local_device) {
+        [&material, &quad_mesh, &texture_handle, &pipeline_entries, &texture_path](Device* local_device) {
         material = ResourceManager::instance().create_material(
             local_device,
             pipeline_entries[0].vertex_shader(),
@@ -86,25 +86,23 @@ int main(int argc, char *argv[]) {
         texture_view.mip_level_count = 0;
         texture_view.usage = TextureUsageFlags::ShaderReadOnly;
         TextureSampler sampler{ TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT };
-        texture = ResourceManager::instance().create_texture(local_device, image, texture_view, sampler);
+        texture_handle = ResourceManager::instance().create_texture(local_device, image, texture_view, sampler);
 
         quad_mesh = ResourceManager::instance().create_mesh("quad");
     });
 
     auto setup_quad = [&](Primitive& quad) {
-        //quad.set_vertex_shader(vertex_shader);
-        //quad.set_pixel_shader(pixel_shader);
-        
         quad.set_mesh(quad_mesh);
-        //pipeline_state.vertex_buffer = quad.get_mesh()->vertex_buffer();
-        //quad.set_pipeline_state(pipeline_state);
         quad.set_material(material);
         const uint64_t albedo_name_id = hash64("albedo");
-        material->add_bindless_texture(albedo_name_id, texture);
+        material->add_bindless_texture(albedo_name_id, texture_handle);
 
         const Material::TextureHandle albedo_handle = material->get_bindless_texture_handle(albedo_name_id);
         quad.set_material_parameter("albedoIndex", albedo_handle.bindless_index_);
-        quad.set_material_parameter("albedoSamplerIndex", get_bindless_sampler_index(*texture));
+        quad.set_material_parameter(
+            "albedoSamplerIndex",
+            get_bindless_sampler_index(
+                TextureSampler{TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT}));
     };
 
     Camera camera;

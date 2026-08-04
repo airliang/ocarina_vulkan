@@ -16,7 +16,6 @@ class VulkanDescriptorSampler;
 class VulkanDevice;
 class VulkanDescriptorSet;
 class VulkanBuffer;
-struct RHIPipeline;
 class VulkanDescriptorSetWriter : public DescriptorSetWriter {
 public:
     VulkanDescriptorSetWriter(VulkanDevice* device, VulkanDescriptorSet* descriptor_set);
@@ -29,19 +28,14 @@ public:
     void build(VulkanDevice* device);
 
     void update_buffer(uint64_t name_id, const void *data, uint32_t size) override;
-    void update_push_constants(const CommandBuffer& cmd_buffer, uint64_t name_id, const void *data, uint32_t size, RHIPipeline *pipeline) override;
     void update_texture(uint64_t name_id, Texture *texture) override;
     void update_sampler(uint64_t name_id, VkSampler sampler);
-    uint32_t update_bindless_texture(uint64_t name_id, Texture *texture);
     void update_bindless_texture_at_index(uint32_t index, Texture *texture);
 
 private:
     std::unordered_map<uint64_t, VulkanDescriptor*> descriptors_;
     std::unordered_map<uint32_t, VulkanBuffer*> buffers_;
-    std::vector<VulkanDescriptor *> pending_writes_;
     std::vector<VkWriteDescriptorSet> writes_;
-    std::vector<Texture *> bindless_textures_;
-    std::unordered_map<Texture*, uint32_t> bindless_textures_indices_;
     std::vector<VkDescriptorImageInfo> image_infos_;
     VulkanDescriptorSet *descriptor_set_ = nullptr;
     VulkanDescriptorImage *bindless_textures_descriptor_ = nullptr;
