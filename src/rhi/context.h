@@ -26,6 +26,7 @@ private:
         fs::path runtime_directory;
         fs::path cache_directory;
         bool use_cache{true};
+        bool rebuild_shaders{false};
         ocarina::map<string, DynamicModule> modules;
         Impl() = default;
     };
@@ -34,6 +35,9 @@ private:
 public:
     RHIContext &init(const fs::path &path, string_view cache_dir = ".cache");
     virtual ~RHIContext() noexcept;
+    /// Parse argv for launch flags (e.g. "rebuildshader"). Safe to call more than once.
+    void parse_command_line(int argc, char **argv);
+    [[nodiscard]] bool rebuild_shaders() const noexcept;
     [[nodiscard]] const fs::path &runtime_directory() const noexcept;
     [[nodiscard]] const fs::path &cache_directory() const noexcept;
     static bool create_directory_if_necessary(const fs::path &path);
@@ -49,6 +53,8 @@ public:
     [[nodiscard]] Device create_device(const string &backend_name, const ocarina::InstanceCreation &instance_creation) noexcept;
     [[nodiscard]] Device create_device(const string &backend_name) noexcept;
     [[nodiscard]] const std::string& current_backend() const noexcept { return current_backend_; }
+private:
+    void parse_process_command_line();
 };
 
 }// namespace ocarina

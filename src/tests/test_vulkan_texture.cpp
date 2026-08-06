@@ -36,6 +36,7 @@ using namespace ocarina;
 int main(int argc, char *argv[]) {
     fs::path path(argv[0]);
     RHIContext& file_manager = RHIContext::instance();
+    file_manager.parse_command_line(argc, argv);
 
     const uint2 window_size = make_uint2(800, 600);
     auto window = create_sdl_window("display", window_size);
@@ -89,15 +90,12 @@ int main(int argc, char *argv[]) {
         quad.set_mesh(quad_mesh);
         quad.set_material(material);
 
-        Texture* texture = texture_handle.texture_;
-        if (texture == nullptr) {
-            texture = BindlessTextureRegistry::instance().get_texture(texture_handle.bindless_index_);
-            texture_handle.texture_ = texture;
-        }
-        if (texture != nullptr) {
-            material->add_texture(hash64("albedo"), texture);
-            material->add_sampler(hash64("sampler_albedo"), *texture->get_sampler_pointer());
-        }
+        // The GPU texture is uploaded asynchronously, so bind by handle and let the material
+        // apply the descriptor write once the upload completes.
+        material->add_texture(hash64("albedo"), texture_handle);
+        material->add_sampler(
+            hash64("sampler_albedo"),
+            TextureSampler{TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT});
     };
 
     Camera camera;

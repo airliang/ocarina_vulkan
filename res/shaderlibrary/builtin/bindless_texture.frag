@@ -2,9 +2,6 @@
 #include "common.hlsl"
 #include "material.hlsl"
 
-[[vk::binding(0, MATERIAL_SET)]]Texture2D g_textures[];
-[[vk::binding(1, MATERIAL_SET)]]SamplerState samplers[];
-
 struct VSOutput
 {
 [[vk::location(0)]] float2 UV : TEXCOORD0;

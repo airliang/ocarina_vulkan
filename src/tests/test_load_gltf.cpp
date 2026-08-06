@@ -24,6 +24,7 @@ using namespace ocarina;
 
 int main(int argc, char* argv[]) {
     RHIContext& context = RHIContext::instance();
+    context.parse_command_line(argc, argv);
 
     const uint2 window_size = make_uint2(1280, 720);
     auto window = create_sdl_window("FlightHelmet glTF", window_size);

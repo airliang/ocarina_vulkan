@@ -65,8 +65,36 @@ RHIContext &RHIContext::instance() noexcept {
     if (s_context == nullptr) {
         s_context = new RHIContext();
         s_context->init(fs::current_path());
+        s_context->parse_process_command_line();
     }
     return *s_context;
+}
+
+void RHIContext::parse_command_line(int argc, char **argv) {
+    if (!impl_) {
+        return;
+    }
+    for (int i = 1; i < argc; ++i) {
+        if (argv[i] == nullptr) {
+            continue;
+        }
+        const string_view arg = argv[i];
+        if (arg == "rebuildshader" || arg == "--rebuildshader" || arg == "/rebuildshader") {
+            impl_->rebuild_shaders = true;
+            OC_INFO("rebuildshader: SPV disk cache will be ignored; shaders recompiled from HLSL");
+        }
+    }
+}
+
+void RHIContext::parse_process_command_line() {
+#ifdef _MSC_VER
+    // MSVC exposes process argv without requiring every main() to forward argc/argv.
+    parse_command_line(__argc, __argv);
+#endif
+}
+
+bool RHIContext::rebuild_shaders() const noexcept {
+    return impl_ && impl_->rebuild_shaders;
 }
 
 void RHIContext::destroy_instance() {

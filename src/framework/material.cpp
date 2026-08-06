@@ -59,15 +59,13 @@ uint32_t Material::find_material_ubo_descriptor_set_index(
         if (layout == nullptr) {
             continue;
         }
-        if (layout->has_bindless_binding()) {
+        if (layout->get_descriptor_set_index() == static_cast<uint32_t>(DescriptorSetIndex::GLOBAL_SET)) {
             continue;
         }
         if (!layout->has_uniform_buffer_binding()) {
             continue;
         }
-        if (layout->get_descriptor_set_index() == static_cast<uint32_t>(DescriptorSetIndex::GLOBAL_SET)) {
-            continue;
-        }
+        // material_ubo may share MATERIAL_SET with bindless textures/samplers.
         return layout->get_descriptor_set_index();
     }
     return InvalidUI32;
@@ -165,17 +163,19 @@ void Material::create_global_descriptor_sets() {
 }
 
 void Material::create_material_descriptor_set() {
+    const uint32_t global_ubo_set_index = find_global_ubo_descriptor_set_index(descriptor_set_layouts_);
+    const uint32_t bindless_set_index = find_bindless_descriptor_set_index(descriptor_set_layouts_);
+
     uint32_t material_set_index = find_material_ubo_descriptor_set_index(descriptor_set_layouts_);
     if (material_set_index == InvalidUI32) {
-        FrameResources& frame_resources = FrameResources::instance();
+        // Shaders without material_ubo (e.g. texture.frag) still need their non-global
+        // set allocated, otherwise a statically used set is never bound at draw time.
         for (size_t set_index = 0; set_index < descriptor_set_layouts_.size(); ++set_index) {
-            if (frame_resources.is_global_descriptor_set_index(static_cast<uint32_t>(set_index))) {
-                continue;
-            }
             if (descriptor_set_layouts_[set_index] == nullptr) {
                 continue;
             }
-            if (descriptor_set_layouts_[set_index]->has_bindless_binding()) {
+            if (static_cast<uint32_t>(set_index) == global_ubo_set_index ||
+                static_cast<uint32_t>(set_index) == bindless_set_index) {
                 continue;
             }
             material_set_index = static_cast<uint32_t>(set_index);
@@ -191,8 +191,19 @@ void Material::create_material_descriptor_set() {
         return;
     }
 
-    material_descriptor_set_ = material_layout->allocate_descriptor_set();
     material_descriptor_set_index_ = material_set_index;
+
+    if (bindless_set_index != InvalidUI32 && bindless_set_index == material_set_index) {
+        // material_ubo shares one Vulkan set with the bindless array, and a set index can only
+        // have one descriptor set bound. Reuse the shared bindless set: uploads patch
+        // material_ubo on it, and binding happens once per pipeline with the global sets.
+        material_descriptor_set_ = FrameResources::instance().get_bindless_descriptor_set();
+        uses_shared_bindless_descriptor_set_ = true;
+        return;
+    }
+
+    uses_shared_bindless_descriptor_set_ = false;
+    material_descriptor_set_ = material_layout->allocate_descriptor_set();
 }
 
 void Material::upload_material_uniform_buffer(const void* data, uint32_t size) {
@@ -259,9 +270,66 @@ bool Material::are_bindless_textures_gpu_visible() const noexcept {
 }
 
 void Material::add_texture(uint64_t name_id, Texture* texture) {
-    if (material_descriptor_set_ != nullptr) {
+    if (material_descriptor_set_ != nullptr && texture != nullptr) {
         material_descriptor_set_->update_texture(name_id, texture);
     }
+}
+
+void Material::add_texture(uint64_t name_id, const TextureHandle& handle) {
+    Texture* texture = handle.texture_;
+    if (texture == nullptr && handle.bindless_index_ != InvalidUI32) {
+        texture = BindlessTextureRegistry::instance().get_texture(handle.bindless_index_);
+    }
+
+    if (texture != nullptr) {
+        add_texture(name_id, texture);
+        return;
+    }
+
+    if (handle.bindless_index_ == InvalidUI32) {
+        return;
+    }
+
+    // Texture upload runs on the GPU resource thread; retry the write once the slot is filled.
+    std::lock_guard<std::mutex> lock(pending_texture_mutex_);
+    for (PendingTextureBinding& pending : pending_texture_bindings_) {
+        if (pending.name_id == name_id) {
+            pending.bindless_index = handle.bindless_index_;
+            return;
+        }
+    }
+    pending_texture_bindings_.push_back(PendingTextureBinding{name_id, handle.bindless_index_});
+    has_pending_texture_bindings_.store(true, std::memory_order_release);
+}
+
+void Material::flush_pending_texture_updates() {
+    if (material_descriptor_set_ == nullptr ||
+        !has_pending_texture_bindings_.load(std::memory_order_acquire)) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(pending_texture_mutex_);
+    if (pending_texture_bindings_.empty()) {
+        has_pending_texture_bindings_.store(false, std::memory_order_release);
+        return;
+    }
+
+    auto resolved = std::remove_if(
+        pending_texture_bindings_.begin(),
+        pending_texture_bindings_.end(),
+        [this](const PendingTextureBinding& pending) {
+            Texture* texture = BindlessTextureRegistry::instance().get_texture(pending.bindless_index);
+            if (texture == nullptr ||
+                texture->gpu_resource_state() == GPUResourceState::CPU_Loaded) {
+                return false;
+            }
+            material_descriptor_set_->update_texture(pending.name_id, texture);
+            return true;
+        });
+    pending_texture_bindings_.erase(resolved, pending_texture_bindings_.end());
+    has_pending_texture_bindings_.store(
+        !pending_texture_bindings_.empty(),
+        std::memory_order_release);
 }
 
 void Material::add_sampler(uint64_t name_id, const TextureSampler& sampler) {

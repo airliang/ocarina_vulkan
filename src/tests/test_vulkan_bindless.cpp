@@ -43,6 +43,7 @@ int main(int argc, char *argv[]) {
     fs::path path(argv[0]);
     //FileManager &file_manager = FileManager::instance();
     RHIContext &file_manager = RHIContext::instance();
+    file_manager.parse_command_line(argc, argv);
 
     const uint2 window_size = make_uint2(800, 600);
     auto window = create_sdl_window("display", window_size);

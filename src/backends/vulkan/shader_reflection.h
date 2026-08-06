@@ -42,6 +42,7 @@ struct ShaderReflection{
             size = other.size;
             array_size = other.array_size;
             is_bindless = other.is_bindless;
+            is_separate_image = other.is_separate_image;
         }
 
         ShaderResource &operator=(const ShaderResource &other) {
@@ -58,6 +59,7 @@ struct ShaderReflection{
             size = other.size;
             array_size = other.array_size;
             is_bindless = other.is_bindless;
+            is_separate_image = other.is_separate_image;
             return *this;
         }
 
@@ -76,6 +78,7 @@ struct ShaderReflection{
             size = rvalue.size;
             array_size = rvalue.array_size;
             is_bindless = rvalue.is_bindless;
+            is_separate_image = rvalue.is_separate_image;
         }
 
         ShaderResource& operator=(ShaderResource&& rvalue) noexcept
@@ -93,6 +96,7 @@ struct ShaderReflection{
             size = rvalue.size;
             array_size = rvalue.array_size;
             is_bindless = rvalue.is_bindless;
+            is_separate_image = rvalue.is_separate_image;
             return *this;
         }
 
@@ -107,6 +111,8 @@ struct ShaderReflection{
         uint32_t size = 0;
         uint32_t array_size = 0;
         bool is_bindless = false;
+        /// HLSL Texture2D + separate SamplerState: needs SAMPLED_IMAGE, not COMBINED_IMAGE_SAMPLER.
+        bool is_separate_image = false;
         VkFormat format = VK_FORMAT_UNDEFINED;
         VertexAttributeType::Enum vertex_attribute_type = VertexAttributeType::Enum::Count;
 

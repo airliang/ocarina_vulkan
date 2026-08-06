@@ -249,6 +249,18 @@ public:
         }
 
         void add_binding(const VulkanShaderVariableBinding& binding) {
+            // Same set/binding from VS+PS must merge into one entry with OR'd stage flags.
+            // Emitting duplicates leaves VERTEX-only visibility when the layout builder
+            // keeps the first (vertex) binding by name.
+            for (auto& existing : bindings) {
+                if (existing.binding == binding.binding && existing.type == binding.type) {
+                    existing.shader_stage |= binding.shader_stage;
+                    if (binding.size > existing.size) {
+                        existing.size = binding.size;
+                    }
+                    return;
+                }
+            }
             bindings.emplace_back(binding);
         }
 

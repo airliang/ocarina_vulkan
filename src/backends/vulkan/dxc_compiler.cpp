@@ -399,6 +399,7 @@ void DXCCompiler::run_spriv_reflection(const std::vector<uint32_t> &spriv, Shade
         shader_resource.binding = binding;
         shader_resource.parameter_type = ShaderReflection::ResourceType::SRV;
         shader_resource.shader_type = (uint32_t)shader_type;
+        shader_resource.is_separate_image = true;
         if (!type.array.empty()) {
             //is a texture array
             if (type.array[0] == 0)

@@ -42,6 +42,8 @@ static void apply_mesh_material_defaults(Primitive& primitive) {
     primitive.set_material_parameter("ao", 1.f);
     primitive.set_material_parameter("normalIndex", 0u);
     primitive.set_material_parameter("normalSamplerIndex", 0u);
+    primitive.set_material_parameter("metallicRoughnessIndex", InvalidUI32);
+    primitive.set_material_parameter("metallicRoughnessSamplerIndex", 0u);
 }
 
 static void apply_mesh_bindless_indices(Primitive& primitive, const Material::TextureHandle& albedo_handle) {
@@ -54,6 +56,7 @@ static void apply_mesh_bindless_indices(Primitive& primitive, const Material::Te
 
 int main(int argc, char* argv[]) {
     RHIContext& context = RHIContext::instance();
+    context.parse_command_line(argc, argv);
 
     const uint2 window_size = make_uint2(1280, 720);
     auto window = create_sdl_window("Culling Test - 100x100x100 Cubes", window_size);

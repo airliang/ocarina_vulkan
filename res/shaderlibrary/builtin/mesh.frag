@@ -2,9 +2,6 @@
 #include "common.hlsl"
 #include "material.hlsl"
 
-[[vk::binding(0, MATERIAL_SET)]]Texture2D g_textures[];
-[[vk::binding(1, MATERIAL_SET)]]SamplerState samplers[];
-
 struct VSOutput
 {
 [[vk::location(0)]] float3 Normal : NORMAL0;
@@ -44,9 +41,22 @@ float4 main(VSOutput input) : SV_TARGET
 {
     float4 sampled = g_textures[material.albedoIndex].Sample(samplers[material.albedoSamplerIndex], input.UV);
     float3 albedo = sampled.rgb * material.baseColorFactor.rgb * input.Color;
-    float roughness = max(material.roughness, 0.04);
-    float metallic = saturate(material.metallic);
-    float ao = saturate(material.ao);
+
+    // Factors multiply texture samples (glTF). Without a MR map, factors alone are used —
+    // note glTF default metallicFactor is 1.0, so a missing MR map looks fully metallic.
+    float roughness = material.roughness;
+    float metallic = material.metallic;
+    float ao = material.ao;
+    if (material.metallicRoughnessIndex != 0xffffffff) {
+        float3 mr = g_textures[material.metallicRoughnessIndex].Sample(
+            samplers[material.metallicRoughnessSamplerIndex], input.UV).rgb;
+        ao *= mr.r;
+        roughness *= mr.g;
+        metallic *= mr.b;
+    }
+    roughness = max(roughness, 0.04);
+    metallic = saturate(metallic);
+    ao = saturate(ao);
 
     float3 N = normalize(input.Normal);
     float3 V = normalize(input.ViewVec);
@@ -58,6 +68,7 @@ float4 main(VSOutput input) : SV_TARGET
     float NdotH = max(dot(N, H), 0.0);
     float VdotH = max(dot(V, H), 0.0);
 
+    // Metals: F0 = albedo, diffuse weight kD → 0 (correct). Color comes from specular.
     float3 F0 = lerp(float3(0.04, 0.04, 0.04), albedo, metallic);
     float D = DistributionGGX(NdotH, roughness);
     float G = GeometrySmith(NdotV, NdotL, roughness);
@@ -71,7 +82,10 @@ float4 main(VSOutput input) : SV_TARGET
     float3 kD = (1.0 - kS) * (1.0 - metallic);
     float3 diffuse = kD * albedo / 3.14159265;
 
-    float3 ambient = float3(0.4, 0.4, 0.4) * albedo * ao;
+    // Without IBL, add a little F0-based ambient so true metals are not black outside the sun highlight.
+    float3 ambient = (albedo * (1.0 - metallic) + F0 * 0.25) * 0.4 * ao;
+    // Keep a real read of global_ubo in the fragment stage so DXC does not DCE the cbuffer
+    // (otherwise set 0 never appears in mesh.frag.spv and RenderDoc shows sun* as zero).
     float3 radiance = sunColor.rgb * sunIntensity;
     float3 color = ambient + (diffuse + specular) * radiance * NdotL;
 

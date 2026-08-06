@@ -18,6 +18,7 @@ using namespace Microsoft::WRL;
 
 #include "core/logging.h"
 #include "dxc_compiler.h"
+#include "rhi/context.h"
 #include <cstring>
 #include <fstream>
 
@@ -129,7 +130,12 @@ VulkanShader *VulkanShader::create_from_HLSL(Device::Impl *device, ShaderType sh
     const std::string spv_path = get_spv_path_for_shader(filename);
     std::vector<uint32_t> spirv_code;
 
-    if (!load_spirv_from_file(spv_path, spirv_code)) {
+    const bool rebuild = RHIContext::instance().rebuild_shaders();
+    const bool loaded_from_cache = !rebuild && load_spirv_from_file(spv_path, spirv_code);
+    if (!loaded_from_cache) {
+        if (rebuild) {
+            OC_INFO_FORMAT("rebuildshader: compiling {} (ignoring {})", filename.c_str(), spv_path.c_str());
+        }
         if (!compile_hlsl_file_to_spirv(filename, shader_type, entry_point, spirv_code)) {
             return nullptr;
         }
@@ -172,7 +178,9 @@ void VulkanShader::get_shader_variables(const ShaderReflection &reflection) {
             variable.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         } else if (shader_resource.parameter_type == ShaderReflection::ResourceType::SRV)
         {
-            variable.type = shader_resource.is_bindless
+            // A separate Texture2D pairs with its own SamplerState binding, so the layout must
+            // declare SAMPLED_IMAGE; COMBINED_IMAGE_SAMPLER makes descriptor writes mismatch.
+            variable.type = (shader_resource.is_bindless || shader_resource.is_separate_image)
                 ? VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
                 : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         } else if (shader_resource.parameter_type == ShaderReflection::ResourceType::UAV) {

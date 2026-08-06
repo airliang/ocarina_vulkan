@@ -108,46 +108,57 @@ void VulkanDescriptorSetLayout::add_binding(const char* name,
     char *end;
     uint64_t nameid = hash64(name);
 
-    if (name_to_bindings_.find(nameid) == name_to_bindings_.end())
+    auto it = name_to_bindings_.find(nameid);
+    if (it != name_to_bindings_.end())
     {
-        name_to_bindings_.insert(std::make_pair(nameid, bindings_.size()));
-        VulkanShaderVariableBinding descriptor_binding;
-        strcpy(descriptor_binding.name, name);
-        descriptor_binding.binding = binding;
-        descriptor_binding.type = descriptor_type;
-        descriptor_binding.shader_stage = stage_flags;
-        descriptor_binding.count = count;
-        descriptor_binding.size = size;
-        descriptor_binding.is_bindless = is_bindless;
-
-        if (is_bindless)
-        {
-            has_bindless_ = true;
+        // Multi-stage resource (e.g. global_ubo in vertex + fragment): OR stage flags.
+        VulkanShaderVariableBinding& existing = bindings_[it->second];
+        existing.shader_stage |= stage_flags;
+        if (size > existing.size) {
+            existing.size = size;
         }
-
-        //bindings_.insert(std::make_pair(binding, descriptor_binding));
-        bindings_.push_back(descriptor_binding);
-
-        switch (descriptor_type)
-        {
-        case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-        case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-            descriptor_count_.srv += count;
-            break;
-        case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
-            descriptor_count_.ubo += count;
-            break;
-        case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-            descriptor_count_.uav += count;
-            break;
-        case VK_DESCRIPTOR_TYPE_SAMPLER:
-            descriptor_count_.samplers += count;
-            break;
-        }
-
         layout_built_ = false;
         hashkey_ = InvalidUI64;
+        return;
     }
+
+    name_to_bindings_.insert(std::make_pair(nameid, bindings_.size()));
+    VulkanShaderVariableBinding descriptor_binding;
+    strcpy(descriptor_binding.name, name);
+    descriptor_binding.binding = binding;
+    descriptor_binding.type = descriptor_type;
+    descriptor_binding.shader_stage = stage_flags;
+    descriptor_binding.count = count;
+    descriptor_binding.size = size;
+    descriptor_binding.is_bindless = is_bindless;
+
+    if (is_bindless)
+    {
+        has_bindless_ = true;
+    }
+
+    //bindings_.insert(std::make_pair(binding, descriptor_binding));
+    bindings_.push_back(descriptor_binding);
+
+    switch (descriptor_type)
+    {
+    case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+    case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+        descriptor_count_.srv += count;
+        break;
+    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+        descriptor_count_.ubo += count;
+        break;
+    case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+        descriptor_count_.uav += count;
+        break;
+    case VK_DESCRIPTOR_TYPE_SAMPLER:
+        descriptor_count_.samplers += count;
+        break;
+    }
+
+    layout_built_ = false;
+    hashkey_ = InvalidUI64;
 }
 
 bool VulkanDescriptorSetLayout::has_uniform_buffer_binding() const {

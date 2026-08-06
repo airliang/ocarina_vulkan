@@ -7,6 +7,8 @@
 #include "rhi/pipeline_state.h"
 #include "rhi/shader_base.h"
 #include "rhi/resources/texture.h"
+#include <atomic>
+#include <mutex>
 
 namespace ocarina {
 class DescriptorSetLayout;
@@ -44,7 +46,13 @@ public:
     [[nodiscard]] bool are_bindless_textures_gpu_visible() const noexcept;
 
     void add_texture(uint64_t name_id, Texture* texture);
+    /// Async-safe variant: the GPU Texture behind @p handle may not exist yet, so the write is
+    /// retried by flush_pending_texture_updates() until the bindless slot is filled.
+    void add_texture(uint64_t name_id, const TextureHandle& handle);
     void add_sampler(uint64_t name_id, const TextureSampler& sampler);
+
+    /// Apply deferred non-bindless texture writes whose GPU texture is now available. Render thread.
+    void flush_pending_texture_updates();
 
     void set_blend_state(const BlendState& blend_state) {
         if (blend_state != pipeline_state_.blend_state) {
@@ -138,6 +146,11 @@ public:
         return material_descriptor_set_ != nullptr && material_descriptor_set_index_ == set_index;
     }
 
+    /// True when material_ubo lives on the same set as the global bindless array (set already bound at pipeline scope).
+    [[nodiscard]] bool uses_shared_bindless_descriptor_set() const noexcept {
+        return uses_shared_bindless_descriptor_set_;
+    }
+
     void upload_material_uniform_buffer(const void* data, uint32_t size);
 
     void ensure_material_buffer();
@@ -178,12 +191,22 @@ private:
 
     DescriptorSet* material_descriptor_set_ = nullptr;
     uint32_t material_descriptor_set_index_ = InvalidUI32;
+    bool uses_shared_bindless_descriptor_set_ = false;
 
     uint32_t material_buffer_offset_ = InvalidUI32;
     uint32_t material_buffer_size_ = 0;
     bool material_parameters_dirty_ = true;
 
     std::unordered_map<uint64_t, TextureHandle> bindless_textures_;
+
+    struct PendingTextureBinding {
+        uint64_t name_id = 0;
+        uint32_t bindless_index = InvalidUI32;
+    };
+    mutable std::mutex pending_texture_mutex_;
+    std::vector<PendingTextureBinding> pending_texture_bindings_;
+    /// Lets the per-draw flush early-out without locking once every write has landed.
+    std::atomic<bool> has_pending_texture_bindings_{false};
 };
 
 }// namespace ocarina
