@@ -23,6 +23,7 @@ void TextureGPUResourceRequest::process() {
     switch (kind) {
     case GPUResourceRequestType::TextureFromData: {
         const void* data = pixel_data.empty() ? nullptr : pixel_data.data();
+        Semaphore upload_signal = GPUResourceThread::instance().allocate_upload_signal();
         texture = ocarina::new_with_allocator<Texture>(
             device->impl(),
             width,
@@ -32,7 +33,10 @@ void TextureGPUResourceRequest::process() {
             texture_view,
             sampler,
             uint4(0, 0, 0, 255),
-            data);
+            data,
+            upload_signal.semaphore != InvalidUI64 && upload_signal.semaphore != 0
+                ? &upload_signal
+                : nullptr);
         break;
     }
     case GPUResourceRequestType::RenderTarget:
@@ -103,13 +107,49 @@ GPUResourceThread& GPUResourceThread::instance() {
 GPUResourceThread::GPUResourceThread() noexcept
     : enki::IPinnedTask(pinned_task_thread_num(PinnedTaskIds::GPUResourceTask)) {}
 
-void GPUResourceThread::start(enki::TaskScheduler& scheduler) {
+void GPUResourceThread::start(enki::TaskScheduler& scheduler, Device* device) {
+    device_ = device;
+    if (device_ != nullptr &&
+        (upload_timeline_.semaphore == 0 || upload_timeline_.semaphore == InvalidUI64)) {
+        upload_timeline_ = device_->create_timeline_semaphore(0);
+    }
     if (running_.exchange(true, std::memory_order_acq_rel)) {
         return;
     }
     scheduler_ = &scheduler;
     shutdown_requested_.store(false, std::memory_order_release);
     scheduler.AddPinnedTask(this);
+}
+
+void GPUResourceThread::shutdown() {
+    if (device_ != nullptr) {
+        device_->wait_idle();
+        device_->release_completed_upload_staging(~0ull);
+        device_->destroy_semaphore(upload_timeline_);
+    }
+    next_timeline_value_ = 0;
+    completed_timeline_value_ = 0;
+    device_ = nullptr;
+}
+
+Semaphore GPUResourceThread::allocate_upload_signal() {
+    Semaphore signal = upload_timeline_;
+    if (signal.semaphore == 0 || signal.semaphore == InvalidUI64) {
+        return signal;
+    }
+    signal.timeline_value = ++next_timeline_value_;
+    return signal;
+}
+
+void GPUResourceThread::poll_upload_timeline() {
+    if (device_ == nullptr ||
+        upload_timeline_.semaphore == 0 ||
+        upload_timeline_.semaphore == InvalidUI64) {
+        return;
+    }
+    const uint64_t completed = device_->query_timeline_semaphore_value(upload_timeline_);
+    completed_timeline_value_ = completed;
+    device_->release_completed_upload_staging(completed);
 }
 
 void GPUResourceThread::request_shutdown() {

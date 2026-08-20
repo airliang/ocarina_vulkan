@@ -71,8 +71,8 @@ public:
     void set_background(const uchar4 *pixels) noexcept {
         set_background(pixels, size());
     }
-    void set_background(const Buffer<float4> &buffer, uint2 size) noexcept;
-    void set_background(const Buffer<float4> &buffer) noexcept {
+    void set_background(const TypedBuffer<float4> &buffer, uint2 size) noexcept;
+    void set_background(const TypedBuffer<float4> &buffer) noexcept {
         set_background(buffer, size());
     }
     void set_clear_color(float4 color) noexcept { clear_color_ = color; }

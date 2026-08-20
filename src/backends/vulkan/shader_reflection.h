@@ -20,7 +20,8 @@ struct ShaderReflection{
         UAV,
         Sampler,
         InputAttachment,
-        Atomic
+        Atomic,
+        StorageBuffer,
     };
 
     int thread_group_size[3] = {0, 0, 0};
@@ -246,6 +247,8 @@ struct ShaderReflection{
     std::vector<ShaderResource> shader_resources;
     std::vector<UniformBuffer> uniform_buffers;
     std::vector<UniformBuffer> push_constant_buffers;
+    /// Named OpTypeStruct layouts (e.g. per-shader MaterialParams) for CPU mirrors.
+    std::vector<UniformBuffer> named_structs;
     std::vector<ShaderResource> input_layouts;
     
 };

@@ -9,6 +9,7 @@
 #include "rhi/command_buffer.h"
 #include "rhi/graphics_descriptions.h"
 #include "frame_resources.h"
+#include "gpu_resource_thread.h"
 #include "core/profiler.h"
 #include "TaskScheduler.h"
 
@@ -42,14 +43,21 @@ void RenderTask::render_one_frame() {
     // Kick pending PSO creates first so workers can compile while we cull / update components.
     PipelineManager::instance().update();
 
-    if (renderer_.camera_ != nullptr) {
+    // Finish async load on the render thread before scene/GUI work for this frame.
+    renderer_.poll_async_loader_completion();
+
+    const bool loading = renderer_.is_async_loading();
+
+    if (!loading && renderer_.camera_ != nullptr) {
         renderer_.camera_->update(dt_);
     }
 
-    renderer_.cull_scene();
-    renderer_.update_visible_render_components();
+    if (!loading) {
+        renderer_.cull_scene();
+        renderer_.update_visible_render_components();
+    }
 
-    FrameResources::instance().update_per_frame(dt_, renderer_.camera_);
+    FrameResources::instance().update_per_frame(dt_, loading ? nullptr : renderer_.camera_);
 
     if (renderer_.render) {
         renderer_.render(dt_);
@@ -67,15 +75,19 @@ void RenderTask::execute_default_render_path() {
     if (!device->begin_frame()) {
         return;
     }
-
-    FrameResources::instance().flush_pending_bindless_updates();
+    GPUResourceThread::instance().poll_upload_timeline();
 
     CommandBuffer recorded_cmds[MAX_COMMAND_BUFFERS_PER_SUBMIT];
     uint32_t recorded_count = 0;
+    const bool loading = renderer_.is_async_loading();
 
     // std::map iterates PassGroupId in numeric order (Offscreen → … → UI).
     for (auto& [group_id, record_task] : renderer_.render_pass_tasks_) {
         if (record_task.empty()) {
+            continue;
+        }
+        // During async load, only record the UI pass (loading progress / clear).
+        if (loading && group_id != PassGroupId::UI) {
             continue;
         }
         if (recorded_count >= MAX_COMMAND_BUFFERS_PER_SUBMIT) {
@@ -83,8 +95,10 @@ void RenderTask::execute_default_render_path() {
         }
 
         CommandBuffer cmd = device->get_command_buffer();
-        const RenderPassGUICallback gui =
-            (group_id == PassGroupId::UI) ? renderer_.render_gui_impl_ : RenderPassGUICallback{};
+        RenderPassGUICallback gui;
+        if (group_id == PassGroupId::UI) {
+            gui = loading ? renderer_.loading_gui_impl_ : renderer_.render_gui_impl_;
+        }
 
         record_task.configure(&renderer_, device, cmd, gui);
         renderer_.task_scheduler_.AddTaskSetToPipe(&record_task);

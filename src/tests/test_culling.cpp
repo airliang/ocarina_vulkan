@@ -35,20 +35,26 @@ constexpr uint32_t kTotalCubes = kGridCount * kGridCount * kGridCount;
 
 }// namespace
 
-static void apply_mesh_material_defaults(Primitive& primitive) {
-    primitive.set_material_parameter("baseColorFactor", make_float4(1.f, 1.f, 1.f, 1.f));
-    primitive.set_material_parameter("roughness", 1.f);
-    primitive.set_material_parameter("metallic", 0.f);
-    primitive.set_material_parameter("ao", 1.f);
-    primitive.set_material_parameter("normalIndex", 0u);
-    primitive.set_material_parameter("normalSamplerIndex", 0u);
-    primitive.set_material_parameter("metallicRoughnessIndex", InvalidUI32);
-    primitive.set_material_parameter("metallicRoughnessSamplerIndex", 0u);
+static void apply_mesh_material_defaults(Material* material) {
+    if (material == nullptr) {
+        return;
+    }
+    material->set_property("baseColorFactor", make_float4(1.f, 1.f, 1.f, 1.f));
+    material->set_property("roughness", 1.f);
+    material->set_property("metallic", 0.f);
+    material->set_property("ao", 1.f);
+    material->set_property("normalIndex", 0u);
+    material->set_property("normalSamplerIndex", 0u);
+    material->set_property("metallicRoughnessIndex", InvalidUI32);
+    material->set_property("metallicRoughnessSamplerIndex", 0u);
 }
 
-static void apply_mesh_bindless_indices(Primitive& primitive, const Material::TextureHandle& albedo_handle) {
-    primitive.set_material_parameter("albedoIndex", albedo_handle.bindless_index_);
-    primitive.set_material_parameter(
+static void apply_mesh_bindless_indices(Material* material, const TextureHandle& albedo_handle) {
+    if (material == nullptr) {
+        return;
+    }
+    material->set_property("albedoIndex", albedo_handle);
+    material->set_property(
         "albedoSamplerIndex",
         get_bindless_sampler_index(
             TextureSampler{TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT}));
@@ -75,7 +81,7 @@ int main(int argc, char* argv[]) {
     Material* material = nullptr;
     Mesh* cube_mesh = nullptr;
     Scene* scene = nullptr;
-    Material::TextureHandle white_handle{};
+    TextureHandle white_handle{};
 
     Renderer renderer(&device);
 
@@ -95,7 +101,8 @@ int main(int argc, char* argv[]) {
             pipeline_entries[0].pixel_shader());
         cube_mesh = Mesh::create_cube();
         white_handle = InternalTextures::instance().get_white_texture_handle(load_device);
-        material->add_bindless_texture(hash64("albedo"), white_handle);
+        apply_mesh_material_defaults(material);
+        apply_mesh_bindless_indices(material, white_handle);
 
         scene = ocarina::new_with_allocator<Scene>();
         scene->reserve_primitives(kTotalCubes);
@@ -111,8 +118,6 @@ int main(int argc, char* argv[]) {
                         static_cast<float>(row) * kGridSpacing));
                     primitive.set_mesh(cube_mesh);
                     primitive.set_material(material);
-                    apply_mesh_material_defaults(primitive);
-                    apply_mesh_bindless_indices(primitive, white_handle);
                 }
             }
         }
@@ -186,7 +191,7 @@ int main(int argc, char* argv[]) {
     };
     window->widgets()->set_frame_info_context(&frame_info);
     imgui_renderer.set_frame_callback([&]() {
-        display_loading_progress(*window->widgets(), nullptr, renderer.loading_dt());
+        display_loading_progress(*window->widgets(), nullptr, renderer.dt());
     });
 
     renderer.pass_group(PassGroupId::UI).add_render_pass(render_pass);

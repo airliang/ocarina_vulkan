@@ -5,6 +5,9 @@
 #include "core/concepts.h"
 #include "core/hash.h"
 #include "rhi/graphics_descriptions.h"
+#include "rhi/resources/buffer.h"
+#include "rhi/device.h"
+#include "bindless_texture_registry.h"
 #include "material.h"
 #include <mutex>
 
@@ -40,13 +43,25 @@ public:
     uint32_t register_mesh(Mesh* mesh);
     void unregister_mesh(Mesh* mesh);
 
+    /// Create a GPU buffer owned by this manager. Returns a TypedBuffer handle for callers.
+    template<typename T = std::byte>
+    [[nodiscard]] TypedBuffer<T> create_buffer(
+        Device* device,
+        size_t element_count,
+        GraphicBufferBindFlags bind_flags,
+        const std::string& name = "");
+
+    [[nodiscard]] Buffer* get_buffer(handle_ty handle) const noexcept;
+    /// Destroy the Buffer registered under @p handle. Safe to call with 0 / unknown handles.
+    bool release_buffer(handle_ty handle);
+
     /// Async GPU create: reserves bindless index immediately and enqueues upload.
-    [[nodiscard]] Material::TextureHandle create_texture(
+    [[nodiscard]] TextureHandle create_texture(
         Device* device,
         const Image& image,
         const TextureViewCreation& texture_view,
         const TextureSampler& sampler);
-    [[nodiscard]] Material::TextureHandle create_texture(
+    [[nodiscard]] TextureHandle create_texture(
         Device* device,
         const std::string& name,
         uint32_t width,
@@ -64,7 +79,7 @@ public:
         PixelStorage pixel_storage,
         TextureUsageFlags usage);
 
-    [[nodiscard]] Material::TextureHandle get_texture_handle(
+    [[nodiscard]] TextureHandle get_texture_handle(
         const std::string& name,
         const TextureViewCreation& texture_view,
         const TextureSampler& sampler) const noexcept;
@@ -82,8 +97,34 @@ private:
     std::unordered_map<uint64_t, Mesh*> meshes_;
     std::vector<Mesh*> meshes_by_id_;
     std::unordered_map<Mesh*, uint32_t> mesh_to_id_;
-    std::unordered_map<uint64_t, Material::TextureHandle> textures_;
+    std::unordered_map<uint64_t, TextureHandle> textures_;
+    std::unordered_map<handle_ty, Buffer*> buffers_;
     mutable std::mutex mutex_;
 };
+
+template<typename T>
+TypedBuffer<T> ResourceManager::create_buffer(
+    Device* device,
+    size_t element_count,
+    GraphicBufferBindFlags bind_flags,
+    const std::string& name) {
+    static_assert(is_valid_buffer_element_v<T>);
+    if (device == nullptr || element_count == 0) {
+        return {};
+    }
+
+    const size_t byte_count = element_count * sizeof(T);
+    const handle_ty handle = device->create_buffer(byte_count, bind_flags, name);
+    if (handle == 0) {
+        return {};
+    }
+
+    Buffer* buffer = reinterpret_cast<Buffer*>(handle);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        buffers_.emplace(handle, buffer);
+    }
+    return TypedBuffer<T>(handle, element_count);
+}
 
 }// namespace ocarina

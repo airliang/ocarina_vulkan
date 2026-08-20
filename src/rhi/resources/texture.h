@@ -27,6 +27,7 @@ namespace detail {
 class Texture : public RHIResource {
 protected:
     uint channel_num_{};
+    uint64_t upload_completed_value_ = 0;
 
 public:
     class Impl {
@@ -56,20 +57,54 @@ public:
                                              detail::compute_mip_level_num(res, level_num), desc)),
           channel_num_(ocarina::channel_num(pixel_storage)) {}
 
-    explicit Texture(Device::Impl *device, Image *image_resource, const TextureViewCreation &texture_view, const TextureSampler &sampler)
-        : RHIResource(device, Tag::TEXTURE,
-                      device->create_texture(image_resource, texture_view, sampler)),
-          channel_num_(ocarina::channel_num(texture_view.format)) {}
+    explicit Texture(
+        Device::Impl *device,
+        Image *image_resource,
+        const TextureViewCreation &texture_view,
+        const TextureSampler &sampler,
+        const Semaphore *upload_timeline = nullptr)
+        : RHIResource(device, Tag::TEXTURE, 0),
+          channel_num_(ocarina::channel_num(texture_view.format)) {
+        handle_ = device->create_texture(
+            image_resource, texture_view, sampler, upload_timeline, &upload_completed_value_);
+    }
 
-    explicit Texture(Device::Impl *device, uint32_t width, uint32_t height, uint32_t depth, PixelStorage pixel_storage,
-                     const TextureViewCreation &texture_view, const TextureSampler &sampler, uint4 default_color, const void *data)
-        : RHIResource(device, Tag::TEXTURE,
-                      device->create_texture(width, height, depth, pixel_storage, texture_view, sampler, default_color, data)),
-          channel_num_(ocarina::channel_num(pixel_storage)) {}
+    explicit Texture(
+        Device::Impl *device,
+        uint32_t width,
+        uint32_t height,
+        uint32_t depth,
+        PixelStorage pixel_storage,
+        const TextureViewCreation &texture_view,
+        const TextureSampler &sampler,
+        uint4 default_color,
+        const void *data,
+        const Semaphore *upload_timeline = nullptr)
+        : RHIResource(device, Tag::TEXTURE, 0),
+          channel_num_(ocarina::channel_num(pixel_storage)) {
+        handle_ = device->create_texture(
+            width,
+            height,
+            depth,
+            pixel_storage,
+            texture_view,
+            sampler,
+            default_color,
+            data,
+            upload_timeline,
+            &upload_completed_value_);
+    }
 
     explicit Texture(Device::Impl *device, uint32_t width, uint32_t height, PixelStorage pixel_storage, TextureUsageFlags usage)
         : RHIResource(device, Tag::TEXTURE, device->create_render_target_texture(width, height, pixel_storage, usage)),
           channel_num_(ocarina::channel_num(pixel_storage)) {}
+
+    /// True when the GPU copy signaled @p timeline_value (or no async upload was recorded).
+    [[nodiscard]] bool is_gpu_ready(uint64_t timeline_value) const noexcept {
+        return timeline_value >= upload_completed_value_;
+    }
+
+    [[nodiscard]] uint64_t upload_completed_value() const noexcept { return upload_completed_value_; }
 
     OC_MAKE_MEMBER_GETTER(channel_num, )
 

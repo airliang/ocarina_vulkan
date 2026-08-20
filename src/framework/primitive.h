@@ -1,7 +1,3 @@
-//
-// Created by Zero on 06/06/2022.
-//
-
 #pragma once
 
 #include "core/header.h"
@@ -56,25 +52,9 @@ public:
     void set_material(Material* material);
     Material* get_material() const noexcept { return material_; }
 
-    void set_material_parameter(uint64_t name_id, const void* data, size_t size);
-    void set_material_parameter(const char* name, const void* data, size_t size) {
-        set_material_parameter(hash64(name), data, size);
-    }
-
-    template<typename T>
-    void set_material_parameter(uint64_t name_id, const T& value) {
-        set_material_parameter(name_id, &value, sizeof(T));
-    }
-
-    template<typename T>
-    void set_material_parameter(const char* name, const T& value) {
-        set_material_parameter(hash64(name), value);
-    }
-
-    void upload_material_parameters(bool force_upload = false);
-
 private:
     void sync_render_component_material_buffer(RenderComponent& render_component);
+    void write_ssbo_index_push_constants();
 
     GeometryDataSetup geometry_data_setup_;
     UpdatePushConstant update_push_constant_function_ = nullptr;

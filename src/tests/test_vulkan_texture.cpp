@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
     Primitive& quad = scene.emplace_primitive();
     Material* material = nullptr;
     Mesh* quad_mesh = nullptr;
-    Material::TextureHandle texture_handle{};
+    TextureHandle texture_handle{};
 
     Renderer renderer(&device);
 
@@ -89,10 +89,7 @@ int main(int argc, char *argv[]) {
     auto setup_quad = [&](Primitive& quad) {
         quad.set_mesh(quad_mesh);
         quad.set_material(material);
-
-        // The GPU texture is uploaded asynchronously, so bind by handle and let the material
-        // apply the descriptor write once the upload completes.
-        material->add_texture(hash64("albedo"), texture_handle);
+        material->set_property(hash64("albedo"), texture_handle);
         material->add_sampler(
             hash64("sampler_albedo"),
             TextureSampler{TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT});
@@ -140,7 +137,7 @@ int main(int argc, char *argv[]) {
     frame_info.window_title = window_name;
     window->widgets()->set_frame_info_context(&frame_info);
     imgui_renderer.set_frame_callback([&]() {
-        display_loading_progress(*window->widgets(), nullptr, renderer.loading_dt());
+        display_loading_progress(*window->widgets(), nullptr, renderer.dt());
     });
 
     renderer.set_async_loader(&async_loader, nullptr, [&]() {

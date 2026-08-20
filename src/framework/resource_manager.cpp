@@ -20,6 +20,7 @@ ResourceManager& ResourceManager::instance() {
 }
 
 void ResourceManager::cleanup() {
+    // Release materials first so they can release their TypedBuffers while Device is alive.
     for (auto& [key, material] : materials_) {
         ocarina::delete_with_allocator<Material>(material);
     }
@@ -35,12 +36,59 @@ void ResourceManager::cleanup() {
     meshes_by_id_.clear();
     mesh_to_id_.clear();
     for (auto& [key, handle] : textures_) {
+        if (handle.bindless_index_ != InvalidUI32) {
+            BindlessTextureRegistry::instance().release_index(handle.bindless_index_);
+        }
         if (handle.texture_ != nullptr) {
             handle.texture_->destroy();
             ocarina::delete_with_allocator<Texture>(handle.texture_);
         }
     }
     textures_.clear();
+
+    // Any remaining registered buffers (e.g. FrameResources forgot to release).
+    std::unordered_map<handle_ty, Buffer*> remaining_buffers;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        remaining_buffers.swap(buffers_);
+    }
+    for (auto& [handle, buffer] : remaining_buffers) {
+        if (buffer != nullptr && buffer->device() != nullptr) {
+            buffer->device()->destroy_buffer(handle);
+        }
+    }
+}
+
+Buffer* ResourceManager::get_buffer(handle_ty handle) const noexcept {
+    if (handle == 0) {
+        return nullptr;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto it = buffers_.find(handle);
+    return it != buffers_.end() ? it->second : nullptr;
+}
+
+bool ResourceManager::release_buffer(handle_ty handle) {
+    if (handle == 0) {
+        return false;
+    }
+
+    Buffer* buffer = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto it = buffers_.find(handle);
+        if (it == buffers_.end()) {
+            return false;
+        }
+        buffer = it->second;
+        buffers_.erase(it);
+    }
+
+    if (buffer != nullptr && buffer->device() != nullptr) {
+        buffer->device()->destroy_buffer(handle);
+        return true;
+    }
+    return false;
 }
 
 uint64_t ResourceManager::make_material_key(handle_ty vertex_shader, handle_ty pixel_shader) noexcept {
@@ -172,7 +220,7 @@ Texture* ResourceManager::get_texture(const std::string& name, const TextureView
     return get_texture_handle(name, texture_view, sampler).texture_;
 }
 
-Material::TextureHandle ResourceManager::get_texture_handle(
+TextureHandle ResourceManager::get_texture_handle(
     const std::string& name,
     const TextureViewCreation& texture_view,
     const TextureSampler& sampler) const noexcept {
@@ -180,9 +228,9 @@ Material::TextureHandle ResourceManager::get_texture_handle(
     std::lock_guard<std::mutex> l{mutex_};
     auto it = textures_.find(key);
     if (it == textures_.end()) {
-        return Material::TextureHandle{};
+        return TextureHandle{};
     }
-    Material::TextureHandle handle = it->second;
+    TextureHandle handle = it->second;
     if (handle.texture_ == nullptr && handle.bindless_index_ != InvalidUI32) {
         handle.texture_ = BindlessTextureRegistry::instance().get_texture(handle.bindless_index_);
     }
@@ -198,7 +246,7 @@ void ResourceManager::complete_texture(uint64_t key, Texture* texture) {
     it->second.texture_ = texture;
 }
 
-Material::TextureHandle ResourceManager::create_texture(
+TextureHandle ResourceManager::create_texture(
     Device* device,
     const Image& image,
     const TextureViewCreation& texture_view,
@@ -214,7 +262,7 @@ Material::TextureHandle ResourceManager::create_texture(
     }
 
     const uint32_t bindless_index = BindlessTextureRegistry::instance().allocate_slot();
-    Material::TextureHandle handle{bindless_index, nullptr};
+    TextureHandle handle{bindless_index, nullptr};
     {
         std::lock_guard<std::mutex> l{mutex_};
         auto [it, inserted] = textures_.emplace(key, handle);
@@ -246,7 +294,7 @@ Material::TextureHandle ResourceManager::create_texture(
     return handle;
 }
 
-Material::TextureHandle ResourceManager::create_texture(
+TextureHandle ResourceManager::create_texture(
     Device* device,
     const std::string& name,
     uint32_t width,
@@ -265,7 +313,7 @@ Material::TextureHandle ResourceManager::create_texture(
     }
 
     const uint32_t bindless_index = BindlessTextureRegistry::instance().allocate_slot();
-    Material::TextureHandle handle{bindless_index, nullptr};
+    TextureHandle handle{bindless_index, nullptr};
     {
         std::lock_guard<std::mutex> l{mutex_};
         auto [it, inserted] = textures_.emplace(key, handle);
@@ -341,11 +389,14 @@ Texture* ResourceManager::create_render_target_texture(
     std::lock_guard<std::mutex> l{mutex_};
     auto it = textures_.find(key);
     if (it != textures_.end() && it->second.texture_ != nullptr) {
+        if (bindless_index != InvalidUI32) {
+            BindlessTextureRegistry::instance().release_index(bindless_index);
+        }
         texture->destroy();
         ocarina::delete_with_allocator<Texture>(texture);
         return it->second.texture_;
     }
-    textures_[key] = Material::TextureHandle{bindless_index, texture};
+    textures_[key] = TextureHandle{bindless_index, texture};
     return texture;
 }
 

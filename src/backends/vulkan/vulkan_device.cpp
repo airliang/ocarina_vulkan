@@ -44,8 +44,67 @@ void VulkanDevice::init_hardware_info() {
 
 }
 
+namespace {
+
+VkBufferUsageFlags to_vulkan_buffer_usage(GraphicBufferBindFlags bind_flags) noexcept {
+    VkBufferUsageFlags usage = 0;
+    const uint32_t flags = static_cast<uint32_t>(bind_flags);
+
+    if ((flags & static_cast<uint32_t>(GraphicBufferBindFlags::VertexBuffer)) != 0) {
+        usage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    }
+    if ((flags & static_cast<uint32_t>(GraphicBufferBindFlags::IndexBuffer)) != 0) {
+        usage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+    }
+    if ((flags & static_cast<uint32_t>(GraphicBufferBindFlags::ConstantBuffer)) != 0) {
+        usage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    }
+    if ((flags & static_cast<uint32_t>(GraphicBufferBindFlags::StructuredBuffer)) != 0 ||
+        (flags & static_cast<uint32_t>(GraphicBufferBindFlags::ByteAddressBuffer)) != 0 ||
+        (flags & static_cast<uint32_t>(GraphicBufferBindFlags::ShaderReadWrite)) != 0) {
+        usage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    }
+    if ((flags & static_cast<uint32_t>(GraphicBufferBindFlags::CopySrc)) != 0) {
+        usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    }
+    if ((flags & static_cast<uint32_t>(GraphicBufferBindFlags::CopyDst)) != 0) {
+        usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    }
+
+    if (usage == 0) {
+        usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    }
+    return usage;
+}
+
+}// namespace
+
 handle_ty VulkanDevice::create_buffer(size_t size, const string &desc, bool exported) noexcept {
-    return 0;
+    return create_buffer(
+        size,
+        GraphicBufferBindFlags::ConstantBuffer,
+        desc,
+        exported);
+}
+
+handle_ty VulkanDevice::create_buffer(
+    size_t size,
+    GraphicBufferBindFlags bind_flags,
+    const string &desc,
+    bool exported) noexcept {
+    (void)desc;
+    (void)exported;
+    if (size == 0) {
+        return 0;
+    }
+
+    const VkBufferUsageFlags usage_flags = to_vulkan_buffer_usage(bind_flags);
+    auto* buffer = ocarina::new_with_allocator<VulkanBuffer>(
+        this,
+        usage_flags,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        static_cast<VkDeviceSize>(size));
+    return reinterpret_cast<handle_ty>(buffer);
 }
 
 handle_ty VulkanDevice::create_texture(uint3 res, PixelStorage pixel_storage,
@@ -54,16 +113,40 @@ handle_ty VulkanDevice::create_texture(uint3 res, PixelStorage pixel_storage,
     return 0;
 }
 
-handle_ty VulkanDevice::create_texture(Image *image, const TextureViewCreation &texture_view, const TextureSampler& sampler) noexcept {
-    auto texture = ocarina::new_with_allocator<VulkanTexture>(this, image, texture_view, sampler);
+handle_ty VulkanDevice::create_texture(
+    Image *image,
+    const TextureViewCreation &texture_view,
+    const TextureSampler& sampler,
+    const Semaphore* upload_timeline,
+    uint64_t* out_upload_completed_value) noexcept {
+    auto texture = ocarina::new_with_allocator<VulkanTexture>(
+        this, image, texture_view, sampler, upload_timeline, out_upload_completed_value);
     return reinterpret_cast<handle_ty>(texture);
 }
 
-handle_ty VulkanDevice::create_texture(uint32_t width, uint32_t height, uint32_t depth, PixelStorage pixel_storage,
-                                       const TextureViewCreation &texture_view, const TextureSampler& sampler,
-                                       uint4 default_color, const void *data) noexcept {
+handle_ty VulkanDevice::create_texture(
+    uint32_t width,
+    uint32_t height,
+    uint32_t depth,
+    PixelStorage pixel_storage,
+    const TextureViewCreation &texture_view,
+    const TextureSampler& sampler,
+    uint4 default_color,
+    const void *data,
+    const Semaphore* upload_timeline,
+    uint64_t* out_upload_completed_value) noexcept {
     auto texture = ocarina::new_with_allocator<VulkanTexture>(
-        this, width, height, depth, pixel_storage, texture_view, sampler, default_color, data);
+        this,
+        width,
+        height,
+        depth,
+        pixel_storage,
+        texture_view,
+        sampler,
+        default_color,
+        data,
+        upload_timeline,
+        out_upload_completed_value);
     return reinterpret_cast<handle_ty>(texture);
 }
 
@@ -389,6 +472,7 @@ void VulkanDevice::get_enable_extentions()
 
 void VulkanDevice::shutdown()
 {
+    release_completed_upload_staging(~0ull);
     m_swapChain.release();
     vkDestroyDevice(logicalDevice_, nullptr);
 }
@@ -751,6 +835,82 @@ Fence VulkanDevice::create_fence() noexcept
 {
     Fence::UniqueImplPtr impl(ocarina::new_with_allocator<ocarina::VulkanFence>(this));
     return Fence(std::move(impl));
+}
+
+Semaphore VulkanDevice::create_timeline_semaphore(uint64_t initial_value) noexcept
+{
+    Semaphore semaphore{};
+    semaphore.is_timeline = true;
+    semaphore.timeline_value = initial_value;
+
+    VkSemaphoreTypeCreateInfo timeline_info{};
+    timeline_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
+    timeline_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+    timeline_info.initialValue = initial_value;
+
+    VkSemaphoreCreateInfo sem_info{};
+    sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    sem_info.pNext = &timeline_info;
+
+    VkSemaphore vk_semaphore = VK_NULL_HANDLE;
+    VK_CHECK_RESULT(vkCreateSemaphore(logicalDevice_, &sem_info, nullptr, &vk_semaphore));
+    semaphore.semaphore = reinterpret_cast<handle_ty>(vk_semaphore);
+    return semaphore;
+}
+
+uint64_t VulkanDevice::query_timeline_semaphore_value(const Semaphore& semaphore) const noexcept
+{
+    if (!semaphore.is_timeline ||
+        semaphore.semaphore == 0 ||
+        semaphore.semaphore == InvalidUI64) {
+        return 0;
+    }
+    uint64_t value = 0;
+    VK_CHECK_RESULT(vkGetSemaphoreCounterValue(
+        logicalDevice_,
+        reinterpret_cast<VkSemaphore>(semaphore.semaphore),
+        &value));
+    return value;
+}
+
+void VulkanDevice::destroy_semaphore(Semaphore& semaphore) noexcept
+{
+    if (semaphore.semaphore == 0 || semaphore.semaphore == InvalidUI64) {
+        return;
+    }
+    vkDestroySemaphore(logicalDevice_, reinterpret_cast<VkSemaphore>(semaphore.semaphore), nullptr);
+    semaphore.semaphore = InvalidUI64;
+    semaphore.timeline_value = 0;
+    semaphore.is_timeline = false;
+}
+
+void VulkanDevice::retain_upload_staging(VulkanBuffer* buffer, uint64_t timeline_value)
+{
+    if (buffer == nullptr) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(upload_staging_mutex_);
+    pending_upload_staging_.push_back(PendingUploadStaging{timeline_value, buffer});
+}
+
+void VulkanDevice::release_completed_upload_staging(uint64_t completed_timeline_value) noexcept
+{
+    std::vector<VulkanBuffer*> released;
+    {
+        std::lock_guard<std::mutex> lock(upload_staging_mutex_);
+        size_t write = 0;
+        for (size_t i = 0; i < pending_upload_staging_.size(); ++i) {
+            if (pending_upload_staging_[i].timeline_value <= completed_timeline_value) {
+                released.push_back(pending_upload_staging_[i].buffer);
+            } else {
+                pending_upload_staging_[write++] = pending_upload_staging_[i];
+            }
+        }
+        pending_upload_staging_.resize(write);
+    }
+    for (VulkanBuffer* buffer : released) {
+        ocarina::delete_with_allocator(buffer);
+    }
 }
 
 double VulkanDevice::gpu_frame_time_ms() const noexcept {

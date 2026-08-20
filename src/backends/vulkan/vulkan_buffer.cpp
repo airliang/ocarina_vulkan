@@ -5,13 +5,13 @@
 namespace ocarina {
 
 VulkanBuffer::VulkanBuffer(VulkanDevice *device, VkBufferUsageFlags usage_flags, VkMemoryPropertyFlags memory_property_flags, 
-    VkDeviceSize size, const void *data ) : device_(device) {
+    VkDeviceSize size, const void *data ) : Buffer(device, 0, static_cast<size_t>(size)), device_(device), usage_(usage_flags) {
     memory_property_flags_ = memory_property_flags;
     VkBufferCreateInfo buffer_create{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     buffer_create.usage = usage_flags;
     buffer_create.size = size;
     VK_CHECK_RESULT(vkCreateBuffer(device->logicalDevice(), &buffer_create, nullptr, &vulkan_buffer_));
-    size_ = size;
+    size_in_byte_ = static_cast<size_t>(size);
 
     // Create the memory backing up the buffer handle
     VkMemoryRequirements memReqs;

@@ -6,6 +6,7 @@
 #include "scene.h"
 #include "mesh_geometry.h"
 #include "material.h"
+#include "bindless_texture_registry.h"
 #include "rhi/device.h"
 #include <memory>
 
@@ -53,7 +54,7 @@ private:
         const tinygltf::Model& model,
         Mesh* mesh);
     void load_material(Primitive& prim, const tinygltf::Material& material, const tinygltf::Model& model);
-    [[nodiscard]] Material::TextureHandle load_gltf_image(int image_index, const tinygltf::Model& model);
+    [[nodiscard]] TextureHandle load_gltf_image(int image_index, const tinygltf::Model& model);
     [[nodiscard]] static uint64_t make_geometry_key(const tinygltf::Primitive& primitive);
 
     std::string gltf_file_;
@@ -65,7 +66,7 @@ private:
     handle_ty vertex_shader_ = InvalidUI64;
     handle_ty pixel_shader_ = InvalidUI64;
     std::vector<Mesh*> mesh_storage_;
-    std::unordered_map<int, Material::TextureHandle> image_textures_;
+    std::unordered_map<int, TextureHandle> image_textures_;
     std::unordered_map<uint64_t, Mesh*> geometry_meshes_;
     Scene scene_;
     bool is_loaded_ = false;

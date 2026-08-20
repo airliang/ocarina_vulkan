@@ -1,5 +1,5 @@
-// Copyright 2020 Google LLC
 #include "common.hlsl"
+#include "frame.hlsl"
 
 struct VSInput
 {

@@ -30,35 +30,26 @@ namespace ocarina {
 
 namespace {
 
-void bind_global_descriptor_sets(CommandBuffer& cmd, handle_ty pipeline_layout) noexcept {
+void bind_global_descriptor_sets(
+    CommandBuffer& cmd,
+    const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>& layouts,
+    handle_ty pipeline_layout) noexcept {
     FrameResources& frame_resources = FrameResources::instance();
 
-    if (frame_resources.has_global_ubo_descriptor_set()) {
-        DescriptorSet* global_ubo_set = frame_resources.get_global_ubo_descriptor_set();
-        cmd.bind_descriptor_sets(
-            &global_ubo_set,
-            frame_resources.global_ubo_descriptor_set_index(),
-            1,
-            pipeline_layout);
-    } else {
-        std::vector<DescriptorSet*> global_descriptor_sets =
-            frame_resources.global_descriptor_sets_array();
-        if (!global_descriptor_sets.empty()) {
-            cmd.bind_descriptor_sets(
-                global_descriptor_sets.data(),
-                static_cast<uint32_t>(DescriptorSetIndex::GLOBAL_SET),
-                static_cast<uint32_t>(global_descriptor_sets.size()),
-                pipeline_layout);
+    // Bind only sets that *this* pipeline layout treats as global singletons
+    // (by binding name / bindless). Avoids binding SCENE into a legacy set-1 slot.
+    for (DescriptorSetLayout* layout : layouts) {
+        if (layout == nullptr || !FrameResources::is_global_singleton_layout(layout)) {
+            continue;
         }
-    }
 
-    if (frame_resources.has_bindless_descriptor_set()) {
-        DescriptorSet* bindless_set = frame_resources.get_bindless_descriptor_set();
-        cmd.bind_descriptor_sets(
-            &bindless_set,
-            frame_resources.bindless_descriptor_set_index(),
-            1,
-            pipeline_layout);
+        const uint32_t set_index = layout->get_descriptor_set_index();
+        DescriptorSet* descriptor_set = frame_resources.get_descriptor_set(set_index);
+        if (descriptor_set == nullptr) {
+            continue;
+        }
+
+        cmd.bind_descriptor_sets(&descriptor_set, set_index, 1, pipeline_layout);
     }
 }
 
@@ -76,23 +67,22 @@ void enki_thread_start_profiler_callback(uint32_t thread_num) noexcept {
 
 Renderer::Renderer(Device *device)
     : device_(device),
-      loading_imgui_task_(*this),
       render_task_(*this)
 {
     GlobalGPUStorage::instance().initialize(device);
+    FrameResources::instance().initialize(device);
     enki::TaskSchedulerConfig scheduler_config = task_scheduler_.GetConfig();
     // Need dedicated pinned threads for Render (1) and GPUResource (2), plus workers.
     scheduler_config.numTaskThreadsToCreate = std::max(scheduler_config.numTaskThreadsToCreate, 3u);
     scheduler_config.profilerCallbacks.threadStart = enki_thread_start_profiler_callback;
     task_scheduler_.Initialize(scheduler_config);
     PipelineManager::instance().initialize(device, &task_scheduler_);
-    GPUResourceThread::instance().start(task_scheduler_);
+    GPUResourceThread::instance().start(task_scheduler_, device);
 }
 
 Renderer::~Renderer() {
     shutdown();
     render_pass_tasks_.clear();
-    ResourceManager::instance().cleanup();
 }
 
 void Renderer::shutdown() {
@@ -103,8 +93,15 @@ void Renderer::shutdown() {
 
     GPUResourceThread::instance().request_shutdown();
     task_scheduler_.WaitforAllAndShutdown();
+    GPUResourceThread::instance().shutdown();
     PipelineManager::instance().shutdown();
     GlobalGPUStorage::instance().cleanup();
+
+    // Release GPU resources while VkDevice is still alive. Singletons / atexit
+    // destructors may run after Device destruction and must not free Vulkan objects.
+    // FrameResources first, then materials (and any leftover registered buffers).
+    FrameResources::instance().release_gpu_buffers();
+    ResourceManager::instance().cleanup();
 }
 
 void Renderer::set_render_callback(RenderCallback cb) {
@@ -256,7 +253,24 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
         }
 
         cmd.bind_pipeline(pipeline);
-        bind_global_descriptor_sets(cmd, pipeline->pipeline_layout);
+        Material* queue_material = nullptr;
+        // Bind globals using the first drawable's material layouts in this queue.
+        // All items in a queue share the same PipelineState / shader pair.
+        for (uint32_t entity_index : queue.second->draw_call_items) {
+            if (entity_index >= ecs.primitive_count()) {
+                continue;
+            }
+            queue_material = ecs.primitive(entity_index).get_material();
+            if (queue_material != nullptr) {
+                break;
+            }
+        }
+        if (queue_material != nullptr) {
+            bind_global_descriptor_sets(
+                cmd,
+                queue_material->descriptor_set_layouts(),
+                pipeline->pipeline_layout);
+        }
 
         uint32_t bound_vertex_page = InvalidUI32;
         uint32_t bound_index_page = InvalidUI32;
@@ -286,11 +300,8 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
 
             Primitive& primitive = ecs.primitive(entity_index);
             Material* material = primitive.get_material();
-            if (material != nullptr) {
-                material->flush_pending_texture_updates();
-                if (!material->are_bindless_textures_gpu_visible()) {
-                    continue;
-                }
+            if (material != nullptr && !material->is_renderable()) {
+                continue;
             }
 
             if (geometry.vertex_page != bound_vertex_page) {
@@ -307,7 +318,6 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
             }
 
             if (material != nullptr) {
-                primitive.upload_material_parameters();
                 if (material->has_material_descriptor_set() &&
                     !material->uses_shared_bindless_descriptor_set()) {
                     DescriptorSet* material_descriptor_set = material->get_material_descriptor_set();
@@ -381,6 +391,28 @@ void Renderer::cull_scene() {
     cull_visible_primitives_parallel(*scene_, frustum);
 }
 
+bool Renderer::is_async_loading() const noexcept {
+    return async_loader_task_ != nullptr && !async_loader_task_->GetIsComplete();
+}
+
+void Renderer::poll_async_loader_completion() {
+    if (async_loader_task_ == nullptr) {
+        return;
+    }
+    if (!async_loader_task_->GetIsComplete()) {
+        return;
+    }
+
+    // Complete callback runs on the render thread so set_scene / GUI switches are frame-safe.
+    if (async_complete_fn_) {
+        async_complete_fn_();
+        async_complete_fn_ = nullptr;
+    }
+
+    async_loader_task_ = nullptr;
+    async_wait_fn_ = nullptr;
+}
+
 void Renderer::run()
 {
     if (async_loader_task_) {
@@ -393,9 +425,8 @@ void Renderer::run()
             if (loading_progress_listener_ != nullptr) {
                 async_loader->set_progress_listener(loading_progress_listener_);
             }
-            if (async_complete_fn_) {
-                async_loader->set_complete_callback(std::move(async_complete_fn_));
-            }
+            // Do not set AsyncLoader::complete_callback here — Renderer invokes
+            // async_complete_fn_ on the render thread via poll_async_loader_completion().
         }
 
         task_scheduler_.AddTaskSetToPipe(async_loader_task_);
@@ -403,18 +434,10 @@ void Renderer::run()
         if (async_wait_fn_) {
             async_wait_fn_();
         }
-
-        loading_imgui_task_.configure(async_loader_task_, loading_progress_listener_);
-        task_scheduler_.AddTaskSetToPipe(&loading_imgui_task_);
-
-        task_scheduler_.WaitforTask(async_loader_task_);
-        task_scheduler_.WaitforTask(&loading_imgui_task_);
-
-        async_loader_task_ = nullptr;
-        async_wait_fn_ = nullptr;
-        async_complete_fn_ = nullptr;
     }
 
+    // Start the render loop immediately so PassGroupId::UI can show loading progress
+    // while the async loader runs on worker threads.
     task_scheduler_.AddPinnedTask(&render_task_);
 }
 

@@ -1,6 +1,7 @@
 // Copyright 2020 Google LLC
 
-#include "common.hlsl"
+#include "frame.hlsl"
+#include "transform.hlsl"
 #include "push_constant.hlsl"
 
 struct VSInput
@@ -28,11 +29,12 @@ struct VSOutput
 VSOutput main(VSInput input)
 {
 	VSOutput output = (VSOutput)0;
-	float4 worldPos = mul(pushConstants.modelMatrix, float4(input.Pos, 1.0));
+    Transform transform = LoadTransform(pushConstants.transform_index);
+	float4 worldPos = mul(transform.modelMatrix, float4(input.Pos, 1.0));
 	float4 viewPos = mul(viewMatrix, worldPos);
 	output.Pos = mul(projectionMatrix, viewPos);
 
-	float3x3 normalMatrix = transpose((float3x3)pushConstants.modelMatrixInverse);
+	float3x3 normalMatrix = transpose((float3x3)transform.modelMatrixInverse);
 	output.Normal = normalize(mul(normalMatrix, input.Normal));
 	output.Color = input.Color.rgb;
 	output.UV = input.UV;

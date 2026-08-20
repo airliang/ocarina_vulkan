@@ -8,7 +8,7 @@
 
 namespace ocarina {
 template<typename T>
-class Buffer;
+class TypedBuffer;
 
 template<typename T>
 class BufferDesc;
@@ -114,7 +114,7 @@ struct TypeDesc<ocarina::array<T, N>> {
 };
 
 template<typename T>
-struct TypeDesc<Buffer<T>> {
+struct TypeDesc<TypedBuffer<T>> {
     static_assert(alignof(T) >= 4u);
     static ocarina::string &description() noexcept {
         static thread_local string str = []() -> string {
@@ -128,7 +128,7 @@ struct TypeDesc<Buffer<T>> {
 };
 
 template<typename T>
-struct TypeDesc<BufferDesc<T>> : public TypeDesc<Buffer<T>> {};
+struct TypeDesc<BufferDesc<T>> : public TypeDesc<TypedBuffer<T>> {};
 
 template<>
 struct TypeDesc<ByteBuffer> {

@@ -15,7 +15,6 @@
 #include "render_pass_task.h"
 #include "pass_group_id.h"
 #include "loading_progress_listener.h"
-#include "loading_imgui_task.h"
 #include "frustum.h"
 #include "renderer_primitive_cull_task.h"
 #include "entity_component_system.h"
@@ -34,7 +33,6 @@ class Camera;
 class Renderer : public concepts::Noncopyable {
     friend class RenderTask;
     friend class RenderPassTask;
-    friend class LoadingImguiTask;
 
 public:
     explicit Renderer(Device *device);
@@ -68,8 +66,8 @@ public:
     {
         clear_color = color;
     }
-    // Set an async loader task set + a wait callback supplied by the application.
-    // The loader task and its complete callback run on an enkiTS worker thread (ITaskSet), not the main thread.
+    /// Queue an async loader. RenderTask starts immediately and runs in parallel.
+    /// @p complete_fn is invoked on the render thread after the loader finishes.
     void set_async_loader(enki::ITaskSet* task, ocarina::function<void()> wait_fn, AsyncLoaderCompleteCallback complete_fn = nullptr)
     {
         async_loader_task_ = task;
@@ -81,7 +79,9 @@ public:
     // Stops the render thread. Call before any main-thread Vulkan idle/teardown (e.g. ImGui shutdown).
     void shutdown();
     [[nodiscard]] double dt() const noexcept { return render_task_.last_dt(); }
-    [[nodiscard]] double loading_dt() const noexcept { return loading_imgui_task_.last_dt(); }
+
+    /// True while an async loader task is outstanding (not yet completed / consumed).
+    [[nodiscard]] bool is_async_loading() const noexcept;
 
     /// Returns (and creates if missing) the RenderPassTask for the given group.
     [[nodiscard]] RenderPassTask& pass_group(PassGroupId id) noexcept;
@@ -133,13 +133,15 @@ public:
     [[nodiscard]] const enki::TaskScheduler& task_scheduler() const noexcept { return task_scheduler_; }
 
 private:
+    /// Poll loader completion on the render thread and invoke async_complete_fn_ once.
+    void poll_async_loader_completion();
+
     RenderCallback render = nullptr;
     RenderGUIImplCallback render_gui_impl_ = nullptr;
     LoadingGUIImplCallback loading_gui_impl_ = nullptr;
     LoadingProgressListener* loading_progress_listener_ = nullptr;
     float4 clear_color = {0, 0, 0, 1};
 
-    LoadingImguiTask loading_imgui_task_;
     RenderTask render_task_;
     std::map<PassGroupId, RenderPassTask> render_pass_tasks_;
 

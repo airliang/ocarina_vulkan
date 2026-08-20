@@ -1,5 +1,6 @@
 #include "pipeline_manager.h"
 
+#include "frame_resources.h"
 #include "loading_progress_listener.h"
 #include "rhi/device.h"
 #include "rhi/renderpass.h"
@@ -222,14 +223,22 @@ RHIPipelineLayout* PipelineManager::create_and_cache_pipeline_layout(
         return nullptr;
     }
 
-    std::lock_guard<std::mutex> cache_lock(cache_mutex_);
-    const PipelineLayoutCacheKey key{shaders[0], shaders[1]};
-    const auto [it, inserted] = pipeline_layouts_.emplace(key, pipeline_layout);
-    if (!inserted) {
-        device_->destroy_pipeline_layout(pipeline_layout);
-        return it->second;
+    RHIPipelineLayout* cached_layout = nullptr;
+    {
+        std::lock_guard<std::mutex> cache_lock(cache_mutex_);
+        const PipelineLayoutCacheKey key{shaders[0], shaders[1]};
+        const auto [it, inserted] = pipeline_layouts_.emplace(key, pipeline_layout);
+        if (!inserted) {
+            device_->destroy_pipeline_layout(pipeline_layout);
+            cached_layout = it->second;
+        } else {
+            cached_layout = pipeline_layout;
+        }
     }
-    return pipeline_layout;
+
+    // Register FRAME/SCENE/shared-bindless sets from binding names (outside cache lock).
+    FrameResources::instance().ensure_global_descriptor_sets(cached_layout);
+    return cached_layout;
 }
 
 void PipelineManager::clear_cache() noexcept {

@@ -29,9 +29,19 @@ VulkanDescriptorSet::~VulkanDescriptorSet() {
     }
 }
 
-void VulkanDescriptorSet::update_buffer(uint64_t name_id, const void *data, uint32_t size) {
+void VulkanDescriptorSet::update_buffer(uint64_t name_id, handle_ty buffer, uint32_t offset, uint32_t size) {
     if (writer_) {
-        writer_->update_buffer(name_id, data, size);
+        writer_->update_buffer(name_id, buffer, offset, size);
+    }
+}
+
+void VulkanDescriptorSet::update_storage_buffer(
+    uint64_t name_id,
+    handle_ty buffer,
+    uint64_t offset,
+    uint64_t size) {
+    if (writer_) {
+        writer_->update_storage_buffer(name_id, buffer, offset, size);
     }
 }
 
@@ -155,6 +165,9 @@ void VulkanDescriptorSetLayout::add_binding(const char* name,
     case VK_DESCRIPTOR_TYPE_SAMPLER:
         descriptor_count_.samplers += count;
         break;
+    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+        descriptor_count_.uav += count;
+        break;
     }
 
     layout_built_ = false;
@@ -170,6 +183,15 @@ bool VulkanDescriptorSetLayout::has_uniform_buffer_binding() const {
     return false;
 }
 
+bool VulkanDescriptorSetLayout::has_storage_buffer_binding() const {
+    for (const VulkanShaderVariableBinding& binding : bindings_) {
+        if (binding.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void VulkanDescriptorSetLayout::finalize_bindings() {
     if (has_bindless_) {
         usage_ = DescriptorSetUsage::BindlessArray;
@@ -177,7 +199,7 @@ void VulkanDescriptorSetLayout::finalize_bindings() {
         return;
     }
 
-    if (descriptor_set_index_ == GLOBAL_SET && has_uniform_buffer_binding()) {
+    if (descriptor_set_index_ == FRAME_SET && has_uniform_buffer_binding()) {
         usage_ = DescriptorSetUsage::GlobalSingleton;
         is_global_ubo_ = true;
         return;

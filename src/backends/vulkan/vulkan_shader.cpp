@@ -96,6 +96,20 @@ bool compile_hlsl_file_to_spirv(
 
     CompileResult compile_result;
     if (!DXCCompiler::compile_hlsl_spriv(compile_input, compile_result)) {
+        if (!compile_result.error.empty()) {
+            OC_ERROR_FORMAT(
+                "Shader compile failed: file='{}' entry='{}' stage={}: {}",
+                filename.c_str(),
+                entry_point.c_str(),
+                static_cast<int>(shader_type),
+                compile_result.error.c_str());
+        } else {
+            OC_ERROR_FORMAT(
+                "Shader compile failed: file='{}' entry='{}' stage={}",
+                filename.c_str(),
+                entry_point.c_str(),
+                static_cast<int>(shader_type));
+        }
         return false;
     }
 
@@ -187,6 +201,8 @@ void VulkanShader::get_shader_variables(const ShaderReflection &reflection) {
             variable.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         } else if (shader_resource.parameter_type == ShaderReflection::ResourceType::Sampler) {
             variable.type = VK_DESCRIPTOR_TYPE_SAMPLER;
+        } else if (shader_resource.parameter_type == ShaderReflection::ResourceType::StorageBuffer) {
+            variable.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         }
 
         if (variable.is_bindless) {
@@ -210,6 +226,8 @@ void VulkanShader::get_shader_variables(const ShaderReflection &reflection) {
         variable.is_bindless = ubo.is_bindless;
         variables_.push_back(variable);
     }
+
+    named_structs_ = reflection.named_structs;
 
     for (auto& push_constant : reflection.push_constant_buffers)
     {
@@ -429,6 +447,35 @@ bool VulkanShader::get_uniform_buffer_members(
             members.push_back(std::move(member));
         }
         return true;
+    }
+    return false;
+}
+
+bool VulkanShader::get_struct_members(
+    const char* struct_name,
+    std::vector<RHIShader::UniformBufferMember>& members,
+    uint32_t& struct_size) const {
+    members.clear();
+    struct_size = 0;
+    if (struct_name == nullptr) {
+        return false;
+    }
+
+    for (const ShaderReflection::UniformBuffer& named_struct : named_structs_) {
+        if (named_struct.name != struct_name) {
+            continue;
+        }
+        struct_size = named_struct.size;
+        members.reserve(named_struct.shader_variables.size());
+        for (const ShaderReflection::ShaderVariable& variable : named_struct.shader_variables) {
+            RHIShader::UniformBufferMember member;
+            member.name = variable.name;
+            member.type = variable.variable_type;
+            member.size = variable.size;
+            member.offset = variable.offset;
+            members.push_back(std::move(member));
+        }
+        return !members.empty() && struct_size > 0;
     }
     return false;
 }

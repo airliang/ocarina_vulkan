@@ -102,6 +102,7 @@ private:
     VkShaderStageFlagBits stage_;
     std::vector< VulkanShaderVariableBinding> variables_;
     std::vector<PushConstant> push_constants_;
+    std::vector<ShaderReflection::UniformBuffer> named_structs_;
     std::vector<VertexAttribute> vertex_attributes_;  //only exist in vertex shader
     static bool HLSLToSPRIV(std::span<char> hlsl, VkShaderStageFlagBits stage, const std::string_view &entryPoint, bool outputSymbols, std::vector<uint32_t> &outSpriv, std::string &errorLog);
     void get_shader_variables(const ShaderReflection &reflection);
@@ -187,6 +188,11 @@ public:
         const char* buffer_name,
         std::vector<RHIShader::UniformBufferMember>& members,
         uint32_t& buffer_size) const override;
+
+    [[nodiscard]] bool get_struct_members(
+        const char* struct_name,
+        std::vector<RHIShader::UniformBufferMember>& members,
+        uint32_t& struct_size) const override;
 };
 
 struct ShaderKey {

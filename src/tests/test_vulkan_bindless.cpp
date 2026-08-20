@@ -58,7 +58,7 @@ int main(int argc, char *argv[]) {
     Primitive& quad = scene.emplace_primitive();
     Material* material = nullptr;
     Mesh* quad_mesh = nullptr;
-    Material::TextureHandle texture_handle{};
+    TextureHandle texture_handle{};
     const fs::path source_dir = fs::path(__FILE__).parent_path();
     const fs::path project_root = source_dir.parent_path().parent_path();
     const fs::path shader_vert = project_root / "res/shaderlibrary/builtin/texture.vert";
@@ -95,12 +95,8 @@ int main(int argc, char *argv[]) {
     auto setup_quad = [&](Primitive& quad) {
         quad.set_mesh(quad_mesh);
         quad.set_material(material);
-        const uint64_t albedo_name_id = hash64("albedo");
-        material->add_bindless_texture(albedo_name_id, texture_handle);
-
-        const Material::TextureHandle albedo_handle = material->get_bindless_texture_handle(albedo_name_id);
-        quad.set_material_parameter("albedoIndex", albedo_handle.bindless_index_);
-        quad.set_material_parameter(
+        material->set_property("albedoIndex", texture_handle);
+        material->set_property(
             "albedoSamplerIndex",
             get_bindless_sampler_index(
                 TextureSampler{TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT}));
@@ -152,7 +148,7 @@ int main(int argc, char *argv[]) {
     frame_info.window_title = window_name;
     window->widgets()->set_frame_info_context(&frame_info);
     imgui_renderer.set_frame_callback([&]() {
-        display_loading_progress(*window->widgets(), nullptr, renderer.loading_dt());
+        display_loading_progress(*window->widgets(), nullptr, renderer.dt());
     });
 
     renderer.set_async_loader(&async_loader, nullptr, [&]() {

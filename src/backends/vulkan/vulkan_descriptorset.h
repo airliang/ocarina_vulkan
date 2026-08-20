@@ -58,7 +58,7 @@ enum class DescriptorSetUsage {
 
 class VulkanDescriptorSetLayout : public DescriptorSetLayout {
     static constexpr uint8_t MAX_BINDINGS = 16;
-    static constexpr uint32_t GLOBAL_SET = 0;
+    static constexpr uint32_t FRAME_SET = static_cast<uint32_t>(DescriptorSetIndex::FRAME_SET);
     static constexpr uint32_t kMaxPerInstanceDescriptorSets = 256;
 public:
     VulkanDescriptorSetLayout(VulkanDevice* device, uint8_t descriptor_set_index);
@@ -103,6 +103,15 @@ public:
         return index < bindings_.size() ? hash64(bindings_[index].name) : uint64_t(-1);
     }
 
+    const char* get_binding_name(size_t index) const override {
+        return index < bindings_.size() ? bindings_[index].name : "";
+    }
+
+    bool binding_is_uniform_buffer(size_t index) const override {
+        return index < bindings_.size()
+            && bindings_[index].type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    }
+
     bool free_descriptor_set() const {
         return free_descriptor_set_;
     }
@@ -118,6 +127,8 @@ public:
     bool has_bindless_binding() const override { return has_bindless_; }
 
     bool has_uniform_buffer_binding() const override;
+
+    bool has_storage_buffer_binding() const override;
 
     VulkanShaderVariableBinding* get_binding_by_nameid(uint64_t name_id);
 
@@ -175,7 +186,8 @@ public:
     OC_MAKE_MEMBER_GETTER(descriptor_set, );
     OC_MAKE_MEMBER_GETTER(layout, );
     //void copy_descriptors(VulkanDescriptor *descriptor);
-    void update_buffer(uint64_t name_id, const void *data, uint32_t size) override;
+    void update_buffer(uint64_t name_id, handle_ty buffer, uint32_t offset, uint32_t size) override;
+    void update_storage_buffer(uint64_t name_id, handle_ty buffer, uint64_t offset, uint64_t size) override;
     void update_texture(uint64_t name_id, Texture *texture) override;
     void update_sampler(uint64_t name_id, const TextureSampler& sampler) override;
     void update_bindless_texture_at_index(uint32_t index, Texture *texture) override;

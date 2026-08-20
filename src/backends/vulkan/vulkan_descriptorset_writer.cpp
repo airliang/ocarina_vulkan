@@ -21,17 +21,20 @@ VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, Vulka
     {
         VulkanShaderVariableBinding* binding = layout->get_binding(i);
         if (binding && binding->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
-            VulkanBuffer *buffer = ocarina::new_with_allocator<VulkanBuffer>(device, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, binding->size);
-            // Create a descriptor for uniform buffer
+            // UBO memory is owned by FrameResources / Material — only track the binding here.
             VulkanDescriptorBuffer *descriptor_buffer = ocarina::new_with_allocator<VulkanDescriptorBuffer>();
             descriptor_buffer->binding = binding->binding;
             descriptor_buffer->name_ = binding->name;
-            descriptor_buffer->buffer_ = buffer;
-            bind_buffer(binding->binding, buffer->get_descriptor_info());
-            buffers_.insert(std::make_pair(binding->binding, buffer));
+            descriptor_buffer->buffer_ = nullptr;
             descriptors_.insert(std::make_pair(hash64(descriptor_buffer->name_), descriptor_buffer));
-        } 
+        }
+        else if (binding && binding->type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
+            VulkanDescriptorBuffer *descriptor_buffer = ocarina::new_with_allocator<VulkanDescriptorBuffer>();
+            descriptor_buffer->binding = binding->binding;
+            descriptor_buffer->name_ = binding->name;
+            descriptor_buffer->buffer_ = nullptr;
+            descriptors_.insert(std::make_pair(hash64(descriptor_buffer->name_), descriptor_buffer));
+        }
         else if (binding->type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) {
 
             VulkanDescriptorImage *descriptor_image = ocarina::new_with_allocator<VulkanDescriptorImage>();
@@ -79,13 +82,6 @@ VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, Vulka
 
 VulkanDescriptorSetWriter::~VulkanDescriptorSetWriter()
 {
-    for (auto& buffer : buffers_)
-    {
-        if (buffer.second) {
-            ocarina::delete_with_allocator(buffer.second);
-        }
-    }
-    buffers_.clear();
     for (auto &descriptor : descriptors_) {
         if (descriptor.second) {
             if (descriptor.second->is_buffer_) {
@@ -105,6 +101,18 @@ void VulkanDescriptorSetWriter::bind_buffer(uint32_t binding, VkDescriptorBuffer
     write.dstBinding = binding;
     write.descriptorCount = 1;
     write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    write.pBufferInfo = buffer;
+    writes_.push_back(write);
+}
+
+void VulkanDescriptorSetWriter::bind_storage_buffer(uint32_t binding, VkDescriptorBufferInfo* buffer)
+{
+    VkWriteDescriptorSet write{};
+    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write.dstSet = descriptor_set_->descriptor_set();
+    write.dstBinding = binding;
+    write.descriptorCount = 1;
+    write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     write.pBufferInfo = buffer;
     writes_.push_back(write);
 }
@@ -216,12 +224,60 @@ void VulkanDescriptorSetWriter::build(VulkanDevice *device) {
     writes_.clear();
 }
 
-void VulkanDescriptorSetWriter::update_buffer(uint64_t name_id, const void *data, uint32_t size) {
+void VulkanDescriptorSetWriter::update_buffer(
+    uint64_t name_id,
+    handle_ty buffer,
+    uint32_t offset,
+    uint32_t size) {
     auto it = descriptors_.find(name_id);
-    if (it != descriptors_.end()) {
-        VulkanDescriptorBuffer *descriptor_buffer = static_cast<VulkanDescriptorBuffer *>(it->second);
-        descriptor_buffer->buffer_->copy_from_immediately(data, size);
+    if (it == descriptors_.end()) {
+        return;
     }
+
+    VulkanDescriptorBuffer *descriptor_buffer = static_cast<VulkanDescriptorBuffer *>(it->second);
+    VulkanBuffer *vulkan_buffer = reinterpret_cast<VulkanBuffer *>(buffer);
+    if (vulkan_buffer == nullptr || size == 0) {
+        return;
+    }
+
+    descriptor_buffer->buffer_ = vulkan_buffer;
+    buffer_infos_.push_back(VkDescriptorBufferInfo{});
+    VkDescriptorBufferInfo& buffer_info = buffer_infos_.back();
+    buffer_info.buffer = vulkan_buffer->buffer_handle();
+    buffer_info.offset = offset;
+    buffer_info.range = size;
+    bind_buffer(descriptor_buffer->binding, &buffer_info);
+
+    VulkanDevice *device = VulkanDriver::instance().get_device();
+    build(device);
+}
+
+void VulkanDescriptorSetWriter::update_storage_buffer(
+    uint64_t name_id,
+    handle_ty buffer,
+    uint64_t offset,
+    uint64_t size) {
+    auto it = descriptors_.find(name_id);
+    if (it == descriptors_.end()) {
+        return;
+    }
+
+    VulkanDescriptorBuffer *descriptor_buffer = static_cast<VulkanDescriptorBuffer *>(it->second);
+    VulkanBuffer *vulkan_buffer = reinterpret_cast<VulkanBuffer *>(buffer);
+    if (vulkan_buffer == nullptr) {
+        return;
+    }
+
+    descriptor_buffer->buffer_ = vulkan_buffer;
+    buffer_infos_.push_back(VkDescriptorBufferInfo{});
+    VkDescriptorBufferInfo& buffer_info = buffer_infos_.back();
+    buffer_info.buffer = vulkan_buffer->buffer_handle();
+    buffer_info.offset = offset;
+    buffer_info.range = size;
+    bind_storage_buffer(descriptor_buffer->binding, &buffer_info);
+
+    VulkanDevice *device = VulkanDriver::instance().get_device();
+    build(device);
 }
 
 void VulkanDescriptorSetWriter::update_texture(uint64_t name_id, Texture *texture) {

@@ -18,7 +18,6 @@ namespace ocarina {
 
 class RHIContext;
 
-template<typename T>
 class Buffer;
 
 class Texture;
@@ -45,13 +44,34 @@ public:
         explicit Impl(RHIContext *ctx) : context_(ctx) {}
         explicit Impl(RHIContext *ctx, const InstanceCreation &instance_creation) : context_(ctx) {}
         [[nodiscard]] virtual handle_ty create_buffer(size_t size, const string &desc, bool exported = false) noexcept = 0;
+        [[nodiscard]] virtual handle_ty create_buffer(
+            size_t size,
+            GraphicBufferBindFlags bind_flags,
+            const string &desc,
+            bool exported = false) noexcept {
+            (void)bind_flags;
+            return create_buffer(size, desc, exported);
+        }
         virtual void destroy_buffer(handle_ty handle) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_texture(uint3 res, PixelStorage pixel_storage,
                                                        uint level_num, const string &desc) noexcept = 0;
-        [[nodiscard]] virtual handle_ty create_texture(Image *image, const TextureViewCreation &texture_view, const TextureSampler& sampler) noexcept = 0;
-        [[nodiscard]] virtual handle_ty create_texture(uint32_t width, uint32_t height, uint32_t depth, PixelStorage pixel_storage,
-                                                       const TextureViewCreation &texture_view, const TextureSampler& sampler,
-                                                       uint4 default_color, const void *data) noexcept = 0;
+        [[nodiscard]] virtual handle_ty create_texture(
+            Image *image,
+            const TextureViewCreation &texture_view,
+            const TextureSampler& sampler,
+            const Semaphore* upload_timeline = nullptr,
+            uint64_t* out_upload_completed_value = nullptr) noexcept = 0;
+        [[nodiscard]] virtual handle_ty create_texture(
+            uint32_t width,
+            uint32_t height,
+            uint32_t depth,
+            PixelStorage pixel_storage,
+            const TextureViewCreation &texture_view,
+            const TextureSampler& sampler,
+            uint4 default_color,
+            const void *data,
+            const Semaphore* upload_timeline = nullptr,
+            uint64_t* out_upload_completed_value = nullptr) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_render_target_texture(uint32_t width, uint32_t height, PixelStorage pixel_storage,
                                                                      TextureUsageFlags usage) noexcept = 0;
         virtual void destroy_texture(handle_ty handle) noexcept = 0;
@@ -99,6 +119,10 @@ public:
             cmd.add_wait_semaphore(get_present_complete_semaphore());
         }
         virtual Fence create_fence() noexcept = 0;
+        virtual Semaphore create_timeline_semaphore(uint64_t initial_value = 0) noexcept = 0;
+        [[nodiscard]] virtual uint64_t query_timeline_semaphore_value(const Semaphore& semaphore) const noexcept = 0;
+        virtual void destroy_semaphore(Semaphore& semaphore) noexcept = 0;
+        virtual void release_completed_upload_staging(uint64_t completed_timeline_value) noexcept {}
         // Returns last completed frame GPU time in milliseconds (0 if unsupported).
         [[nodiscard]] virtual double gpu_frame_time_ms() const noexcept { return 0.0; }
         /// True when the device was created with Vulkan 1.3 dynamicRendering enabled.
@@ -119,9 +143,15 @@ public:
     [[nodiscard]] auto create(Args &&...args) const noexcept {
         return T(this->impl_.get(), std::forward<Args>(args)...);
     }
-    template<typename T = std::byte>
-    [[nodiscard]] Buffer<T> create_buffer(size_t size, const string &name = "") const noexcept {
-        return Buffer<T>(impl_.get(), size, name);
+    [[nodiscard]] handle_ty create_buffer(size_t size, const string &name = "") const noexcept {
+        return impl_->create_buffer(size, name, false);
+    }
+
+    [[nodiscard]] handle_ty create_buffer(
+        size_t size,
+        GraphicBufferBindFlags bind_flags,
+        const string &name = "") const noexcept {
+        return impl_->create_buffer(size, bind_flags, name, false);
     }
 
     void destroy_buffer(handle_ty handle) noexcept {
@@ -255,6 +285,22 @@ public:
 
     Fence create_fence() const noexcept {
         return impl_->create_fence();
+    }
+
+    Semaphore create_timeline_semaphore(uint64_t initial_value = 0) noexcept {
+        return impl_->create_timeline_semaphore(initial_value);
+    }
+
+    [[nodiscard]] uint64_t query_timeline_semaphore_value(const Semaphore& semaphore) const noexcept {
+        return impl_->query_timeline_semaphore_value(semaphore);
+    }
+
+    void destroy_semaphore(Semaphore& semaphore) noexcept {
+        impl_->destroy_semaphore(semaphore);
+    }
+
+    void release_completed_upload_staging(uint64_t completed_timeline_value) noexcept {
+        impl_->release_completed_upload_staging(completed_timeline_value);
     }
 
     [[nodiscard]] double gpu_frame_time_ms() const noexcept {

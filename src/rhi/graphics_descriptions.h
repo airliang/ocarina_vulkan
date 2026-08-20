@@ -387,10 +387,9 @@ struct TextureViewCreation {
 #define MAX_COMMAND_BUFFERS_PER_SUBMIT 8
 
 enum class DescriptorSetIndex : uint8_t {
-    GLOBAL_SET = 0,
-    MATERIAL_SET = 1,
-    PER_OBJECT_SET = 2,
-    BINDLESS_SET = 3,
+    FRAME_SET = 0,   ///< Matches FRAME_SET in descriptor_bindings.hlsl (global_ubo)
+    SCENE_SET = 1,   ///< Matches SCENE_SET (transforms / lights / particles)
+    MATERIAL_SET = 2,///< Matches MATERIAL_SET (g_textures / samplers / g_materials)
     MAX_DESCRIPTOR_SET = MAX_DESCRIPTOR_SETS_PER_SHADER
 };
 

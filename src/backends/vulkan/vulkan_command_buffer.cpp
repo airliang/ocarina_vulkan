@@ -12,7 +12,7 @@
 #include "vulkan_texture.h"
 #include "vulkan_swapchain.h"
 #include "util.h"
-#include <stdexcept>
+#include <algorithm>
 
 namespace ocarina {
 
@@ -324,26 +324,49 @@ void VulkanCommandBuffer::set_vertex_buffer(VertexBuffer* vertex_buffer, uint32_
 }
 
 void VulkanCommandBuffer::submit_to_queue(QueueType queue_type, Fence* fence) {
-    // Submission logic will depend on how you manage command buffers and queues in your application.
-    // Typically, you would end the command buffer recording here and submit it to the appropriate Vulkan queue.
+    VkCommandBufferSubmitInfo cmd_info{};
+    cmd_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    cmd_info.commandBuffer = vulkan_command_buffer_;
 
-    // Submit to the queue
-    VkSubmitInfo submit_info = {};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &vulkan_command_buffer_;
+    std::array<VkSemaphoreSubmitInfo, MAX_COMMAND_BUFFERS_PER_SUBMIT> waits{};
+    std::array<VkSemaphoreSubmitInfo, MAX_COMMAND_BUFFERS_PER_SUBMIT> signals{};
+
+    const uint32_t wait_count = std::min(
+        static_cast<uint32_t>(wait_semaphores.size()),
+        static_cast<uint32_t>(MAX_COMMAND_BUFFERS_PER_SUBMIT));
+    const uint32_t signal_count = std::min(
+        static_cast<uint32_t>(signal_semaphores.size()),
+        static_cast<uint32_t>(MAX_COMMAND_BUFFERS_PER_SUBMIT));
+
+    for (uint32_t i = 0; i < wait_count; ++i) {
+        waits[i].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        waits[i].semaphore = reinterpret_cast<VkSemaphore>(wait_semaphores[i].semaphore);
+        waits[i].value = wait_semaphores[i].timeline_value;
+        waits[i].stageMask = pipeline_stage_flags_;
+    }
+    for (uint32_t i = 0; i < signal_count; ++i) {
+        signals[i].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        signals[i].semaphore = reinterpret_cast<VkSemaphore>(signal_semaphores[i].semaphore);
+        signals[i].value = signal_semaphores[i].timeline_value;
+        signals[i].stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    }
+
+    VkSubmitInfo2 submit{};
+    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    submit.commandBufferInfoCount = 1;
+    submit.pCommandBufferInfos = &cmd_info;
+    submit.waitSemaphoreInfoCount = wait_count;
+    submit.pWaitSemaphoreInfos = wait_count > 0 ? waits.data() : nullptr;
+    submit.signalSemaphoreInfoCount = signal_count;
+    submit.pSignalSemaphoreInfos = signal_count > 0 ? signals.data() : nullptr;
+
     VkQueue queue = VulkanDriver::instance().get_queue(queue_type);
     VkFence vk_fence = fence ? reinterpret_cast<VkFence>(fence->native_handle()) : VK_NULL_HANDLE;
-    VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submit_info, vk_fence));
+    VulkanDriver::instance().queue_submit(queue, &submit, 1, vk_fence);
 
     if (fence) {
-        // Optionally, you can wait for the fence here or let the caller handle it.
         vkWaitForFences(device_->logicalDevice(), 1, &vk_fence, VK_TRUE, std::numeric_limits<uint64_t>::max());
     }
-    // Wait for the fence to signal that command buffer has finished executing
-    // 
-    //VK_CHECK_RESULT(vkWaitForFences(device_->logicalDevice(), 1, &fence, VK_TRUE, std::numeric_limits<uint64_t>::max()));
-    //vkDestroyFence(device_->logicalDevice(), fence, nullptr);
 }
 
 void VulkanCommandBuffer::begin() {
@@ -394,7 +417,7 @@ void VulkanCommandBuffer::reset() {
 
 void VulkanCommandBuffer::copy_buffer(VulkanBuffer* src, VulkanBuffer* dst)
 {
-    copy_buffer(src, dst, 0, 0, src->size());
+    copy_buffer(src, dst, 0, 0, src->size_in_byte());
 }
 
 void VulkanCommandBuffer::copy_buffer(VulkanBuffer* src, VulkanBuffer* dst,

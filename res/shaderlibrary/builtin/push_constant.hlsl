@@ -4,6 +4,6 @@
 
 struct PushConstants
 {
-    float4x4 modelMatrix;
-    float4x4 modelMatrixInverse;
+    uint transform_index;
+    uint material_index;
 };

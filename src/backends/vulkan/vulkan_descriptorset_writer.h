@@ -21,6 +21,7 @@ public:
     VulkanDescriptorSetWriter(VulkanDevice* device, VulkanDescriptorSet* descriptor_set);
     ~VulkanDescriptorSetWriter();
     void bind_buffer(uint32_t binding, VkDescriptorBufferInfo* buffer);
+    void bind_storage_buffer(uint32_t binding, VkDescriptorBufferInfo* buffer);
     void bind_texture(uint32_t binding,
         VkDescriptorImageInfo* texture,
         uint32_t element_index = 0,
@@ -33,15 +34,17 @@ public:
     void bind_sampler(uint32_t binding, VkDescriptorImageInfo* sampler, uint32_t element_index = 0, uint32_t sampler_count = 1);
     void build(VulkanDevice* device);
 
-    void update_buffer(uint64_t name_id, const void *data, uint32_t size) override;
+    void update_buffer(uint64_t name_id, handle_ty buffer, uint32_t offset, uint32_t size) override;
+    void update_storage_buffer(uint64_t name_id, handle_ty buffer, uint64_t offset, uint64_t size);
     void update_texture(uint64_t name_id, Texture *texture) override;
     void update_sampler(uint64_t name_id, VkSampler sampler);
     void update_bindless_texture_at_index(uint32_t index, Texture *texture);
 
 private:
     std::unordered_map<uint64_t, VulkanDescriptor*> descriptors_;
-    std::unordered_map<uint32_t, VulkanBuffer*> buffers_;
     std::vector<VkWriteDescriptorSet> writes_;
+    /// Keeps VkDescriptorBufferInfo alive across vkUpdateDescriptorSets.
+    std::vector<VkDescriptorBufferInfo> buffer_infos_;
     std::vector<VkDescriptorImageInfo> image_infos_;
     /// Placeholder writes so a descriptor is valid before the app supplies a real resource.
     /// Capacity is reserved up front to keep pending write pointers stable.

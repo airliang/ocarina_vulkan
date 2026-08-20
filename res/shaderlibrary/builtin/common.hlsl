@@ -2,13 +2,6 @@
 
 #pragma once
 
-// Set numbers must match what each shader declares (SPIR-V set = Vulkan firstSet).
-// PER_OBJECT_SET / BINDLESS_SET are conventions only; omit unused sets in shaders
-// (e.g. bindless-only frag uses set 2, not DescriptorSetIndex::BINDLESS_SET).
-#define GLOBAL_SET 0
-#define MATERIAL_SET 1
-#define PER_OBJECT_SET 2
-
 bool IsNaN(float x)
 {
     return (asuint(x) & 0x7FFFFFFF) > 0x7F800000;
@@ -54,14 +47,3 @@ bool IsFinite(float x)
     return (asuint(x) & 0x7F800000) != 0x7F800000;
 }
 
-[[vk::binding(0, GLOBAL_SET)]] cbuffer global_ubo : register(b0) 
-{ 
-	float4x4 projectionMatrix;
-	float4x4 viewMatrix;
-	float4 cameraPos;
-	float4 lightPos;
-	float4 sunDirection;   // xyz = world-space direction the sun light travels
-	float4 sunColor;       // rgb = sun tint
-	float sunIntensity;
-	float3 sunPad;
-};

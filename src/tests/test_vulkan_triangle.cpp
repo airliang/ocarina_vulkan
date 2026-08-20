@@ -132,7 +132,7 @@ int main(int argc, char *argv[]) {
     frame_info.window_title = window_name;
     window->widgets()->set_frame_info_context(&frame_info);
     imgui_renderer.set_frame_callback([&]() {
-        display_loading_progress(*window->widgets(), nullptr, renderer.loading_dt());
+        display_loading_progress(*window->widgets(), nullptr, renderer.dt());
     });
 
     renderer.set_async_loader(&async_loader, nullptr, [&]() {

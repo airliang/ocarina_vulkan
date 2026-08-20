@@ -1,5 +1,6 @@
 // Copyright 2020 Google LLC
-#include "common.hlsl"
+#include "frame.hlsl"
+#include "push_constant.hlsl"
 #include "material.hlsl"
 
 struct VSOutput
@@ -37,8 +38,12 @@ float3 FresnelSchlick(float cosTheta, float3 F0)
     return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
 }
 
+[[vk::push_constant]]
+PushConstants pushConstants;
+
 float4 main(VSOutput input) : SV_TARGET
 {
+    MaterialParams material = LoadMaterial(pushConstants.material_index);
     float4 sampled = g_textures[material.albedoIndex].Sample(samplers[material.albedoSamplerIndex], input.UV);
     float3 albedo = sampled.rgb * material.baseColorFactor.rgb * input.Color;
 

@@ -213,14 +213,43 @@ bool DXCCompiler::compile_hlsl_spriv(const CompileInput &input, CompileResult &r
     ComPtr<IDxcBlobUtf8> errors = nullptr;
     hr = operationResult->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&errors), nullptr);
 
-   
     if (errors != nullptr && errors->GetStringLength() > 0) {
         result.error = errors->GetStringPointer();
-        spdlog::error("Preprocess failed with error: \"{}\"\n", result.error);
+        spdlog::error(
+            "DXC compile failed: file='{}' entry='{}' stage={} error=\"{}\"",
+            input.full_file_path,
+            input.entry,
+            static_cast<int>(input.shader_type),
+            result.error);
+    } else if (FAILED(hr)) {
+        spdlog::error(
+            "DXC compile failed: file='{}' entry='{}' stage={} (no DXC_OUT_ERRORS string available, hr=0x{:x})",
+            input.full_file_path,
+            input.entry,
+            static_cast<int>(input.shader_type),
+            static_cast<unsigned>(hr));
+    }
+
+    if (FAILED(hr)) {
+        // Avoid pretending compilation succeeded when DXC returned failure.
+        return false;
     }
 
     ComPtr<IDxcBlob> shader_obj;
     operationResult->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&shader_obj), nullptr);
+    if (shader_obj == nullptr || shader_obj->GetBufferSize() == 0) {
+        // DXC success but no usable object: treat as failure and keep result.error if set.
+        if (result.error.empty()) {
+            result.error = "DXC returned no object blob.";
+        }
+        spdlog::error(
+            "DXC compile produced empty object: file='{}' entry='{}' stage={} error=\"{}\"",
+            input.full_file_path,
+            input.entry,
+            static_cast<int>(input.shader_type),
+            result.error);
+        return false;
+    }
     result.spriv_codes.resize(shader_obj->GetBufferSize() / sizeof(uint32_t));
 
     for (size_t i = 0; i < result.spriv_codes.size(); ++i) {
@@ -240,7 +269,69 @@ void DXCCompiler::run_spriv_reflection(const std::vector<uint32_t> &spriv, Shade
 
     const void *shader_data = static_cast<const void*>(spriv.data());
     uint32_t shader_data_size = spriv.size() * sizeof(uint32_t);
-    spirv_cross::Compiler spirvmodule((const uint32_t *)shader_data, shader_data_size / 4);
+
+    class SpirvReflector : public spirv_cross::Compiler {
+    public:
+        using Compiler::Compiler;
+
+        void collect_named_structs(
+            ShaderReflection &shader_reflection,
+            ShaderVariableType (*to_variable_type)(uint32_t, uint32_t, const spirv_cross::SPIRType &)) {
+            ir.for_each_typed_id<spirv_cross::SPIRType>(
+                [&](uint32_t type_id, const spirv_cross::SPIRType &type) {
+                    if (type.basetype != spirv_cross::SPIRType::Struct || type.member_types.empty()) {
+                        return;
+                    }
+                    if (get_decoration_bitset(type_id).get(spv::DecorationBlock) ||
+                        get_decoration_bitset(type_id).get(spv::DecorationBufferBlock) ||
+                        get_decoration_bitset(type.self).get(spv::DecorationBlock) ||
+                        get_decoration_bitset(type.self).get(spv::DecorationBufferBlock)) {
+                        return;
+                    }
+
+                    std::string name = get_name(type_id);
+                    if (name.empty()) {
+                        name = get_name(type.self);
+                    }
+                    if (name.empty()) {
+                        return;
+                    }
+
+                    for (const ShaderReflection::UniformBuffer &existing : shader_reflection.named_structs) {
+                        if (existing.name == name) {
+                            return;
+                        }
+                    }
+
+                    ShaderReflection::UniformBuffer named_struct{};
+                    named_struct.name = std::move(name);
+                    named_struct.size = static_cast<uint32_t>(get_declared_struct_size(type));
+
+                    for (uint32_t member_index = 0; member_index < type.member_types.size(); ++member_index) {
+                        const spirv_cross::SPIRType &member_type = get_type(type.member_types[member_index]);
+                        if (member_type.basetype == spirv_cross::SPIRType::Struct) {
+                            continue;
+                        }
+                        ShaderReflection::ShaderVariable shader_variable{};
+                        shader_variable.name = get_member_name(type.self, member_index);
+                        if (shader_variable.name.empty()) {
+                            shader_variable.name = get_member_name(type_id, member_index);
+                        }
+                        shader_variable.size = get_declared_struct_member_size(type, member_index);
+                        shader_variable.offset = type_struct_member_offset(type, member_index);
+                        shader_variable.variable_type =
+                            to_variable_type(member_type.vecsize, member_type.columns, member_type);
+                        named_struct.shader_variables.emplace_back(std::move(shader_variable));
+                    }
+
+                    if (!named_struct.shader_variables.empty()) {
+                        shader_reflection.named_structs.emplace_back(std::move(named_struct));
+                    }
+                });
+        }
+    };
+
+    SpirvReflector spirvmodule((const uint32_t *)shader_data, shader_data_size / 4);
 
     // The SPIR-V is now parsed, and we can perform reflection on it.
     std::string entryPointName;
@@ -287,7 +378,12 @@ void DXCCompiler::run_spriv_reflection(const std::vector<uint32_t> &spriv, Shade
         uint32_t binding = spirvmodule.get_decoration(resource.id, spv::DecorationBinding);
 
         const spirv_cross::SPIRType &type = spirvmodule.get_type(resource.base_type_id);
-        uint32_t size = spirvmodule.get_declared_struct_size(type);
+        // HLSL `ByteAddressBuffer` reflection may appear here as a non-struct buffer.
+        // `get_declared_struct_size()` expects a struct type, so guard it.
+        uint32_t size = 0;
+        if (type.basetype == spirv_cross::SPIRType::Struct) {
+            size = spirvmodule.get_declared_struct_size(type);
+        }
 
         ShaderReflection::UniformBuffer ubo{};
         ubo.name = spirvmodule.get_name(resource.id);
@@ -339,6 +435,103 @@ void DXCCompiler::run_spriv_reflection(const std::vector<uint32_t> &spriv, Shade
         }
         shader_reflection.uniform_buffers.emplace_back(std::move(ubo));
     }
+
+    auto add_named_struct = [&](
+        uint32_t type_id,
+        const spirv_cross::SPIRType &struct_type,
+        const char *fallback_name = nullptr) {
+        if (struct_type.basetype != spirv_cross::SPIRType::Struct || struct_type.member_types.empty()) {
+            return;
+        }
+
+        std::string name = spirvmodule.get_name(type_id);
+        if (name.empty()) {
+            name = spirvmodule.get_name(struct_type.self);
+        }
+        if (name.empty() && fallback_name != nullptr) {
+            name = fallback_name;
+        }
+        if (name.empty()) {
+            return;
+        }
+        for (const ShaderReflection::UniformBuffer &existing : shader_reflection.named_structs) {
+            if (existing.name == name) {
+                return;
+            }
+        }
+
+        ShaderReflection::UniformBuffer named_struct{};
+        named_struct.name = std::move(name);
+        named_struct.size = static_cast<uint32_t>(spirvmodule.get_declared_struct_size(struct_type));
+        for (uint32_t member_index = 0; member_index < struct_type.member_types.size(); ++member_index) {
+            const spirv_cross::SPIRType &member_type = spirvmodule.get_type(struct_type.member_types[member_index]);
+            if (member_type.basetype == spirv_cross::SPIRType::Struct) {
+                continue;
+            }
+            ShaderReflection::ShaderVariable shader_variable{};
+            shader_variable.name = spirvmodule.get_member_name(struct_type.self, member_index);
+            if (shader_variable.name.empty()) {
+                shader_variable.name = spirvmodule.get_member_name(type_id, member_index);
+            }
+            shader_variable.size = spirvmodule.get_declared_struct_member_size(struct_type, member_index);
+            shader_variable.offset = spirvmodule.type_struct_member_offset(struct_type, member_index);
+            shader_variable.variable_type =
+                get_shader_variable_type(member_type.vecsize, member_type.columns, member_type);
+            named_struct.shader_variables.emplace_back(std::move(shader_variable));
+        }
+        if (!named_struct.shader_variables.empty()) {
+            shader_reflection.named_structs.emplace_back(std::move(named_struct));
+        }
+    };
+
+    for (spirv_cross::Resource &resource : resources.storage_buffers) {
+        uint32_t set = spirvmodule.get_decoration(resource.id, spv::DecorationDescriptorSet);
+        uint32_t binding = spirvmodule.get_decoration(resource.id, spv::DecorationBinding);
+
+        ShaderReflection::ShaderResource shader_resource;
+        shader_resource.name = spirvmodule.get_name(resource.id);
+        shader_resource.descriptor_set = set;
+        shader_resource.binding = binding;
+        shader_resource.parameter_type = ShaderReflection::ResourceType::StorageBuffer;
+        shader_resource.shader_type = (uint32_t)shader_type;
+
+        const spirv_cross::SPIRType &type = spirvmodule.get_type(resource.base_type_id);
+        if (!type.member_types.empty()) {
+            const spirv_cross::SPIRType &member_type =
+                spirvmodule.get_type(type.member_types[0]);
+
+            // HLSL ByteAddressBuffer is a raw byte SRV/UAV; it is not a struct,
+            // and spirv_cross cannot compute struct sizes for it.
+            if (member_type.basetype != spirv_cross::SPIRType::Struct) {
+                shader_resource.size = 0;
+            } else {
+                // StructuredBuffer<Element> → array of Element, or array of struct wrapper.
+                uint32_t element_type_id = type.member_types[0];
+                const spirv_cross::SPIRType *element_type = &member_type;
+                if (!member_type.member_types.empty() &&
+                    spirvmodule.get_type(member_type.member_types[0]).basetype ==
+                        spirv_cross::SPIRType::Struct) {
+                    element_type_id = member_type.member_types[0];
+                    element_type = &spirvmodule.get_type(element_type_id);
+                }
+                shader_resource.size = element_type->basetype == spirv_cross::SPIRType::Struct
+                    ? spirvmodule.get_declared_struct_size(*element_type)
+                    : 0;
+                if (element_type->basetype == spirv_cross::SPIRType::Struct) {
+                    add_named_struct(
+                        element_type_id,
+                        *element_type,
+                        shader_resource.name == "g_materials" ? "MaterialParams" : nullptr);
+                }
+            }
+        } else {
+            shader_resource.size = 0;
+        }
+
+        shader_reflection.shader_resources.push_back(std::move(shader_resource));
+    }
+
+    spirvmodule.collect_named_structs(shader_reflection, &DXCCompiler::get_shader_variable_type);
 
     for (spirv_cross::Resource &resource : resources.push_constant_buffers) {
         uint32_t set = spirvmodule.get_decoration(resource.id, spv::DecorationDescriptorSet);

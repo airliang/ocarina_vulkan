@@ -11,7 +11,7 @@ InternalTextures& InternalTextures::instance() {
     return s_instance;
 }
 
-Material::TextureHandle InternalTextures::get_white_texture_handle(Device* device) {
+TextureHandle InternalTextures::get_white_texture_handle(Device* device) {
     TextureViewCreation texture_view{};
     texture_view.mip_level_count = 1;
     texture_view.usage = TextureUsageFlags::ShaderReadOnly;

@@ -133,7 +133,7 @@ int main(int argc, char *argv[]) {
     auto setup_quad = [&](Primitive& primitive) {
         primitive.set_mesh(quad_mesh);
         primitive.set_material(quad_material);
-        quad_material->add_texture(hash64("albedo"), offscreen_color);
+        quad_material->set_property(hash64("albedo"), TextureHandle{InvalidUI32, offscreen_color});
         quad_material->add_sampler(hash64("sampler_albedo"), *offscreen_color->get_sampler_pointer());
     };
 
@@ -183,7 +183,7 @@ int main(int argc, char *argv[]) {
     frame_info.window_title = window_name;
     window->widgets()->set_frame_info_context(&frame_info);
     imgui_renderer.set_frame_callback([&]() {
-        display_loading_progress(*window->widgets(), nullptr, renderer.loading_dt());
+        display_loading_progress(*window->widgets(), nullptr, renderer.dt());
     });
 
     renderer.set_async_loader(&async_loader, nullptr, [&]() {

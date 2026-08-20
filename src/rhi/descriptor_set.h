@@ -16,7 +16,9 @@ class DescriptorSet : concepts::Noncopyable {
 public:
     virtual ~DescriptorSet() {}
 
-    virtual void update_buffer(uint64_t name_id, const void *data, uint32_t size) = 0;
+    /// Bind a uniform buffer to the named UBO binding (does not upload CPU data).
+    virtual void update_buffer(uint64_t name_id, handle_ty buffer, uint32_t offset, uint32_t size) = 0;
+    virtual void update_storage_buffer(uint64_t name_id, handle_ty buffer, uint64_t offset, uint64_t size) = 0;
     virtual void update_texture(uint64_t name_id, Texture *texture) = 0;
     virtual void update_sampler(uint64_t name_id, const TextureSampler& sampler) = 0;
     virtual void update_bindless_texture_at_index(uint32_t index, Texture *texture) = 0;
@@ -37,6 +39,15 @@ public:
     virtual uint32_t get_descriptor_set_index() const { return 0; }
     virtual bool has_bindless_binding() const { return false; }
     virtual bool has_uniform_buffer_binding() const { return false; }
+    virtual bool has_storage_buffer_binding() const { return false; }
+    [[nodiscard]] virtual const char* get_binding_name(size_t index) const {
+        (void)index;
+        return "";
+    }
+    [[nodiscard]] virtual bool binding_is_uniform_buffer(size_t index) const {
+        (void)index;
+        return false;
+    }
 
     const std::string get_name() const { return name_; }
     void set_name(const std::string &name) {
@@ -59,7 +70,7 @@ class DescriptorSetWriter : concepts::Noncopyable {
 public:
     DescriptorSetWriter() {}
     virtual ~DescriptorSetWriter() {}
-    virtual void update_buffer(uint64_t name_id, const void *data, uint32_t size) = 0;
+    virtual void update_buffer(uint64_t name_id, handle_ty buffer, uint32_t offset, uint32_t size) = 0;
     virtual void update_texture(uint64_t name_id, Texture* texture) = 0;
 
 protected:

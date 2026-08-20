@@ -61,7 +61,7 @@ void SDLWindow::set_background(const float4 *pixels, uint2 size) noexcept {
     (void)size;
 }
 
-void SDLWindow::set_background(const Buffer<ocarina::float4> &buffer, ocarina::uint2 size) noexcept {
+void SDLWindow::set_background(const TypedBuffer<ocarina::float4> &buffer, ocarina::uint2 size) noexcept {
     (void)buffer;
     (void)size;
 }

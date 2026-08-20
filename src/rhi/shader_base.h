@@ -29,6 +29,17 @@ public:
         buffer_size = 0;
         return false;
     }
+
+    /// Reflect a named HLSL struct (e.g. MaterialParams) for CPU parameter layout.
+    [[nodiscard]] virtual bool get_struct_members(
+        const char* struct_name,
+        std::vector<UniformBufferMember>& members,
+        uint32_t& struct_size) const {
+        (void)struct_name;
+        members.clear();
+        struct_size = 0;
+        return false;
+    }
 };
 
 }// namespace ocarina

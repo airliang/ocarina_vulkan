@@ -7,7 +7,6 @@
 #include "material.h"
 #include "entity_component_system.h"
 #include "core/hash.h"
-#include "rhi/descriptor_set.h"
 #include "mesh.h"
 #include "transform_component.h"
 
@@ -49,61 +48,6 @@ void Primitive::set_geometry_data_setup(Device* device, GeometryDataSetup setup)
     if (geometry_data_setup_) {
         geometry_data_setup_(*this);
     }
-    upload_material_parameters(true);
-}
-
-void Primitive::set_material_parameter(uint64_t name_id, const void* data, size_t size) {
-    if (data == nullptr || size == 0 || material_ == nullptr) {
-        return;
-    }
-
-    const Material::MaterialProperty* property = material_->find_material_property(name_id);
-    if (property == nullptr) {
-        return;
-    }
-
-    material_->ensure_material_buffer();
-    if (!material_->has_material_buffer()) {
-        return;
-    }
-
-    EntityComponentSystem& ecs = EntityComponentSystem::instance();
-    uint8_t* buffer_data =
-        ecs.material_parameters_buffer().data() + material_->material_buffer_offset();
-    const size_t copy_size = std::min(size, static_cast<size_t>(property->size));
-    memcpy(buffer_data + property->offset, data, copy_size);
-    material_->mark_material_parameters_dirty();
-
-    if (entity_index_ != InvalidUI32) {
-        sync_render_component_material_buffer(
-            EntityComponentSystem::instance().render_component(entity_index_));
-    }
-}
-
-void Primitive::upload_material_parameters(bool force_upload) {
-    if (material_ == nullptr || !material_->has_material_uniform_buffer()) {
-        return;
-    }
-    if (!material_->has_material_buffer()) {
-        return;
-    }
-    if (!material_->material_parameters_dirty() && !force_upload) {
-        return;
-    }
-
-    const uint64_t buffer_name_id = material_->material_uniform_buffer_name_id();
-    const uint32_t buffer_size = material_->material_buffer_size();
-    const uint8_t* buffer_data =
-        EntityComponentSystem::instance().material_parameters_buffer().data()
-        + material_->material_buffer_offset();
-
-    if (material_->has_material_descriptor_set()) {
-        material_->get_material_descriptor_set()->update_buffer(
-            buffer_name_id,
-            buffer_data,
-            buffer_size);
-    }
-    material_->clear_material_parameters_dirty();
 }
 
 void Primitive::initialize_render_component(
@@ -125,7 +69,6 @@ void Primitive::initialize_render_component(
     }
 
     sync_render_component_material_buffer(render_component);
-    upload_material_parameters(true);
 
     if (mesh_ != nullptr) {
         render_component.mesh_id = mesh_->mesh_id();
@@ -147,7 +90,32 @@ void Primitive::initialize_render_component(
     render_component_initialized_ = true;
 }
 
+void Primitive::write_ssbo_index_push_constants() {
+    if (push_constant_data_ == nullptr) {
+        return;
+    }
+
+    if (entity_index_ != InvalidUI32) {
+        set_push_constant_variable(
+            hash64("transform_index"),
+            reinterpret_cast<const std::byte*>(&entity_index_),
+            sizeof(entity_index_));
+    }
+
+    if (material_ != nullptr && material_->has_material_buffer()) {
+        const uint32_t material_index = material_->material_slot_index();
+        if (material_index != InvalidUI32) {
+            set_push_constant_variable(
+                hash64("material_index"),
+                reinterpret_cast<const std::byte*>(&material_index),
+                sizeof(material_index));
+        }
+    }
+}
+
 void Primitive::update_push_constants(TransformComponent& transform) {
+    write_ssbo_index_push_constants();
+
     if (update_push_constant_function_ == nullptr) {
         return;
     }

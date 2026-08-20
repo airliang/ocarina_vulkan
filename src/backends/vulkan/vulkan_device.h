@@ -7,6 +7,8 @@
 #include "core/header.h"
 #include "core/stl.h"
 #include "rhi/device.h"
+#include <mutex>
+#include <vector>
 #include <vulkan/vulkan.h>
 #include "vulkan_instance.h"
 #include "vulkan_swapchain.h"
@@ -40,14 +42,32 @@ public:
     void init_hardware_info();
 
     [[nodiscard]] handle_ty create_buffer(size_t size, const string &desc, bool exported) noexcept override;
+    [[nodiscard]] handle_ty create_buffer(
+        size_t size,
+        GraphicBufferBindFlags bind_flags,
+        const string &desc,
+        bool exported) noexcept override;
     void destroy_buffer(handle_ty handle) noexcept override;
     [[nodiscard]] handle_ty create_texture(uint3 res, PixelStorage pixel_storage,
                                            uint level_num,
                                            const string &desc) noexcept override;
-    [[nodiscard]] handle_ty create_texture(Image *image, const TextureViewCreation &texture_view, const TextureSampler& sampler) noexcept override;
-    [[nodiscard]] handle_ty create_texture(uint32_t width, uint32_t height, uint32_t depth, PixelStorage pixel_storage,
-                                           const TextureViewCreation &texture_view, const TextureSampler& sampler,
-                                           uint4 default_color, const void *data) noexcept override;
+    [[nodiscard]] handle_ty create_texture(
+        Image *image,
+        const TextureViewCreation &texture_view,
+        const TextureSampler& sampler,
+        const Semaphore* upload_timeline = nullptr,
+        uint64_t* out_upload_completed_value = nullptr) noexcept override;
+    [[nodiscard]] handle_ty create_texture(
+        uint32_t width,
+        uint32_t height,
+        uint32_t depth,
+        PixelStorage pixel_storage,
+        const TextureViewCreation &texture_view,
+        const TextureSampler& sampler,
+        uint4 default_color,
+        const void *data,
+        const Semaphore* upload_timeline = nullptr,
+        uint64_t* out_upload_completed_value = nullptr) noexcept override;
     [[nodiscard]] handle_ty create_render_target_texture(uint32_t width, uint32_t height, PixelStorage pixel_storage,
                                                          TextureUsageFlags usage) noexcept override;
     void destroy_texture(handle_ty handle) noexcept override;
@@ -110,6 +130,11 @@ public:
     Semaphore get_render_complete_semaphore() noexcept override;
     void attach_swapchain_semaphores(CommandBuffer& cmd) noexcept override;
     Fence create_fence() noexcept override;
+    Semaphore create_timeline_semaphore(uint64_t initial_value = 0) noexcept override;
+    [[nodiscard]] uint64_t query_timeline_semaphore_value(const Semaphore& semaphore) const noexcept override;
+    void destroy_semaphore(Semaphore& semaphore) noexcept override;
+    void release_completed_upload_staging(uint64_t completed_timeline_value) noexcept override;
+    void retain_upload_staging(VulkanBuffer* buffer, uint64_t timeline_value);
     [[nodiscard]] double gpu_frame_time_ms() const noexcept override;
     [[nodiscard]] bool supports_dynamic_rendering() const noexcept override {
         return supports_dynamic_rendering_;
@@ -140,5 +165,12 @@ public:
     uint32_t getQueueFamilyIndex(uint32_t queueFlags) const;
 
     bool verify_bindless_support(VkPhysicalDevice physical_device) const;
+
+    struct PendingUploadStaging {
+        uint64_t timeline_value = 0;
+        VulkanBuffer* buffer = nullptr;
+    };
+    std::mutex upload_staging_mutex_;
+    std::vector<PendingUploadStaging> pending_upload_staging_;
 };
 }// namespace ocarina

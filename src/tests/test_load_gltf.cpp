@@ -96,7 +96,7 @@ int main(int argc, char* argv[]) {
     frame_info.window_title = window_name;
     window->widgets()->set_frame_info_context(&frame_info);
     imgui_renderer.set_frame_callback([&]() {
-        display_loading_progress(*window->widgets(), &loading_progress, renderer.loading_dt());
+        display_loading_progress(*window->widgets(), &loading_progress, renderer.dt());
     });
 
     renderer.pass_group(PassGroupId::UI).add_render_pass(render_pass);
