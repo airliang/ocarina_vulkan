@@ -72,7 +72,7 @@ public:
         set_property(hash64(name), texture);
     }
 
-    /// True when every bound texture's GPU upload has completed on the upload timeline.
+    /// True when every bound texture is GPU_Ready.
     /// Cached; re-evaluates only while textures_ready_ is still false.
     [[nodiscard]] bool is_renderable();
 

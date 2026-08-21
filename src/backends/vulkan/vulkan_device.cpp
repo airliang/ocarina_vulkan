@@ -116,11 +116,9 @@ handle_ty VulkanDevice::create_texture(uint3 res, PixelStorage pixel_storage,
 handle_ty VulkanDevice::create_texture(
     Image *image,
     const TextureViewCreation &texture_view,
-    const TextureSampler& sampler,
-    const Semaphore* upload_timeline,
-    uint64_t* out_upload_completed_value) noexcept {
+    const TextureSampler& sampler) noexcept {
     auto texture = ocarina::new_with_allocator<VulkanTexture>(
-        this, image, texture_view, sampler, upload_timeline, out_upload_completed_value);
+        this, image, texture_view, sampler);
     return reinterpret_cast<handle_ty>(texture);
 }
 
@@ -132,9 +130,7 @@ handle_ty VulkanDevice::create_texture(
     const TextureViewCreation &texture_view,
     const TextureSampler& sampler,
     uint4 default_color,
-    const void *data,
-    const Semaphore* upload_timeline,
-    uint64_t* out_upload_completed_value) noexcept {
+    const void *data) noexcept {
     auto texture = ocarina::new_with_allocator<VulkanTexture>(
         this,
         width,
@@ -144,9 +140,7 @@ handle_ty VulkanDevice::create_texture(
         texture_view,
         sampler,
         default_color,
-        data,
-        upload_timeline,
-        out_upload_completed_value);
+        data);
     return reinterpret_cast<handle_ty>(texture);
 }
 
@@ -472,7 +466,6 @@ void VulkanDevice::get_enable_extentions()
 
 void VulkanDevice::shutdown()
 {
-    release_completed_upload_staging(~0ull);
     m_swapChain.release();
     vkDestroyDevice(logicalDevice_, nullptr);
 }
@@ -882,35 +875,6 @@ void VulkanDevice::destroy_semaphore(Semaphore& semaphore) noexcept
     semaphore.semaphore = InvalidUI64;
     semaphore.timeline_value = 0;
     semaphore.is_timeline = false;
-}
-
-void VulkanDevice::retain_upload_staging(VulkanBuffer* buffer, uint64_t timeline_value)
-{
-    if (buffer == nullptr) {
-        return;
-    }
-    std::lock_guard<std::mutex> lock(upload_staging_mutex_);
-    pending_upload_staging_.push_back(PendingUploadStaging{timeline_value, buffer});
-}
-
-void VulkanDevice::release_completed_upload_staging(uint64_t completed_timeline_value) noexcept
-{
-    std::vector<VulkanBuffer*> released;
-    {
-        std::lock_guard<std::mutex> lock(upload_staging_mutex_);
-        size_t write = 0;
-        for (size_t i = 0; i < pending_upload_staging_.size(); ++i) {
-            if (pending_upload_staging_[i].timeline_value <= completed_timeline_value) {
-                released.push_back(pending_upload_staging_[i].buffer);
-            } else {
-                pending_upload_staging_[write++] = pending_upload_staging_[i];
-            }
-        }
-        pending_upload_staging_.resize(write);
-    }
-    for (VulkanBuffer* buffer : released) {
-        ocarina::delete_with_allocator(buffer);
-    }
 }
 
 double VulkanDevice::gpu_frame_time_ms() const noexcept {

@@ -9,7 +9,6 @@
 #include "rhi/command_buffer.h"
 #include "rhi/graphics_descriptions.h"
 #include "frame_resources.h"
-#include "gpu_resource_thread.h"
 #include "core/profiler.h"
 #include "TaskScheduler.h"
 
@@ -75,7 +74,6 @@ void RenderTask::execute_default_render_path() {
     if (!device->begin_frame()) {
         return;
     }
-    GPUResourceThread::instance().poll_upload_timeline();
 
     CommandBuffer recorded_cmds[MAX_COMMAND_BUFFERS_PER_SUBMIT];
     uint32_t recorded_count = 0;

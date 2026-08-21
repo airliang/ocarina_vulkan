@@ -5,119 +5,12 @@
 #include "vulkan_shader.h"
 #include "util.h"
 #include "vulkan_device.h"
+#include "shader_compiler.h"
 #include <algorithm>
 #include <numeric>
-#ifdef _WIN32
-#define NOMINMAX
-#include <Windows.h>
-#include "dxcapi.h"
-
-#include <wrl/client.h>
-using namespace Microsoft::WRL;
-#endif
-
-#include "core/logging.h"
-#include "dxc_compiler.h"
-#include "rhi/context.h"
 #include <cstring>
-#include <fstream>
 
 namespace ocarina {
-
-namespace {
-
-std::string get_spv_path_for_shader(const std::string& shader_file_path) {
-    return shader_file_path + ".spv";
-}
-
-bool load_spirv_from_file(const std::string& spv_path, std::vector<uint32_t>& spirv_code) {
-    std::ifstream input(spv_path, std::ios::binary);
-    if (!input.is_open()) {
-        return false;
-    }
-
-    input.seekg(0, std::ios::end);
-    const std::streamsize file_size = input.tellg();
-    if (file_size <= 0 || (file_size % static_cast<std::streamsize>(sizeof(uint32_t))) != 0) {
-        return false;
-    }
-
-    input.seekg(0, std::ios::beg);
-    spirv_code.resize(static_cast<size_t>(file_size / static_cast<std::streamsize>(sizeof(uint32_t))));
-    input.read(reinterpret_cast<char*>(spirv_code.data()), file_size);
-    return input.good();
-}
-
-bool save_spirv_to_file(const std::string& spv_path, const std::vector<uint32_t>& spirv_code) {
-    if (spirv_code.empty()) {
-        return false;
-    }
-
-    std::ofstream output(spv_path, std::ios::binary | std::ios::trunc);
-    if (!output.is_open()) {
-        return false;
-    }
-
-    output.write(
-        reinterpret_cast<const char*>(spirv_code.data()),
-        static_cast<std::streamsize>(spirv_code.size() * sizeof(uint32_t)));
-    return output.good();
-}
-
-bool compile_hlsl_file_to_spirv(
-    const std::string& filename,
-    ShaderType shader_type,
-    const std::string& entry_point,
-    std::vector<uint32_t>& spirv_code)
-{
-    std::ifstream input(filename, std::ios::binary);
-    if (!input.is_open()) {
-        return false;
-    }
-
-    input.seekg(0, std::ios::end);
-    const size_t size = static_cast<size_t>(input.tellg());
-    input.seekg(0, std::ios::beg);
-    if (size == 0) {
-        return false;
-    }
-
-    std::string hlsl_source(size, '\0');
-    input.read(hlsl_source.data(), static_cast<std::streamsize>(size));
-    input.close();
-
-    CompileInput compile_input{
-        .hlsl = hlsl_source,
-        .entry = entry_point,
-        .full_file_path = filename,
-        .shader_type = shader_type,
-        .output_pdbs = false,
-    };
-
-    CompileResult compile_result;
-    if (!DXCCompiler::compile_hlsl_spriv(compile_input, compile_result)) {
-        if (!compile_result.error.empty()) {
-            OC_ERROR_FORMAT(
-                "Shader compile failed: file='{}' entry='{}' stage={}: {}",
-                filename.c_str(),
-                entry_point.c_str(),
-                static_cast<int>(shader_type),
-                compile_result.error.c_str());
-        } else {
-            OC_ERROR_FORMAT(
-                "Shader compile failed: file='{}' entry='{}' stage={}",
-                filename.c_str(),
-                entry_point.c_str(),
-                static_cast<int>(shader_type));
-        }
-        return false;
-    }
-
-    spirv_code = std::move(compile_result.spriv_codes);
-    return !spirv_code.empty();
-}
-
-}// namespace
 
 VulkanShader::VulkanShader(VulkanDevice *device, std::span<uint32_t> shaderCode, const std::string_view &entryPoint, VkShaderStageFlagBits stage) : 
     entry_(entryPoint), device_(device), stage_(stage) {
@@ -141,34 +34,20 @@ VulkanShader* VulkanShader::create(Device::Impl* device,
 }
 
 VulkanShader *VulkanShader::create_from_HLSL(Device::Impl *device, ShaderType shader_type, const std::string &filename, const std::string &entry_point) {
-    const std::string spv_path = get_spv_path_for_shader(filename);
-    std::vector<uint32_t> spirv_code;
-
-    const bool rebuild = RHIContext::instance().rebuild_shaders();
-    const bool loaded_from_cache = !rebuild && load_spirv_from_file(spv_path, spirv_code);
-    if (!loaded_from_cache) {
-        if (rebuild) {
-            OC_INFO_FORMAT("rebuildshader: compiling {} (ignoring {})", filename.c_str(), spv_path.c_str());
-        }
-        if (!compile_hlsl_file_to_spirv(filename, shader_type, entry_point, spirv_code)) {
-            return nullptr;
-        }
-        if (!save_spirv_to_file(spv_path, spirv_code)) {
-            OC_ERROR_FORMAT("Failed to write SPIR-V cache file: {}", spv_path.c_str());
-        }
+    CompiledShader compiled{};
+    if (!compile_hlsl_to_spirv_and_reflect(filename, shader_type, entry_point, compiled)) {
+        return nullptr;
     }
 
-    ShaderReflection reflection;
-    DXCCompiler::run_spriv_reflection(spirv_code, shader_type, reflection);
-
-    VulkanShader* vulkan_shader = VulkanShader::create(device, shader_type, spirv_code, entry_point);
+    std::span<uint32_t> shader_code(compiled.spirv);
+    VulkanShader* vulkan_shader = VulkanShader::create(device, shader_type, shader_code, entry_point);
     if (vulkan_shader == nullptr) {
         return nullptr;
     }
 
-    vulkan_shader->get_shader_variables(reflection);
+    vulkan_shader->get_shader_variables(compiled.reflection);
     if (shader_type == ShaderType::VertexShader) {
-        vulkan_shader->get_vertex_attributes(reflection);
+        vulkan_shader->get_vertex_attributes(compiled.reflection);
         vulkan_shader->create_vertex_stream_binding();
     }
     return vulkan_shader;
@@ -255,77 +134,6 @@ void VulkanShader::get_vertex_attributes(const ShaderReflection& reflection)
             vertex_attributes_.push_back(attrib);
         } 
     }
-}
-
-bool VulkanShader::HLSLToSPRIV(std::span<char> hlsl, VkShaderStageFlagBits stage, const std::string_view &entryPoint, bool outputSymbols, 
-    std::vector<uint32_t> &outSpriv, std::string &errorLog) {
-    ComPtr<IDxcUtils> dxc_utils = {};
-    ComPtr<IDxcCompiler3> dxc_compiler = {};
-    
-    DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(dxc_utils.ReleaseAndGetAddressOf()));
-    DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(dxc_compiler.ReleaseAndGetAddressOf()));
-
-    std::vector<LPCWSTR> args;
-    args.push_back(DXC_ARG_PACK_MATRIX_COLUMN_MAJOR);
-    args.push_back(L"-HV");
-    args.push_back(L"2021");
-    args.push_back(L"-T");
-    if (stage == VK_SHADER_STAGE_VERTEX_BIT)
-    {
-        args.push_back(L"vs_6_0");
-    }
-    else if (stage == VK_SHADER_STAGE_FRAGMENT_BIT)
-    {
-        args.push_back(L"ps_6_0");
-    }
-    else if (stage == VK_SHADER_STAGE_COMPUTE_BIT)
-    {
-        args.push_back(L"cs_6_0");
-    }
-
-    std::wstring wEntry(entryPoint.begin(), entryPoint.end());
-    args.push_back(L"-E");
-    args.push_back(wEntry.c_str());
-
-    if (outputSymbols)
-    {
-        args.push_back(L"-Zi");
-    }
-
-    args.push_back(L"-spirv");
-    args.push_back(L"-fspv-target-env=vulkan1.1");
-
-    DxcBuffer src_buffer = {
-        hlsl.data(),
-        hlsl.size(),
-        0};
-
-    IDxcIncludeHandler* dxcIncludeHandler = nullptr;
-
-    ComPtr<IDxcResult> operationResult;
-    HRESULT hr = dxc_compiler->Compile(&src_buffer, args.data(), args.size(), dxcIncludeHandler, IID_PPV_ARGS(&operationResult));
-
-    ComPtr<IDxcBlob> shader_obj;
-    operationResult->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&shader_obj), nullptr);
-
-    ComPtr<IDxcBlobUtf8> errors = nullptr;
-    operationResult->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&errors), nullptr);
-
-    if (errors != nullptr && errors->GetStringLength() > 0)
-    {
-        errorLog = errors->GetStringPointer();
-        return false;
-    }
-
-    outSpriv.resize(shader_obj->GetBufferSize() / sizeof(uint32_t));
-
-    for (size_t i = 0; i < outSpriv.size(); ++i)
-    {
-        uint32_t spvCode = static_cast<uint32_t *>(shader_obj->GetBufferPointer())[i];
-        outSpriv[i] = spvCode;
-    }
-
-    return true;
 }
 
 void VulkanShader::create_vertex_stream_binding() {

@@ -8,7 +8,6 @@
 #include "rhi/shader_base.h"
 #include "rhi/resources/resource.h"
 #include "framework/frame_resources.h"
-#include "gpu_resource_thread.h"
 #include <algorithm>
 
 namespace ocarina {
@@ -313,7 +312,6 @@ void Material::bind_texture(uint64_t name_id, const TextureHandle& handle) {
 }
 
 bool Material::evaluate_textures_ready() {
-    const uint64_t completed = GPUResourceThread::instance().completed_timeline_value();
     bool all_ready = true;
     for (auto& [name_id, handle] : texture_handles_) {
         Texture* texture = resolve_texture_handle(handle);
@@ -322,7 +320,7 @@ bool Material::evaluate_textures_ready() {
             continue;
         }
         handle.texture_ = texture;
-        if (!texture->is_gpu_ready(completed)) {
+        if (!texture->is_gpu_ready()) {
             all_ready = false;
             continue;
         }

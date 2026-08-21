@@ -13,7 +13,6 @@ namespace ocarina {
 
 class VulkanDevice;
 class Image;
-struct Semaphore;
 
 class VulkanTexture : public Texture::Impl {
 private:
@@ -37,9 +36,7 @@ public:
         VulkanDevice *device,
         Image *image,
         const TextureViewCreation& texture_view,
-        const TextureSampler& sampler,
-        const Semaphore* upload_timeline = nullptr,
-        uint64_t* out_upload_completed_value = nullptr);
+        const TextureSampler& sampler);
     VulkanTexture(
         VulkanDevice *device,
         uint32_t width,
@@ -49,19 +46,12 @@ public:
         const TextureViewCreation &texture_view,
         const TextureSampler& sampler,
         uint4 default_color,
-        const void* data,
-        const Semaphore* upload_timeline = nullptr,
-        uint64_t* out_upload_completed_value = nullptr);
+        const void* data);
     VulkanTexture(VulkanDevice* device, uint32_t width, uint32_t height, PixelStorage format, TextureUsageFlags usage);
     ~VulkanTexture() override;
-    void init(
-        Image *image,
-        const TextureViewCreation &texture_view,
-        const Semaphore* upload_timeline = nullptr,
-        uint64_t* out_upload_completed_value = nullptr);
+    void init(Image *image, const TextureViewCreation &texture_view);
     void init_from_pixels(uint32_t width, uint32_t height, uint32_t depth, PixelStorage format, const TextureViewCreation &texture_view,
-        const TextureSampler& sampler, uint4 default_color, const void* data,
-        const Semaphore* upload_timeline = nullptr, uint64_t* out_upload_completed_value = nullptr);
+        const TextureSampler& sampler, uint4 default_color, const void* data);
     void init_render_target(uint32_t width, uint32_t height, PixelStorage format, TextureUsageFlags usage);
     void create_image_view(const TextureViewCreation &texture_view);
     void create_render_target_image_view();

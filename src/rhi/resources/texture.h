@@ -27,7 +27,6 @@ namespace detail {
 class Texture : public RHIResource {
 protected:
     uint channel_num_{};
-    uint64_t upload_completed_value_ = 0;
 
 public:
     class Impl {
@@ -61,12 +60,10 @@ public:
         Device::Impl *device,
         Image *image_resource,
         const TextureViewCreation &texture_view,
-        const TextureSampler &sampler,
-        const Semaphore *upload_timeline = nullptr)
+        const TextureSampler &sampler)
         : RHIResource(device, Tag::TEXTURE, 0),
           channel_num_(ocarina::channel_num(texture_view.format)) {
-        handle_ = device->create_texture(
-            image_resource, texture_view, sampler, upload_timeline, &upload_completed_value_);
+        handle_ = device->create_texture(image_resource, texture_view, sampler);
     }
 
     explicit Texture(
@@ -78,8 +75,7 @@ public:
         const TextureViewCreation &texture_view,
         const TextureSampler &sampler,
         uint4 default_color,
-        const void *data,
-        const Semaphore *upload_timeline = nullptr)
+        const void *data)
         : RHIResource(device, Tag::TEXTURE, 0),
           channel_num_(ocarina::channel_num(pixel_storage)) {
         handle_ = device->create_texture(
@@ -90,21 +86,17 @@ public:
             texture_view,
             sampler,
             default_color,
-            data,
-            upload_timeline,
-            &upload_completed_value_);
+            data);
     }
 
     explicit Texture(Device::Impl *device, uint32_t width, uint32_t height, PixelStorage pixel_storage, TextureUsageFlags usage)
         : RHIResource(device, Tag::TEXTURE, device->create_render_target_texture(width, height, pixel_storage, usage)),
           channel_num_(ocarina::channel_num(pixel_storage)) {}
 
-    /// True when the GPU copy signaled @p timeline_value (or no async upload was recorded).
-    [[nodiscard]] bool is_gpu_ready(uint64_t timeline_value) const noexcept {
-        return timeline_value >= upload_completed_value_;
+    /// True when the GPU upload has finished (GPU_Ready).
+    [[nodiscard]] bool is_gpu_ready() const noexcept {
+        return gpu_resource_state_ >= GPUResourceState::GPU_Ready;
     }
-
-    [[nodiscard]] uint64_t upload_completed_value() const noexcept { return upload_completed_value_; }
 
     OC_MAKE_MEMBER_GETTER(channel_num, )
 

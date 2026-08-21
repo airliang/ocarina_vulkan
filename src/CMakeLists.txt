@@ -6,6 +6,7 @@ target_include_directories(ocarina-include INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}
 add_subdirectory(ext)
 add_subdirectory(core)
 add_subdirectory(rhi)
+add_subdirectory(shader-compiler)
 add_subdirectory(backends)
 add_subdirectory(framework)
 

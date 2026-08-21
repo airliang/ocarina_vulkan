@@ -58,9 +58,7 @@ public:
         [[nodiscard]] virtual handle_ty create_texture(
             Image *image,
             const TextureViewCreation &texture_view,
-            const TextureSampler& sampler,
-            const Semaphore* upload_timeline = nullptr,
-            uint64_t* out_upload_completed_value = nullptr) noexcept = 0;
+            const TextureSampler& sampler) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_texture(
             uint32_t width,
             uint32_t height,
@@ -69,9 +67,7 @@ public:
             const TextureViewCreation &texture_view,
             const TextureSampler& sampler,
             uint4 default_color,
-            const void *data,
-            const Semaphore* upload_timeline = nullptr,
-            uint64_t* out_upload_completed_value = nullptr) noexcept = 0;
+            const void *data) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_render_target_texture(uint32_t width, uint32_t height, PixelStorage pixel_storage,
                                                                      TextureUsageFlags usage) noexcept = 0;
         virtual void destroy_texture(handle_ty handle) noexcept = 0;
@@ -122,7 +118,6 @@ public:
         virtual Semaphore create_timeline_semaphore(uint64_t initial_value = 0) noexcept = 0;
         [[nodiscard]] virtual uint64_t query_timeline_semaphore_value(const Semaphore& semaphore) const noexcept = 0;
         virtual void destroy_semaphore(Semaphore& semaphore) noexcept = 0;
-        virtual void release_completed_upload_staging(uint64_t completed_timeline_value) noexcept {}
         // Returns last completed frame GPU time in milliseconds (0 if unsupported).
         [[nodiscard]] virtual double gpu_frame_time_ms() const noexcept { return 0.0; }
         /// True when the device was created with Vulkan 1.3 dynamicRendering enabled.
@@ -297,10 +292,6 @@ public:
 
     void destroy_semaphore(Semaphore& semaphore) noexcept {
         impl_->destroy_semaphore(semaphore);
-    }
-
-    void release_completed_upload_staging(uint64_t completed_timeline_value) noexcept {
-        impl_->release_completed_upload_staging(completed_timeline_value);
     }
 
     [[nodiscard]] double gpu_frame_time_ms() const noexcept {

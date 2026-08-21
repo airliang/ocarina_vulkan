@@ -46,8 +46,14 @@ if(AUTO_LOCATE_VULKAN)
 		endif()
 	endforeach()
 
+    # Shader compilation + reflection moved to `ocarina-shader-compiler`.
+    list(REMOVE_ITEM SOURCE_FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/dxc_compiler.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/shader_reflection.cpp"
+    )
+
     ocarina_add_backend(vulkan SOURCES ${HEADER_FILES} ${SOURCE_FILES})
-    target_link_libraries(ocarina-backend-vulkan PRIVATE Vulkan::Vulkan ocarina-imgui)
+    target_link_libraries(ocarina-backend-vulkan PRIVATE Vulkan::Vulkan ocarina-imgui ocarina-shader-compiler)
     target_include_directories(ocarina-backend-vulkan PRIVATE
         ${CMAKE_SOURCE_DIR}/src/ext/imgui
         ${CMAKE_SOURCE_DIR}/src/ext/imgui/backends)
@@ -81,33 +87,4 @@ endif()
 set(BUILTIN_DST "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_CFG_INTDIR}")
 
 
-if(MSVC)
-    set(DXC_PATH "../../ext/dxc/msvc")
-	set(SPIRV_PATH "../../ext/SPIRV-Cross")
-	target_include_directories(ocarina-backend-vulkan PRIVATE ${DXC_PATH}/inc ${SPIRV_PATH})
-
-	set(DXC_LIB ${DXC_PATH}/lib/x64)
-	set(DXC_BIN ${DXC_PATH}/bin/x64)
-	if (NOT CMAKE_CL_64)
-		set(DXC_LIB ${DXC_PATH}/lib/x86)
-		set(DXC_BIN ${DXC_PATH}/bin/x86)
-	endif()
-	message("set DXC library path: ${DXC_LIB}")
-
-	link_directories(${DXC_LIB})
-	target_link_libraries(ocarina-backend-vulkan PRIVATE dxcompiler.lib spirv-cross-core spirv-cross-hlsl)
-
-	file(GLOB DXC_BIN_FILES "${DXC_BIN}/*.*")
-
-	foreach(FILE ${DXC_BIN_FILES})
-		add_custom_command(TARGET ocarina-backend-vulkan POST_BUILD        # Adds a post-build event to MyTest
-		COMMAND ${CMAKE_COMMAND} -E copy  # which executes "cmake - E copy..."
-			"${FILE}"      # <--this is in-file
-			"${BUILTIN_DST}")                 # <--this is out-file path
-	endforeach()
-else()
-	set(DXC_PATH "../../ext/dxc/clang")
-	include_directories(${DXC_PATH}/inc)
-	add_library(dxc SHARED IMPORTED)
-	target_link_libraries(ocarina-backend-vulkan PRIVATE dxc)
-endif()
+	# DXC + SPIRV-Cross are linked by `ocarina-shader-compiler` now.

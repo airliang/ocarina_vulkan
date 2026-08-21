@@ -98,20 +98,8 @@ public:
     /// Wake the loop so it can exit on scheduler shutdown.
     void request_shutdown();
 
-    /// Destroy the upload timeline after the pinned thread has stopped.
+    /// Destroy device-side state after the pinned thread has stopped.
     void shutdown();
-
-    /// Next value to signal on the global upload timeline (monotonic, starts at 1).
-    [[nodiscard]] Semaphore allocate_upload_signal();
-
-    /// Query the GPU-completed upload timeline (call from the render thread at begin_frame).
-    void poll_upload_timeline();
-
-    [[nodiscard]] uint64_t completed_timeline_value() const noexcept {
-        return completed_timeline_value_;
-    }
-
-    [[nodiscard]] const Semaphore& upload_timeline() const noexcept { return upload_timeline_; }
 
     [[nodiscard]] bool is_running() const noexcept {
         return running_.load(std::memory_order_acquire);
@@ -129,9 +117,6 @@ private:
     std::atomic<bool> shutdown_requested_{false};
     enki::TaskScheduler* scheduler_ = nullptr;
     Device* device_ = nullptr;
-    Semaphore upload_timeline_{};
-    uint64_t next_timeline_value_ = 0;
-    uint64_t completed_timeline_value_ = 0;
 };
 
 }// namespace ocarina

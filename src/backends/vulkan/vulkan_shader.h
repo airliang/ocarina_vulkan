@@ -104,7 +104,6 @@ private:
     std::vector<PushConstant> push_constants_;
     std::vector<ShaderReflection::UniformBuffer> named_structs_;
     std::vector<VertexAttribute> vertex_attributes_;  //only exist in vertex shader
-    static bool HLSLToSPRIV(std::span<char> hlsl, VkShaderStageFlagBits stage, const std::string_view &entryPoint, bool outputSymbols, std::vector<uint32_t> &outSpriv, std::string &errorLog);
     void get_shader_variables(const ShaderReflection &reflection);
     void get_vertex_attributes(const ShaderReflection &reflection);
     VulkanVertexStreamBinding vertex_stream_binding_;

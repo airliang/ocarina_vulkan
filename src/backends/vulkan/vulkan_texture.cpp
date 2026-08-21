@@ -96,9 +96,7 @@ CpuMipChain build_cpu_mip_chain(const void* base_pixels, uint32_t width, uint32_
 void submit_texture_staging_upload(
     VulkanDevice* device,
     VulkanBuffer* staging_buffer,
-    VulkanTexture* texture,
-    const Semaphore* upload_timeline,
-    uint64_t* out_upload_completed_value)
+    VulkanTexture* texture)
 {
     CommandBuffer cmd = device->get_command_buffer(QueueType::Copy);
     cmd.begin();
@@ -108,24 +106,12 @@ void submit_texture_staging_upload(
     vk_cmd->image_layout_barrier(texture, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     cmd.end();
 
-    if (upload_timeline != nullptr &&
-        upload_timeline->semaphore != 0 &&
-        upload_timeline->semaphore != InvalidUI64 &&
-        upload_timeline->timeline_value != 0) {
-        if (out_upload_completed_value != nullptr) {
-            *out_upload_completed_value = upload_timeline->timeline_value;
-        }
-        cmd.add_signal_semaphore(*upload_timeline);
-        cmd.submit_to_queue(QueueType::Copy, nullptr);
-        device->retain_upload_staging(staging_buffer, upload_timeline->timeline_value);
-    } else {
-        Fence fence = device->create_fence();
-        cmd.submit_to_queue(QueueType::Copy, &fence);
-        fence.wait();
-        ocarina::delete_with_allocator(staging_buffer);
-    }
-
+    Fence fence = device->create_fence();
+    cmd.submit_to_queue(QueueType::Copy, &fence);
+    fence.wait();
+    ocarina::delete_with_allocator(staging_buffer);
     device->release_command_buffer(cmd);
+
     texture->set_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
@@ -133,9 +119,7 @@ void submit_texture_mip_chain_upload(
     VulkanDevice* device,
     VulkanBuffer* staging_buffer,
     VulkanTexture* texture,
-    const CpuMipChain& chain,
-    const Semaphore* upload_timeline,
-    uint64_t* out_upload_completed_value)
+    const CpuMipChain& chain)
 {
     std::vector<VkBufferImageCopy> regions(chain.level_offsets.size());
     for (size_t i = 0; i < chain.level_offsets.size(); ++i) {
@@ -159,24 +143,12 @@ void submit_texture_mip_chain_upload(
     vk_cmd->image_layout_barrier(texture, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     cmd.end();
 
-    if (upload_timeline != nullptr &&
-        upload_timeline->semaphore != 0 &&
-        upload_timeline->semaphore != InvalidUI64 &&
-        upload_timeline->timeline_value != 0) {
-        if (out_upload_completed_value != nullptr) {
-            *out_upload_completed_value = upload_timeline->timeline_value;
-        }
-        cmd.add_signal_semaphore(*upload_timeline);
-        cmd.submit_to_queue(QueueType::Copy, nullptr);
-        device->retain_upload_staging(staging_buffer, upload_timeline->timeline_value);
-    } else {
-        Fence fence = device->create_fence();
-        cmd.submit_to_queue(QueueType::Copy, &fence);
-        fence.wait();
-        ocarina::delete_with_allocator(staging_buffer);
-    }
-
+    Fence fence = device->create_fence();
+    cmd.submit_to_queue(QueueType::Copy, &fence);
+    fence.wait();
+    ocarina::delete_with_allocator(staging_buffer);
     device->release_command_buffer(cmd);
+
     texture->set_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
@@ -186,9 +158,7 @@ void upload_texture_pixels(
     const void* pixels,
     size_t base_level_bytes,
     uint32_t mip_levels,
-    PixelStorage format,
-    const Semaphore* upload_timeline,
-    uint64_t* out_upload_completed_value)
+    PixelStorage format)
 {
     PROFILE_SCOPE();
     if (mip_levels <= 1) {
@@ -198,8 +168,7 @@ void upload_texture_pixels(
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
             base_level_bytes,
             pixels);
-        submit_texture_staging_upload(
-            device, staging_buffer, texture, upload_timeline, out_upload_completed_value);
+        submit_texture_staging_upload(device, staging_buffer, texture);
         return;
     }
 
@@ -214,8 +183,7 @@ void upload_texture_pixels(
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
         chain.pixels.size(),
         chain.pixels.data());
-    submit_texture_mip_chain_upload(
-        device, staging_buffer, texture, chain, upload_timeline, out_upload_completed_value);
+    submit_texture_mip_chain_upload(device, staging_buffer, texture, chain);
 }
 
 }// namespace
@@ -224,12 +192,10 @@ VulkanTexture::VulkanTexture(
     VulkanDevice *device,
     Image *image,
     const TextureViewCreation &texture_view,
-    const TextureSampler& sampler,
-    const Semaphore* upload_timeline,
-    uint64_t* out_upload_completed_value)
+    const TextureSampler& sampler)
     : device_(device) {
     texture_sampler_ = sampler;
-    init(image, texture_view, upload_timeline, out_upload_completed_value);
+    init(image, texture_view);
 }
 
 VulkanTexture::VulkanTexture(
@@ -241,13 +207,9 @@ VulkanTexture::VulkanTexture(
     const TextureViewCreation &texture_view,
     const TextureSampler& sampler,
     uint4 default_color,
-    const void* data,
-    const Semaphore* upload_timeline,
-    uint64_t* out_upload_completed_value)
+    const void* data)
     : device_(device) {
-    init_from_pixels(
-        width, height, depth, format, texture_view, sampler, default_color, data,
-        upload_timeline, out_upload_completed_value);
+    init_from_pixels(width, height, depth, format, texture_view, sampler, default_color, data);
 }
 
 VulkanTexture::VulkanTexture(VulkanDevice* device, uint32_t width, uint32_t height, PixelStorage format, TextureUsageFlags usage)
@@ -342,9 +304,7 @@ void VulkanTexture::init_from_pixels(
     const TextureViewCreation &texture_view,
     const TextureSampler& sampler,
     uint4 default_color,
-    const void* data,
-    const Semaphore* upload_timeline,
-    uint64_t* out_upload_completed_value) {
+    const void* data) {
     PROFILE_SCOPE();
     res_.x = width;
     res_.y = height;
@@ -387,8 +347,7 @@ void VulkanTexture::init_from_pixels(
 
     const size_t image_size = static_cast<size_t>(width) * height * depth * pixel_size(format);
     if (data != nullptr) {
-        upload_texture_pixels(
-            device_, this, data, image_size, mip_levels_, format, upload_timeline, out_upload_completed_value);
+        upload_texture_pixels(device_, this, data, image_size, mip_levels_, format);
     } else {
         std::vector<uint4> pixels(width * height * depth, default_color);
         upload_texture_pixels(
@@ -397,9 +356,7 @@ void VulkanTexture::init_from_pixels(
             pixels.data(),
             pixels.size() * sizeof(uint4),
             mip_levels_,
-            format,
-            upload_timeline,
-            out_upload_completed_value);
+            format);
     }
 
     create_image_view(texture_view);
@@ -408,9 +365,7 @@ void VulkanTexture::init_from_pixels(
 
 void VulkanTexture::init(
     Image *image,
-    const TextureViewCreation &texture_view,
-    const Semaphore* upload_timeline,
-    uint64_t* out_upload_completed_value) {
+    const TextureViewCreation &texture_view) {
     pixel_storage_ = image->pixel_storage();
     init_from_pixels(
         image->resolution().x,
@@ -420,9 +375,7 @@ void VulkanTexture::init(
         texture_view,
         texture_sampler_,
         uint4(0, 0, 0, 255),
-        image->pixel_ptr(),
-        upload_timeline,
-        out_upload_completed_value);
+        image->pixel_ptr());
 }
 
 void VulkanTexture::load_cpu_data(Image *image) {
@@ -430,7 +383,7 @@ void VulkanTexture::load_cpu_data(Image *image) {
 }
 
 void VulkanTexture::load_cpu_data(const void* data, size_t size_in_bytes) {
-    upload_texture_pixels(device_, this, data, size_in_bytes, mip_levels_, pixel_storage_, nullptr, nullptr);
+    upload_texture_pixels(device_, this, data, size_in_bytes, mip_levels_, pixel_storage_);
 }
 
 void VulkanTexture::create_image_view(const TextureViewCreation &texture_view) {
