@@ -24,7 +24,7 @@ namespace detail {
 }
 }// namespace detail
 
-class Texture : public RHIResource {
+class OC_RHI_API Texture : public RHIResource {
 protected:
     uint channel_num_{};
 
@@ -34,6 +34,7 @@ public:
         virtual ~Impl() = default;
         [[nodiscard]] virtual uint3 resolution() const noexcept = 0;
         [[nodiscard]] virtual PixelStorage pixel_storage() const noexcept = 0;
+        [[nodiscard]] virtual uint32_t mip_levels() const noexcept = 0;
         [[nodiscard]] virtual handle_ty array_handle() const noexcept = 0;
         [[nodiscard]] virtual const handle_ty *array_handle_ptr() const noexcept = 0;
         [[nodiscard]] virtual handle_ty tex_handle() const noexcept = 0;
@@ -50,21 +51,13 @@ public:
     Texture() = default;
     explicit Texture(Device::Impl *device, uint3 res,
                      PixelStorage pixel_storage, uint level_num = 1u,
-                     const string &desc = "")
-        : RHIResource(device, Tag::TEXTURE,
-                      device->create_texture(res, pixel_storage,
-                                             detail::compute_mip_level_num(res, level_num), desc)),
-          channel_num_(ocarina::channel_num(pixel_storage)) {}
+                     const string &desc = "");
 
     explicit Texture(
         Device::Impl *device,
         Image *image_resource,
         const TextureViewCreation &texture_view,
-        const TextureSampler &sampler)
-        : RHIResource(device, Tag::TEXTURE, 0),
-          channel_num_(ocarina::channel_num(texture_view.format)) {
-        handle_ = device->create_texture(image_resource, texture_view, sampler);
-    }
+        const TextureSampler &sampler);
 
     explicit Texture(
         Device::Impl *device,
@@ -75,23 +68,22 @@ public:
         const TextureViewCreation &texture_view,
         const TextureSampler &sampler,
         uint4 default_color,
-        const void *data)
-        : RHIResource(device, Tag::TEXTURE, 0),
-          channel_num_(ocarina::channel_num(pixel_storage)) {
-        handle_ = device->create_texture(
-            width,
-            height,
-            depth,
-            pixel_storage,
-            texture_view,
-            sampler,
-            default_color,
-            data);
-    }
+        const void *data);
 
-    explicit Texture(Device::Impl *device, uint32_t width, uint32_t height, PixelStorage pixel_storage, TextureUsageFlags usage)
-        : RHIResource(device, Tag::TEXTURE, device->create_render_target_texture(width, height, pixel_storage, usage)),
-          channel_num_(ocarina::channel_num(pixel_storage)) {}
+    explicit Texture(Device::Impl *device, uint32_t width, uint32_t height, PixelStorage pixel_storage, TextureUsageFlags usage);
+
+    /// Upload base-level pixels (generates CPU mip chain when mip_levels > 1).
+    void upload_pixels(const void *data, size_t base_level_bytes);
+
+    void load_cpu_data(const void *data, size_t size_in_bytes);
+    void load_cpu_data(Image *image);
+
+    /// Staging upload into an existing backend texture impl (used by Texture and drivers).
+    static void upload_cpu_pixels(
+        Device::Impl *device,
+        Impl *texture,
+        const void *data,
+        size_t base_level_bytes);
 
     /// True when the GPU upload has finished (GPU_Ready).
     [[nodiscard]] bool is_gpu_ready() const noexcept {
@@ -115,6 +107,10 @@ public:
 
     [[nodiscard]] uint3 resolution() const noexcept {
         return impl()->resolution();
+    }
+
+    [[nodiscard]] uint32_t mip_levels() const noexcept {
+        return impl()->mip_levels();
     }
 
     [[nodiscard]] Impl *impl() noexcept { return reinterpret_cast<Impl *>(handle_); }

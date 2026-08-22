@@ -3,7 +3,6 @@
 #include "vulkan_pipeline.h"
 #include "util.h"
 #include "vulkan_shader.h"
-#include "vulkan_vertex_buffer.h"
 #include "vulkan_driver.h"
 #include "vulkan_descriptorset.h"
 

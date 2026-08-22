@@ -2,15 +2,15 @@
 #include "vulkan_device.h"
 #include "vulkan_renderpass.h"
 #include "vulkan_driver.h"
-#include "vulkan_vertex_buffer.h"
 #include "vulkan_pipeline.h"
 #include "vulkan_shader.h"
 #include "vulkan_descriptorset.h"
-#include "vulkan_index_buffer.h"
 #include "vulkan_fence.h"
 #include "vulkan_buffer.h"
 #include "vulkan_texture.h"
 #include "vulkan_swapchain.h"
+#include "rhi/vertex_buffer.h"
+#include "rhi/index_buffer.h"
 #include "util.h"
 #include <algorithm>
 
@@ -271,12 +271,15 @@ void VulkanCommandBuffer::bind_descriptor_sets(DescriptorSet** descriptor_sets, 
 }
 
 void VulkanCommandBuffer::set_index_buffer(IndexBuffer* index_buffer, uint32_t first_index) {
-    VulkanIndexBuffer* vk_index_buffer = static_cast<VulkanIndexBuffer*>(index_buffer);
+    if (index_buffer == nullptr || index_buffer->buffer() == nullptr) {
+        return;
+    }
+    VulkanBuffer* vk_buffer = static_cast<VulkanBuffer*>(index_buffer->buffer());
     const VkDeviceSize byte_offset = static_cast<VkDeviceSize>(first_index)
         * (index_buffer->is_16_bit() ? sizeof(uint16_t) : sizeof(uint32_t));
     vkCmdBindIndexBuffer(
         vulkan_command_buffer_,
-        vk_index_buffer->buffer_handle(),
+        vk_buffer->buffer_handle(),
         byte_offset,
         index_buffer->is_16_bit() ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
 }
@@ -304,20 +307,22 @@ void VulkanCommandBuffer::draw_indexed_indirect(handle_ty indirect_buffer, uint3
 
 void VulkanCommandBuffer::set_vertex_buffer(VertexBuffer* vertex_buffer, uint32_t base_vertex) {
     OC_ASSERT(current_pipeline_ != nullptr);
+    if (vertex_buffer == nullptr) {
+        return;
+    }
     const VulkanVertexStreamBinding* vertex_stream_binding = current_pipeline_->vertex_stream_binding();
     if (vertex_stream_binding == nullptr || vertex_stream_binding->attribute_descriptions_.empty()) {
         return;
     }
-    VulkanVertexBuffer* vk_vertex_buffer = static_cast<VulkanVertexBuffer*>(vertex_buffer);
     for (size_t i = 0; i < vertex_stream_binding->attribute_descriptions_.size(); ++i) {
         VertexAttributeType::Enum attribute_type = vertex_stream_binding->attribute_types_[i];
-        VertexStream* vertex_stream = vk_vertex_buffer->get_vertex_stream(attribute_type);
-        if (vertex_stream == nullptr || vertex_stream->buffer == 0) {
+        VertexStream* vertex_stream = vertex_buffer->get_vertex_stream(attribute_type);
+        if (vertex_stream == nullptr || vertex_stream->buffer == nullptr) {
             continue;
         }
         VkDeviceSize offset = vertex_stream_binding->offsets_[i]
             + static_cast<VkDeviceSize>(base_vertex) * vertex_stream->stride;
-        VulkanBuffer* vk_buffer = reinterpret_cast<VulkanBuffer*>(vertex_stream->buffer);
+        VulkanBuffer* vk_buffer = static_cast<VulkanBuffer*>(vertex_stream->buffer);
         VkBuffer buffer_handle = vk_buffer->buffer_handle();
         vkCmdBindVertexBuffers(vulkan_command_buffer_, static_cast<uint32_t>(i), 1, &buffer_handle, &offset);
     }
@@ -413,6 +418,95 @@ void VulkanCommandBuffer::reset() {
     state_.dirty_mask = 0;
     std::fill(std::begin(state_.bound_sets), std::end(state_.bound_sets), VK_NULL_HANDLE);
     std::fill(std::begin(state_.bound_set_layouts), std::end(state_.bound_set_layouts), VK_NULL_HANDLE);
+}
+
+void VulkanCommandBuffer::copy_buffer(
+    handle_ty src,
+    handle_ty dst,
+    size_t src_offset,
+    size_t dst_offset,
+    size_t size_in_byte)
+{
+    copy_buffer(
+        reinterpret_cast<VulkanBuffer*>(src),
+        reinterpret_cast<VulkanBuffer*>(dst),
+        static_cast<VkDeviceSize>(src_offset),
+        static_cast<VkDeviceSize>(dst_offset),
+        static_cast<VkDeviceSize>(size_in_byte));
+}
+
+namespace {
+
+VkImageLayout to_vulkan_texture_layout(TextureLayout layout) {
+    switch (layout) {
+        case TextureLayout::Undefined:
+            return VK_IMAGE_LAYOUT_UNDEFINED;
+        case TextureLayout::TransferDst:
+            return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        case TextureLayout::ShaderReadOnly:
+            return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        case TextureLayout::ColorAttachment:
+            return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        case TextureLayout::DepthStencilAttachment:
+            return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        case TextureLayout::DepthStencilReadOnly:
+            return VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+        case TextureLayout::General:
+            return VK_IMAGE_LAYOUT_GENERAL;
+        default:
+            return VK_IMAGE_LAYOUT_UNDEFINED;
+    }
+}
+
+}// namespace
+
+void VulkanCommandBuffer::transition_texture_layout(
+    handle_ty texture,
+    TextureLayout old_layout,
+    TextureLayout new_layout)
+{
+    auto* vulkan_texture = reinterpret_cast<VulkanTexture*>(texture);
+    if (vulkan_texture == nullptr) {
+        return;
+    }
+    const VkImageLayout old_vk = to_vulkan_texture_layout(old_layout);
+    const VkImageLayout new_vk = to_vulkan_texture_layout(new_layout);
+    image_layout_barrier(vulkan_texture, old_vk, new_vk);
+    vulkan_texture->set_image_layout(new_vk);
+}
+
+void VulkanCommandBuffer::copy_buffer_to_texture(
+    handle_ty src_buffer,
+    handle_ty dst_texture,
+    const BufferTextureCopy* regions,
+    uint32_t region_count)
+{
+    if (src_buffer == 0 || dst_texture == 0 || regions == nullptr || region_count == 0) {
+        return;
+    }
+
+    auto* src = reinterpret_cast<VulkanBuffer*>(src_buffer);
+    auto* dst = reinterpret_cast<VulkanTexture*>(dst_texture);
+
+    std::vector<VkBufferImageCopy> vk_regions(region_count);
+    for (uint32_t i = 0; i < region_count; ++i) {
+        const BufferTextureCopy& region = regions[i];
+        VkBufferImageCopy& vk_region = vk_regions[i];
+        vk_region.bufferOffset = region.buffer_offset;
+        vk_region.bufferRowLength = region.buffer_row_length;
+        vk_region.bufferImageHeight = region.buffer_image_height;
+        vk_region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        vk_region.imageSubresource.mipLevel = region.mip_level;
+        vk_region.imageSubresource.baseArrayLayer = region.base_array_layer;
+        vk_region.imageSubresource.layerCount = region.layer_count;
+        vk_region.imageOffset = {0, 0, 0};
+        vk_region.imageExtent = {region.width, region.height, region.depth};
+    }
+
+    // Layout barriers remain required: dstImageLayout must match the actual
+    // layout at execute time (TRANSFER_DST / GENERAL / SHARED_PRESENT).
+    // vkCmdCopyBufferToImage2 does not perform layout transitions.
+    copy_image(src, dst, vk_regions.data(), region_count);
 }
 
 void VulkanCommandBuffer::copy_buffer(VulkanBuffer* src, VulkanBuffer* dst)

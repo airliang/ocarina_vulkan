@@ -33,6 +33,21 @@ public:
         virtual void draw_indexed_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) = 0;
         virtual void set_vertex_buffer(VertexBuffer* vertex_buffer, uint32_t base_vertex = 0) = 0;
         virtual void set_index_buffer(IndexBuffer* index_buffer, uint32_t first_index = 0) = 0;
+        virtual void copy_buffer(
+            handle_ty src,
+            handle_ty dst,
+            size_t src_offset,
+            size_t dst_offset,
+            size_t size_in_byte) = 0;
+        virtual void transition_texture_layout(
+            handle_ty texture,
+            TextureLayout old_layout,
+            TextureLayout new_layout) = 0;
+        virtual void copy_buffer_to_texture(
+            handle_ty src_buffer,
+            handle_ty dst_texture,
+            const BufferTextureCopy* regions,
+            uint32_t region_count) = 0;
         virtual void submit_to_queue(QueueType queue_type, Fence* fence) = 0;
         virtual void begin() = 0;
         virtual void end() = 0;
@@ -128,6 +143,30 @@ public:
     void set_index_buffer(IndexBuffer* index_buffer, uint32_t first_index = 0)
     {
         impl_->set_index_buffer(index_buffer, first_index);
+    }
+    void copy_buffer(
+        handle_ty src,
+        handle_ty dst,
+        size_t src_offset,
+        size_t dst_offset,
+        size_t size_in_byte)
+    {
+        impl_->copy_buffer(src, dst, src_offset, dst_offset, size_in_byte);
+    }
+    void transition_texture_layout(
+        handle_ty texture,
+        TextureLayout old_layout,
+        TextureLayout new_layout)
+    {
+        impl_->transition_texture_layout(texture, old_layout, new_layout);
+    }
+    void copy_buffer_to_texture(
+        handle_ty src_buffer,
+        handle_ty dst_texture,
+        const BufferTextureCopy* regions,
+        uint32_t region_count)
+    {
+        impl_->copy_buffer_to_texture(src_buffer, dst_texture, regions, region_count);
     }
     void push_constants(const void* data, uint32_t offset, uint32_t size)
     {

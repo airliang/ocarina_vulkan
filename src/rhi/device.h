@@ -52,6 +52,10 @@ public:
             (void)bind_flags;
             return create_buffer(size, desc, exported);
         }
+        /// Device-local GPU buffer (TRANSFER_DST + @p bind_flags). Handle is a Buffer*.
+        [[nodiscard]] virtual handle_ty create_gpu_buffer(
+            size_t size_in_byte,
+            GraphicBufferBindFlags bind_flags) noexcept = 0;
         virtual void destroy_buffer(handle_ty handle) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_texture(uint3 res, PixelStorage pixel_storage,
                                                        uint level_num, const string &desc) noexcept = 0;
@@ -106,6 +110,10 @@ public:
         virtual void imgui_rhi_render_draw_data(void* draw_data, handle_ty command_buffer) noexcept {}
         virtual void imgui_rhi_shutdown() noexcept {}
         virtual CommandBuffer get_command_buffer() = 0;
+        virtual CommandBuffer get_command_buffer(QueueType queue_type) {
+            (void)queue_type;
+            return get_command_buffer();
+        }
         virtual void release_command_buffer(const CommandBuffer& cmd_buffer) = 0;
         virtual void execute_command_buffers(CommandBuffer* cmd_buffer, uint32_t count) noexcept {}
         virtual Semaphore get_present_complete_semaphore() noexcept = 0;
@@ -256,6 +264,10 @@ public:
 
     CommandBuffer get_command_buffer() noexcept {
         return impl_->get_command_buffer();
+    }
+
+    CommandBuffer get_command_buffer(QueueType queue_type) noexcept {
+        return impl_->get_command_buffer(queue_type);
     }
 
     void release_command_buffer(const CommandBuffer& cmd_buffer) noexcept {

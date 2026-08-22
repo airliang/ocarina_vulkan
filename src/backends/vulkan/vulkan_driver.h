@@ -20,15 +20,14 @@ class VulkanShader;
 struct InstanceCreation;
 struct PipelineState;
 class VulkanRenderPass;
-class VulkanVertexBuffer;
-class VulkanIndexBuffer;
-struct VulkanVertexStreamBinding;
+class VulkanVertexStreamBinding;
 class VulkanDescriptorSetLayout;
 class DescriptorSetLayout;
 class VulkanDescriptorSet;
 class VulkanTexture;
 class TextureSampler;
 class VulkanCommandBuffer;
+class IndexBuffer;
 
 class VulkanDriver : public concepts::Noncopyable {
 private:
@@ -87,7 +86,7 @@ public:
         return frame_buffers[index];
     }
 
-    void draw_triangles(VkCommandBuffer cmd, VulkanIndexBuffer* index_buffer);
+    void draw_triangles(VkCommandBuffer cmd, IndexBuffer* index_buffer);
 
     void push_constants(VkCommandBuffer cmd, VkPipelineLayout pipeline, const void *data, uint32_t size, uint32_t offset, VkShaderStageFlags stage_flags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 

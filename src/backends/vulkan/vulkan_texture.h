@@ -51,13 +51,11 @@ public:
     ~VulkanTexture() override;
     void init(Image *image, const TextureViewCreation &texture_view);
     void init_from_pixels(uint32_t width, uint32_t height, uint32_t depth, PixelStorage format, const TextureViewCreation &texture_view,
-        const TextureSampler& sampler, uint4 default_color, const void* data);
+        const TextureSampler& sampler);
     void init_render_target(uint32_t width, uint32_t height, PixelStorage format, TextureUsageFlags usage);
     void create_image_view(const TextureViewCreation &texture_view);
     void create_render_target_image_view();
     void create_sampler(const TextureSampler& sampler_creation);
-    void load_cpu_data(Image *image);
-    void load_cpu_data(const void* data, size_t size_in_bytes);
     [[nodiscard]] uint3 resolution() const noexcept override { return res_; }
     [[nodiscard]] handle_ty array_handle() const noexcept override {
         return reinterpret_cast<handle_ty>(image_);
@@ -75,10 +73,10 @@ public:
     [[nodiscard]] size_t data_alignment() const noexcept override;
     [[nodiscard]] size_t max_member_size() const noexcept override;
     [[nodiscard]] PixelStorage pixel_storage() const noexcept override { return pixel_storage_; }
-    [[nodiscard]] const TextureSampler* get_sampler_pointer() const noexcept { return &texture_sampler_; }
+    [[nodiscard]] uint32_t mip_levels() const noexcept override { return mip_levels_; }
+    [[nodiscard]] const TextureSampler* get_sampler_pointer() const noexcept override { return &texture_sampler_; }
     [[nodiscard]] bool is_render_target() const noexcept override { return is_render_target_; }
     [[nodiscard]] TextureUsageFlags usage_flags() const noexcept override { return usage_flags_; }
-    uint32_t mip_levels() const noexcept { return mip_levels_; }
     uint32_t width() const noexcept { return res_.x; }
     uint32_t height() const noexcept { return res_.y; }
     uint32_t depth() const noexcept { return res_.z; }

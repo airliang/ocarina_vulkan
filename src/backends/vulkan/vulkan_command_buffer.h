@@ -31,6 +31,21 @@ public:
     void draw_indexed_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) override;
     void set_vertex_buffer(VertexBuffer* vertex_buffer, uint32_t base_vertex = 0) override;
     void set_index_buffer(IndexBuffer* index_buffer, uint32_t first_index = 0) override;
+    void copy_buffer(
+        handle_ty src,
+        handle_ty dst,
+        size_t src_offset,
+        size_t dst_offset,
+        size_t size_in_byte) override;
+    void transition_texture_layout(
+        handle_ty texture,
+        TextureLayout old_layout,
+        TextureLayout new_layout) override;
+    void copy_buffer_to_texture(
+        handle_ty src_buffer,
+        handle_ty dst_texture,
+        const BufferTextureCopy* regions,
+        uint32_t region_count) override;
     void submit_to_queue(QueueType queue_type, Fence* fence) override;
     void begin() override;
     void end() override;

@@ -6,187 +6,10 @@
 #include "util.h"
 #include "core/profiler.h"
 #include "vulkan_device.h"
-#include "vulkan_driver.h"
-#include "vulkan_command_buffer.h"
 #include "core/image.h"
 #include "core/image_base.h"
-#include "vulkan_buffer.h"
-#include "rhi/fence.h"
-#include "rhi/command_buffer.h"
-
-#include "stb_image_resize.h"
 
 namespace ocarina {
-
-namespace {
-
-struct CpuMipChain {
-    std::vector<uint8_t> pixels;
-    std::vector<uint32_t> level_offsets;
-    std::vector<uint32_t> level_widths;
-    std::vector<uint32_t> level_heights;
-};
-
-size_t mip_level_byte_size(uint32_t width, uint32_t height, uint32_t channels) {
-    return static_cast<size_t>(width) * height * channels;
-}
-
-bool resize_mip_level(const uint8_t* src, uint32_t src_w, uint32_t src_h, uint8_t* dst, uint32_t dst_w, uint32_t dst_h, uint32_t channels, PixelStorage format) {
-    if (format == PixelStorage::BYTE4) {
-        return stbir_resize_uint8_srgb(src, static_cast<int>(src_w), static_cast<int>(src_h), 0,
-            dst, static_cast<int>(dst_w), static_cast<int>(dst_h), 0,
-            static_cast<int>(channels), 3, 0) != 0;
-    }
-    if (is_8bit(format)) {
-        return stbir_resize_uint8(src, static_cast<int>(src_w), static_cast<int>(src_h), 0,
-            dst, static_cast<int>(dst_w), static_cast<int>(dst_h), 0,
-            static_cast<int>(channels)) != 0;
-    }
-    return false;
-}
-
-CpuMipChain build_cpu_mip_chain(const void* base_pixels, uint32_t width, uint32_t height, uint32_t mip_levels, PixelStorage format) {
-    PROFILE_SCOPE();
-    const uint32_t channels = static_cast<uint32_t>(channel_num(format));
-    const uint8_t* base = static_cast<const uint8_t*>(base_pixels);
-
-    CpuMipChain chain;
-    chain.level_offsets.reserve(mip_levels);
-    chain.level_widths.reserve(mip_levels);
-    chain.level_heights.reserve(mip_levels);
-
-    size_t total_bytes = 0;
-    uint32_t level_w = width;
-    uint32_t level_h = height;
-    for (uint32_t i = 0; i < mip_levels; ++i) {
-        const uint32_t mip_w = std::max(level_w, 1u);
-        const uint32_t mip_h = std::max(level_h, 1u);
-        chain.level_offsets.push_back(static_cast<uint32_t>(total_bytes));
-        chain.level_widths.push_back(mip_w);
-        chain.level_heights.push_back(mip_h);
-        total_bytes += mip_level_byte_size(mip_w, mip_h, channels);
-        if (level_w > 1) {
-            level_w /= 2;
-        }
-        if (level_h > 1) {
-            level_h /= 2;
-        }
-    }
-
-    chain.pixels.resize(total_bytes);
-    std::memcpy(chain.pixels.data(), base, mip_level_byte_size(width, height, channels));
-
-    uint32_t src_w = width;
-    uint32_t src_h = height;
-    for (uint32_t i = 1; i < mip_levels; ++i) {
-        const uint32_t dst_w = chain.level_widths[i];
-        const uint32_t dst_h = chain.level_heights[i];
-        const uint8_t* src = chain.pixels.data() + chain.level_offsets[i - 1];
-        uint8_t* dst = chain.pixels.data() + chain.level_offsets[i];
-        if (!resize_mip_level(src, src_w, src_h, dst, dst_w, dst_h, channels, format)) {
-            throw std::runtime_error("failed to generate CPU mipmaps with stb_image_resize");
-        }
-        src_w = dst_w;
-        src_h = dst_h;
-    }
-
-    return chain;
-}
-
-void submit_texture_staging_upload(
-    VulkanDevice* device,
-    VulkanBuffer* staging_buffer,
-    VulkanTexture* texture)
-{
-    CommandBuffer cmd = device->get_command_buffer(QueueType::Copy);
-    cmd.begin();
-    VulkanCommandBuffer* vk_cmd = static_cast<VulkanCommandBuffer*>(cmd.impl());
-    vk_cmd->image_layout_barrier(texture, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    vk_cmd->copy_image(staging_buffer, texture);
-    vk_cmd->image_layout_barrier(texture, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    cmd.end();
-
-    Fence fence = device->create_fence();
-    cmd.submit_to_queue(QueueType::Copy, &fence);
-    fence.wait();
-    ocarina::delete_with_allocator(staging_buffer);
-    device->release_command_buffer(cmd);
-
-    texture->set_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-}
-
-void submit_texture_mip_chain_upload(
-    VulkanDevice* device,
-    VulkanBuffer* staging_buffer,
-    VulkanTexture* texture,
-    const CpuMipChain& chain)
-{
-    std::vector<VkBufferImageCopy> regions(chain.level_offsets.size());
-    for (size_t i = 0; i < chain.level_offsets.size(); ++i) {
-        VkBufferImageCopy& region = regions[i];
-        region.bufferOffset = chain.level_offsets[i];
-        region.bufferRowLength = 0;
-        region.bufferImageHeight = 0;
-        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        region.imageSubresource.mipLevel = static_cast<uint32_t>(i);
-        region.imageSubresource.baseArrayLayer = 0;
-        region.imageSubresource.layerCount = 1;
-        region.imageOffset = {0, 0, 0};
-        region.imageExtent = {chain.level_widths[i], chain.level_heights[i], 1};
-    }
-
-    CommandBuffer cmd = device->get_command_buffer(QueueType::Copy);
-    cmd.begin();
-    VulkanCommandBuffer* vk_cmd = static_cast<VulkanCommandBuffer*>(cmd.impl());
-    vk_cmd->image_layout_barrier(texture, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    vk_cmd->copy_image(staging_buffer, texture, regions.data(), static_cast<uint32_t>(regions.size()));
-    vk_cmd->image_layout_barrier(texture, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    cmd.end();
-
-    Fence fence = device->create_fence();
-    cmd.submit_to_queue(QueueType::Copy, &fence);
-    fence.wait();
-    ocarina::delete_with_allocator(staging_buffer);
-    device->release_command_buffer(cmd);
-
-    texture->set_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-}
-
-void upload_texture_pixels(
-    VulkanDevice* device,
-    VulkanTexture* texture,
-    const void* pixels,
-    size_t base_level_bytes,
-    uint32_t mip_levels,
-    PixelStorage format)
-{
-    PROFILE_SCOPE();
-    if (mip_levels <= 1) {
-        auto* staging_buffer = ocarina::new_with_allocator<VulkanBuffer>(
-            device,
-            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            base_level_bytes,
-            pixels);
-        submit_texture_staging_upload(device, staging_buffer, texture);
-        return;
-    }
-
-    if (!is_8bit(format)) {
-        throw std::runtime_error("CPU mipmap generation only supports 8-bit pixel formats");
-    }
-
-    const CpuMipChain chain = build_cpu_mip_chain(pixels, texture->width(), texture->height(), mip_levels, format);
-    auto* staging_buffer = ocarina::new_with_allocator<VulkanBuffer>(
-        device,
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        chain.pixels.size(),
-        chain.pixels.data());
-    submit_texture_mip_chain_upload(device, staging_buffer, texture, chain);
-}
-
-}// namespace
 
 VulkanTexture::VulkanTexture(
     VulkanDevice *device,
@@ -209,7 +32,9 @@ VulkanTexture::VulkanTexture(
     uint4 default_color,
     const void* data)
     : device_(device) {
-    init_from_pixels(width, height, depth, format, texture_view, sampler, default_color, data);
+    (void)default_color;
+    (void)data;
+    init_from_pixels(width, height, depth, format, texture_view, sampler);
 }
 
 VulkanTexture::VulkanTexture(VulkanDevice* device, uint32_t width, uint32_t height, PixelStorage format, TextureUsageFlags usage)
@@ -302,9 +127,7 @@ void VulkanTexture::init_from_pixels(
     uint32_t depth,
     PixelStorage format,
     const TextureViewCreation &texture_view,
-    const TextureSampler& sampler,
-    uint4 default_color,
-    const void* data) {
+    const TextureSampler& sampler) {
     PROFILE_SCOPE();
     res_.x = width;
     res_.y = height;
@@ -345,20 +168,6 @@ void VulkanTexture::init_from_pixels(
 
     VK_CHECK_RESULT(vkBindImageMemory(device_->logicalDevice(), image_, image_memory_, 0));
 
-    const size_t image_size = static_cast<size_t>(width) * height * depth * pixel_size(format);
-    if (data != nullptr) {
-        upload_texture_pixels(device_, this, data, image_size, mip_levels_, format);
-    } else {
-        std::vector<uint4> pixels(width * height * depth, default_color);
-        upload_texture_pixels(
-            device_,
-            this,
-            pixels.data(),
-            pixels.size() * sizeof(uint4),
-            mip_levels_,
-            format);
-    }
-
     create_image_view(texture_view);
     create_sampler(sampler);
 }
@@ -373,17 +182,7 @@ void VulkanTexture::init(
         1,
         image->pixel_storage(),
         texture_view,
-        texture_sampler_,
-        uint4(0, 0, 0, 255),
-        image->pixel_ptr());
-}
-
-void VulkanTexture::load_cpu_data(Image *image) {
-    load_cpu_data(image->pixel_ptr(), image->size_in_bytes());
-}
-
-void VulkanTexture::load_cpu_data(const void* data, size_t size_in_bytes) {
-    upload_texture_pixels(device_, this, data, size_in_bytes, mip_levels_, pixel_storage_);
+        texture_sampler_);
 }
 
 void VulkanTexture::create_image_view(const TextureViewCreation &texture_view) {

@@ -8,10 +8,11 @@
 #include "vulkan_shader.h"
 #include "vulkan_descriptorset.h"
 #include "vulkan_renderpass.h"
-#include "vulkan_vertex_buffer.h"
-#include "vulkan_index_buffer.h"
+#include "vulkan_buffer.h"
+#include "rhi/index_buffer.h"
 #include "vulkan_texture.h"
 #include "rhi/resources/texture_sampler.h"
+#include "rhi/resources/texture.h"
 #include "vulkan_command_buffer.h"
 
 namespace ocarina {
@@ -717,9 +718,16 @@ void VulkanDriver::destroy_render_pass(VulkanRenderPass* render_pass) {
     ocarina::delete_with_allocator<VulkanRenderPass>(render_pass);
 }
 
-void VulkanDriver::draw_triangles(VkCommandBuffer cmd, VulkanIndexBuffer* index_buffer) {
-    //VkCommandBuffer current_buffer = get_current_command_buffer();
-    vkCmdBindIndexBuffer(cmd, index_buffer->buffer_handle(), 0, index_buffer->is_16_bit() ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
+void VulkanDriver::draw_triangles(VkCommandBuffer cmd, IndexBuffer* index_buffer) {
+    if (index_buffer == nullptr || index_buffer->buffer() == nullptr) {
+        return;
+    }
+    VulkanBuffer* vk_buffer = static_cast<VulkanBuffer*>(index_buffer->buffer());
+    vkCmdBindIndexBuffer(
+        cmd,
+        vk_buffer->buffer_handle(),
+        0,
+        index_buffer->is_16_bit() ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
     vkCmdDrawIndexed(cmd, index_buffer->get_index_count(), 1, 0, 0, 0);
 }
 
@@ -761,6 +769,12 @@ void VulkanDriver::create_internal_textures() {
         TextureSampler sampler = {TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT};
         internal_textures_[INTERNAL_TEXTURE_WHITE] = ocarina::new_with_allocator<VulkanTexture>(
             vulkan_device_, 4, 4, 1, PixelStorage::BYTE4, texture_view, sampler, uint4(255, 255, 255, 255), nullptr);
+        std::vector<uint4> white_pixels(4 * 4, uint4(255, 255, 255, 255));
+        Texture::upload_cpu_pixels(
+            vulkan_device_,
+            internal_textures_[INTERNAL_TEXTURE_WHITE],
+            white_pixels.data(),
+            white_pixels.size() * sizeof(uint4));
     }
 }
 

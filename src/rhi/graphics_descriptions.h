@@ -318,6 +318,30 @@ enum class TextureUsageFlags : uint32_t {
     ShaderReadOnly = (1 << 7)  /// Can bind as for read only access from all shader stages (SRV).
 };
 
+/// Backend-agnostic image layout for transfer / sampling transitions.
+enum class TextureLayout : uint8_t {
+    Undefined = 0,
+    TransferDst,
+    ShaderReadOnly,
+    ColorAttachment,
+    DepthStencilAttachment,
+    DepthStencilReadOnly,
+    General,
+};
+
+/// Region describing a buffer → texture copy (one mip / subresource).
+struct BufferTextureCopy {
+    uint64_t buffer_offset = 0;
+    uint32_t buffer_row_length = 0;
+    uint32_t buffer_image_height = 0;
+    uint32_t mip_level = 0;
+    uint32_t base_array_layer = 0;
+    uint32_t layer_count = 1;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t depth = 1;
+};
+
 enum class MultiSampleCount : uint8_t {
     SAMPLE_COUNT_1 = 0, ///< 1 sample per pixel.
     SAMPLE_COUNT_2 = 1, ///< 2 samples per pixel.

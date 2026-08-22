@@ -46,6 +46,9 @@ public:
         GraphicBufferBindFlags bind_flags,
         const string &desc,
         bool exported) noexcept override;
+    [[nodiscard]] handle_ty create_gpu_buffer(
+        size_t size_in_byte,
+        GraphicBufferBindFlags bind_flags) noexcept override;
     void destroy_buffer(handle_ty handle) noexcept override;
     [[nodiscard]] handle_ty create_texture(uint3 res, PixelStorage pixel_storage,
                                            uint level_num,
@@ -118,7 +121,7 @@ public:
     void imgui_rhi_render_draw_data(void* draw_data, handle_ty command_buffer) noexcept override;
     void imgui_rhi_shutdown() noexcept override;
     CommandBuffer get_command_buffer() noexcept override;
-    CommandBuffer get_command_buffer(QueueType queue_type) noexcept;
+    CommandBuffer get_command_buffer(QueueType queue_type) noexcept override;
     void release_command_buffer(const CommandBuffer& cmd_buffer) noexcept override;
     void execute_command_buffers(CommandBuffer* command_buffers, uint32_t counts) noexcept override;
     Semaphore get_present_complete_semaphore() noexcept override;

@@ -10,8 +10,9 @@
 #include "vulkan_shader.h"
 #include "vulkan_driver.h"
 #include "vulkan_buffer.h"
-#include "vulkan_vertex_buffer.h"
-#include "vulkan_index_buffer.h"
+#include "rhi/vertex_buffer.h"
+#include "rhi/index_buffer.h"
+#include "rhi/fence.h"
 #include "vulkan_renderpass.h"
 #include "vulkan_pipeline.h"
 #include "vulkan_descriptorset.h"
@@ -174,6 +175,22 @@ void VulkanDevice::destroy_buffer(handle_ty handle) noexcept {
     if (buffer) {
         ocarina::delete_with_allocator<VulkanBuffer>(buffer);
     }
+}
+
+handle_ty VulkanDevice::create_gpu_buffer(
+    size_t size_in_byte,
+    GraphicBufferBindFlags bind_flags) noexcept {
+    if (size_in_byte == 0) {
+        return 0;
+    }
+    VkBufferUsageFlags usage_flags =
+        to_vulkan_buffer_usage(bind_flags) | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    VulkanBuffer* buffer = create_vulkan_buffer(
+        usage_flags,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        static_cast<VkDeviceSize>(size_in_byte),
+        nullptr);
+    return reinterpret_cast<handle_ty>(buffer);
 }
 
 void VulkanDevice::destroy_shader(handle_ty handle) noexcept {
@@ -472,14 +489,12 @@ void VulkanDevice::shutdown()
 
 VertexBuffer* VulkanDevice::create_vertex_buffer() noexcept
 {
-    VulkanVertexBuffer *vulkan_vertex_buffer = ocarina::new_with_allocator<VulkanVertexBuffer>(this);
-    return vulkan_vertex_buffer;
+    return ocarina::new_with_allocator<VertexBuffer>(this);
 }
 
 IndexBuffer* VulkanDevice::create_index_buffer(const void* initial_data, uint32_t indices_count, bool bit16) noexcept
 {
-    VulkanIndexBuffer *index_buffer = ocarina::new_with_allocator<VulkanIndexBuffer>(this, initial_data, indices_count, bit16);
-    return index_buffer;
+    return ocarina::new_with_allocator<IndexBuffer>(this, initial_data, indices_count, bit16);
 }
 
 bool VulkanDevice::begin_frame() noexcept
