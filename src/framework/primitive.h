@@ -1,3 +1,7 @@
+//
+// Created by Zero on 06/06/2022.
+//
+
 #pragma once
 
 #include "core/header.h"
@@ -25,7 +29,7 @@ public:
     Primitive& operator=(Primitive&&) noexcept = default;
     Primitive(const Primitive&) = delete;
     Primitive& operator=(const Primitive&) = delete;
-    ~Primitive();
+    ~Primitive() = default;
 
     using GeometryDataSetup = ocarina::function<void(Primitive&)>;
     using UpdatePushConstant = ocarina::function<void(Primitive&, TransformComponent&)>;
@@ -54,11 +58,12 @@ public:
 
 private:
     void sync_render_component_material_buffer(RenderComponent& render_component);
+    void ensure_push_constants_from_shaders(RenderComponent& render_component);
     void write_ssbo_index_push_constants();
+    [[nodiscard]] RenderComponent* current_render_component() noexcept;
 
     GeometryDataSetup geometry_data_setup_;
     UpdatePushConstant update_push_constant_function_ = nullptr;
-    std::byte* push_constant_data_ = nullptr;
 
     Material* material_ = nullptr;
     Mesh* mesh_ = nullptr;

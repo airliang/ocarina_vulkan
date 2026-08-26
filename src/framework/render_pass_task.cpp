@@ -4,9 +4,12 @@
 
 #include "render_pass_task.h"
 #include "enki_task_debug.h"
+#include "frame_resources.h"
+#include "pipeline_manager.h"
 #include "renderer.h"
 #include "rhi/device.h"
 #include "rhi/command_buffer.h"
+#include "rhi/pipeline_state.h"
 #include "rhi/renderpass.h"
 #include "core/profiler.h"
 
@@ -39,6 +42,27 @@ void record_render_pass(
     cmd.end_render_pass();
 }
 
+void bind_global_descriptor_sets_for_pass(
+    CommandBuffer& cmd,
+    RHIRenderPass* render_pass) noexcept
+{
+    if (render_pass == nullptr) {
+        return;
+    }
+
+    FrameResources& frame_resources = FrameResources::instance();
+    for (const auto& queue : render_pass->pipeline_render_queues()) {
+        RHIPipeline* pipeline =
+            PipelineManager::instance().get_pipeline(queue.first, render_pass);
+        if (pipeline == nullptr) {
+            continue;
+        }
+        frame_resources.bind_global_descriptor_sets(
+            cmd,
+            PipelineManager::instance().get_pipeline_layout(queue.first.shaders));
+    }
+}
+
 void record_frame_command_buffer(
     Renderer& renderer,
     Device* device,
@@ -50,6 +74,7 @@ void record_frame_command_buffer(
 
     for (RHIRenderPass* render_pass : render_passes) {
         renderer.populate_render_pass_queues(render_pass);
+        bind_global_descriptor_sets_for_pass(cmd, render_pass);
 
         const RenderPassGUICallback& pass_render_gui =
             render_pass->is_swapchain_renderpass() ? render_gui : RenderPassGUICallback{};
@@ -78,6 +103,9 @@ void RenderPassTask::add_render_pass(RHIRenderPass* render_pass) noexcept {
         return;
     }
     render_passes_.emplace_back(render_pass);
+    if (render_pass->is_swapchain_renderpass()) {
+        PipelineManager::instance().create_default_psos(render_pass);
+    }
 }
 
 void RenderPassTask::remove_render_pass(RHIRenderPass* render_pass) noexcept {

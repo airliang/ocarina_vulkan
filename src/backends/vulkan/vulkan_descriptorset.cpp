@@ -83,6 +83,12 @@ void VulkanDescriptorSet::update_bindless_texture_at_index(uint32_t index, Textu
     }
 }
 
+void VulkanDescriptorSet::commit_updates() {
+    if (writer_) {
+        writer_->commit_updates();
+    }
+}
+
 VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VulkanDevice *device, uint8_t descriptor_set_index) : device_(device), descriptor_set_index_(descriptor_set_index) {
 
 }
@@ -440,21 +446,24 @@ VkDescriptorSet VulkanDescriptorPool::get_descriptor_set(VkDescriptorSetLayout l
 }
 
 
-std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> VulkanDescriptorManager::create_descriptor_set_layout(VulkanShader **shaders, uint32_t shaders_count) {
-
+std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>
+VulkanDescriptorManager::create_or_get_descriptor_set_layouts(
+    VulkanShader** shaders,
+    uint32_t shaders_count) {
     std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_layouts = {};
 
     for (auto& layout_key : cached_descriptor_set_layout_keys_) {
         layout_key.bindings.clear();
     }
 
-    for (uint32_t i = 0; i < shaders_count; ++i)
-    {
+    for (uint32_t i = 0; i < shaders_count; ++i) {
         VulkanShader* shader = shaders[i];
+        if (shader == nullptr) {
+            continue;
+        }
 
-        uint32_t variables_count = shader->get_shader_variables_count();
-        for (uint32_t j = 0; j < variables_count; ++j)
-        {
+        const uint32_t variables_count = shader->get_shader_variables_count();
+        for (uint32_t j = 0; j < variables_count; ++j) {
             const VulkanShaderVariableBinding& binding = shader->get_shader_variable(j);
             cached_descriptor_set_layout_keys_[binding.descriptor_set].add_binding(binding);
         }
@@ -462,16 +471,23 @@ std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> VulkanDescripto
 
     for (auto& layout_key : cached_descriptor_set_layout_keys_) {
         layout_key.normalize();
-        uint64_t hashkey = layout_key.generate_hash();
+        const uint64_t hashkey = layout_key.generate_hash();
         auto it = descriptor_set_layouts_.find(hashkey);
         if (it != descriptor_set_layouts_.end()) {
             descriptor_set_layouts[it->second->get_descriptor_set_index()] = it->second;
-        }
-        else if (layout_key.bindings.size() > 0)
-        {
-            VulkanDescriptorSetLayout* layout = ocarina::new_with_allocator<VulkanDescriptorSetLayout>(device_, layout_key.bindings[0].descriptor_set);
+        } else if (!layout_key.bindings.empty()) {
+            VulkanDescriptorSetLayout* layout = ocarina::new_with_allocator<VulkanDescriptorSetLayout>(
+                device_,
+                layout_key.bindings[0].descriptor_set);
             for (const auto& binding : layout_key.bindings) {
-                layout->add_binding(binding.name, binding.binding, binding.type, binding.shader_stage, binding.is_bindless, binding.size, binding.count);
+                layout->add_binding(
+                    binding.name,
+                    binding.binding,
+                    binding.type,
+                    binding.shader_stage,
+                    binding.is_bindless,
+                    binding.size,
+                    binding.count);
                 layout->set_name(binding.name);
             }
             descriptor_set_layouts[layout->get_descriptor_set_index()] = layout;
@@ -479,46 +495,72 @@ std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> VulkanDescripto
         }
     }
 
-    uint32_t layouts_count = 0;
-    for (size_t i = 0; i < descriptor_set_layouts.size(); ++i)
-    {
-        VulkanDescriptorSetLayout* layout = static_cast<VulkanDescriptorSetLayout*>(descriptor_set_layouts[i]);
-        if (layout != nullptr)
-        {
-            layouts_count++;
-        }
-        if (layout != nullptr)
-        {
+    for (size_t i = 0; i < descriptor_set_layouts.size(); ++i) {
+        VulkanDescriptorSetLayout* layout =
+            static_cast<VulkanDescriptorSetLayout*>(descriptor_set_layouts[i]);
+        if (layout != nullptr) {
             layout->finalize_bindings();
             layout->build_layout();
         }
     }
 
-    /*
-    //supplyment the empty layout
-    uint32_t descriptor_set_layouts_num = 0;
-    uint32_t empty_descriptor_sets_num = 0;
-    for (uint32_t i = 0; i < MAX_DESCRIPTOR_SETS_PER_SHADER; ++i) {
-        if (descriptor_set_layouts[i] == nullptr && descriptor_set_layouts_num < layouts_count) {
-            descriptor_set_layouts[i] = get_empty_descriptor_set_layout();
-            empty_descriptor_sets_num++;
-        }
-        else
-        {
-            descriptor_set_layouts_num++;
-        }
+    return descriptor_set_layouts;
+}
 
-        if (descriptor_set_layouts_num >= layouts_count) {
+void VulkanDescriptorManager::ensure_descriptor_set_layouts(VulkanShader* shader) {
+    if (shader == nullptr || shader->has_descriptor_set_layouts()) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(layout_mutex_);
+    if (shader->has_descriptor_set_layouts()) {
+        return;
+    }
+
+    VulkanShader* shaders[1] = {shader};
+    shader->assign_descriptor_set_layouts(create_or_get_descriptor_set_layouts(shaders, 1));
+}
+
+std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>
+VulkanDescriptorManager::collect_pipeline_descriptor_set_layouts(
+    VulkanShader* vertex_shader,
+    VulkanShader* pixel_shader) {
+    std::lock_guard<std::mutex> lock(layout_mutex_);
+
+    if (vertex_shader != nullptr && !vertex_shader->has_descriptor_set_layouts()) {
+        VulkanShader* shaders[1] = {vertex_shader};
+        vertex_shader->assign_descriptor_set_layouts(create_or_get_descriptor_set_layouts(shaders, 1));
+    }
+    if (pixel_shader != nullptr && !pixel_shader->has_descriptor_set_layouts()) {
+        VulkanShader* shaders[1] = {pixel_shader};
+        pixel_shader->assign_descriptor_set_layouts(create_or_get_descriptor_set_layouts(shaders, 1));
+    }
+
+    std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> result = {};
+    bool needs_merged_create = false;
+    for (uint32_t i = 0; i < MAX_DESCRIPTOR_SETS_PER_SHADER; ++i) {
+        DescriptorSetLayout* vs_layout =
+            vertex_shader != nullptr ? vertex_shader->descriptor_set_layouts()[i] : nullptr;
+        DescriptorSetLayout* ps_layout =
+            pixel_shader != nullptr ? pixel_shader->descriptor_set_layouts()[i] : nullptr;
+        if (vs_layout != nullptr && ps_layout != nullptr && vs_layout != ps_layout) {
+            needs_merged_create = true;
             break;
         }
+        result[i] = vs_layout != nullptr ? vs_layout : ps_layout;
     }
-    */
 
-    return descriptor_set_layouts;
+    if (!needs_merged_create) {
+        return result;
+    }
+
+    VulkanShader* shaders[2] = {vertex_shader, pixel_shader};
+    return create_or_get_descriptor_set_layouts(shaders, 2);
 }
 
 void VulkanDescriptorManager::clear()
 {
+    std::lock_guard<std::mutex> lock(layout_mutex_);
     //pools_.clear();
     for (auto layout : descriptor_set_layouts_)
     {

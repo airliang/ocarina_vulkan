@@ -72,19 +72,6 @@ public:
 
     explicit Texture(Device::Impl *device, uint32_t width, uint32_t height, PixelStorage pixel_storage, TextureUsageFlags usage);
 
-    /// Upload base-level pixels (generates CPU mip chain when mip_levels > 1).
-    void upload_pixels(const void *data, size_t base_level_bytes);
-
-    void load_cpu_data(const void *data, size_t size_in_bytes);
-    void load_cpu_data(Image *image);
-
-    /// Staging upload into an existing backend texture impl (used by Texture and drivers).
-    static void upload_cpu_pixels(
-        Device::Impl *device,
-        Impl *texture,
-        const void *data,
-        size_t base_level_bytes);
-
     /// True when the GPU upload has finished (GPU_Ready).
     [[nodiscard]] bool is_gpu_ready() const noexcept {
         return gpu_resource_state_ >= GPUResourceState::GPU_Ready;

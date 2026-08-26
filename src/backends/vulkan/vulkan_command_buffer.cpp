@@ -238,6 +238,8 @@ void VulkanCommandBuffer::bind_descriptor_sets(DescriptorSet** descriptor_sets, 
     VkPipelineLayout pipeline_layout = reinterpret_cast<VkPipelineLayout>(pipeline_layout_handle);
     std::array<VkDescriptorSet, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_handles = { VK_NULL_HANDLE };
     for (uint32_t i = 0; i < descriptor_set_count; ++i) {
+        // Flush deferred default writes on the render thread before binding.
+        descriptor_sets[i]->commit_updates();
         descriptor_set_handles[i] = static_cast<VulkanDescriptorSet*>(descriptor_sets[i])->descriptor_set();
     }
 
@@ -294,9 +296,22 @@ void VulkanCommandBuffer::draw_indexed(uint32_t index_count, uint32_t instance_c
         first_instance);
 }
 
-void VulkanCommandBuffer::push_constants(const void* data, uint32_t offset, uint32_t size) {
+void VulkanCommandBuffer::push_constants(
+    const void* data,
+    uint32_t offset,
+    uint32_t size,
+    uint32_t shader_stage_flags) {
     OC_ASSERT(current_pipeline_ != nullptr);
-    vkCmdPushConstants(vulkan_command_buffer_, current_pipeline_->pipeline_layout_, current_pipeline_->push_constant_shader_stages_, offset, size, data);
+    const VkShaderStageFlags stages = shader_stage_flags != 0
+        ? static_cast<VkShaderStageFlags>(shader_stage_flags)
+        : static_cast<VkShaderStageFlags>(current_pipeline_->push_constant_shader_stages_);
+    vkCmdPushConstants(
+        vulkan_command_buffer_,
+        current_pipeline_->pipeline_layout_,
+        stages,
+        offset,
+        size,
+        data);
 }
 
 void VulkanCommandBuffer::draw_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) {

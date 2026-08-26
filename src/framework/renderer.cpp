@@ -30,29 +30,6 @@ namespace ocarina {
 
 namespace {
 
-void bind_global_descriptor_sets(
-    CommandBuffer& cmd,
-    const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>& layouts,
-    handle_ty pipeline_layout) noexcept {
-    FrameResources& frame_resources = FrameResources::instance();
-
-    // Bind only sets that *this* pipeline layout treats as global singletons
-    // (by binding name / bindless). Avoids binding SCENE into a legacy set-1 slot.
-    for (DescriptorSetLayout* layout : layouts) {
-        if (layout == nullptr || !FrameResources::is_global_singleton_layout(layout)) {
-            continue;
-        }
-
-        const uint32_t set_index = layout->get_descriptor_set_index();
-        DescriptorSet* descriptor_set = frame_resources.get_descriptor_set(set_index);
-        if (descriptor_set == nullptr) {
-            continue;
-        }
-
-        cmd.bind_descriptor_sets(&descriptor_set, set_index, 1, pipeline_layout);
-    }
-}
-
 void enki_thread_start_profiler_callback(uint32_t thread_num) noexcept {
     char name[64] = {};
     if (thread_num == 0) {
@@ -253,24 +230,6 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
         }
 
         cmd.bind_pipeline(pipeline);
-        Material* queue_material = nullptr;
-        // Bind globals using the first drawable's material layouts in this queue.
-        // All items in a queue share the same PipelineState / shader pair.
-        for (uint32_t entity_index : queue.second->draw_call_items) {
-            if (entity_index >= ecs.primitive_count()) {
-                continue;
-            }
-            queue_material = ecs.primitive(entity_index).get_material();
-            if (queue_material != nullptr) {
-                break;
-            }
-        }
-        if (queue_material != nullptr) {
-            bind_global_descriptor_sets(
-                cmd,
-                queue_material->descriptor_set_layouts(),
-                pipeline->pipeline_layout);
-        }
 
         uint32_t bound_vertex_page = InvalidUI32;
         uint32_t bound_index_page = InvalidUI32;
@@ -313,8 +272,15 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
                 bound_index_page = geometry.index_page;
             }
 
-            if (item.push_constant_data && item.push_constant_size > 0) {
-                cmd.push_constants(item.push_constant_data, 0, item.push_constant_size);
+            for (const PushConstantRange& range : item.push_constants) {
+                if (range.size == 0) {
+                    continue;
+                }
+                cmd.push_constants(
+                    range.data.data(),
+                    range.offset,
+                    range.size,
+                    range.shader_stage);
             }
 
             if (material != nullptr) {

@@ -8,10 +8,11 @@ namespace ocarina {
 
 namespace {
 
-void upload_buffer_via_staging(
-    Device::Impl* device,
-    Buffer* dst,
-    const void* data,
+/// One-shot staging path for rare non-GPUResourceThread uploads (e.g. ctor with data).
+void upload_buffer_oneshot(
+    Device::Impl *device,
+    Buffer *dst,
+    const void *data,
     size_t size_in_byte,
     size_t dst_offset) {
     if (device == nullptr || dst == nullptr || data == nullptr || size_in_byte == 0) {
@@ -21,12 +22,11 @@ void upload_buffer_via_staging(
     const handle_ty staging_handle = device->create_buffer(
         size_in_byte,
         GraphicBufferBindFlags::CopySrc,
-        "index_staging");
-    Buffer* staging = reinterpret_cast<Buffer*>(staging_handle);
+        "index_oneshot_staging");
+    Buffer *staging = reinterpret_cast<Buffer *>(staging_handle);
     if (staging == nullptr) {
         return;
     }
-
     staging->copy_from_immediately(data, static_cast<uint32_t>(size_in_byte));
 
     CommandBuffer cmd = device->get_command_buffer(QueueType::Copy);
@@ -48,12 +48,12 @@ void upload_buffer_via_staging(
 
 }// namespace
 
-IndexBuffer::IndexBuffer(Device::Impl* device)
+IndexBuffer::IndexBuffer(Device::Impl *device)
     : RHIResource(device, Tag::BUFFER, 0) {}
 
 IndexBuffer::IndexBuffer(
-    Device::Impl* device,
-    const void* initial_data,
+    Device::Impl *device,
+    const void *initial_data,
     uint32_t indices_count,
     bool bit16)
     : RHIResource(device, Tag::BUFFER, 0) {
@@ -67,9 +67,9 @@ IndexBuffer::~IndexBuffer() {
     release_buffer();
 }
 
-IndexBuffer* IndexBuffer::create_index_buffer(
-    Device::Impl* device,
-    void* initial_data,
+IndexBuffer *IndexBuffer::create_index_buffer(
+    Device::Impl *device,
+    void *initial_data,
     uint32_t indices_count,
     bool bit16) {
     return device->create_index_buffer(initial_data, indices_count, bit16);
@@ -95,7 +95,7 @@ void IndexBuffer::allocate_capacity(uint32_t max_indices) {
     const uint64_t num_bytes = static_cast<uint64_t>(max_indices) * stride;
 
     release_buffer();
-    buffer_ = reinterpret_cast<Buffer*>(device_->create_gpu_buffer(
+    buffer_ = reinterpret_cast<Buffer *>(device_->create_gpu_buffer(
         num_bytes,
         GraphicBufferBindFlags::IndexBuffer));
     capacity_indices_ = max_indices;
@@ -104,7 +104,7 @@ void IndexBuffer::allocate_capacity(uint32_t max_indices) {
 }
 
 void IndexBuffer::upload_indices_range(
-    const void* data,
+    const void *data,
     uint32_t index_offset,
     uint32_t index_count) {
     if (data == nullptr || index_count == 0 || device_ == nullptr) {
@@ -116,10 +116,10 @@ void IndexBuffer::upload_indices_range(
     const uint32_t stride = bit16_ ? sizeof(uint16_t) : sizeof(uint32_t);
     const uint64_t num_bytes = static_cast<uint64_t>(index_count) * stride;
     const uint64_t dst_offset = static_cast<uint64_t>(index_offset) * stride;
-    upload_buffer_via_staging(device_, buffer_, data, num_bytes, dst_offset);
+    upload_buffer_oneshot(device_, buffer_, data, num_bytes, dst_offset);
 }
 
-void IndexBuffer::upload_indices(const void* data, uint32_t indices_count) {
+void IndexBuffer::upload_indices(const void *data, uint32_t indices_count) {
     if (data == nullptr || indices_count == 0) {
         return;
     }
@@ -132,16 +132,16 @@ void IndexBuffer::upload_indices(const void* data, uint32_t indices_count) {
     set_gpu_resource_state(GPUResourceState::GPU_Ready);
 }
 
-void IndexBuffer::load_from_cpu(const void* cpu_data, uint32_t num_bytes) {
+void IndexBuffer::load_from_cpu(const void *cpu_data, uint32_t num_bytes) {
     if (num_bytes == 0 || cpu_data == nullptr || device_ == nullptr) {
         return;
     }
 
     release_buffer();
-    buffer_ = reinterpret_cast<Buffer*>(device_->create_gpu_buffer(
+    buffer_ = reinterpret_cast<Buffer *>(device_->create_gpu_buffer(
         num_bytes,
         GraphicBufferBindFlags::IndexBuffer));
-    upload_buffer_via_staging(device_, buffer_, cpu_data, num_bytes, 0);
+    upload_buffer_oneshot(device_, buffer_, cpu_data, num_bytes, 0);
 
     const uint32_t stride = bit16_ ? sizeof(uint16_t) : sizeof(uint32_t);
     capacity_indices_ = num_bytes / stride;

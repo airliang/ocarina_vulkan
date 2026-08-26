@@ -172,12 +172,18 @@ uint64_t GltfAsyncLoader::make_geometry_key(const tinygltf::Primitive& primitive
 GltfAsyncLoader::GltfAsyncLoader(
     enki::TaskScheduler* scheduler,
     Device* device,
-    std::vector<PipelineCompileTask::Entry>* pipeline_entries,
+    PSORequest mesh_pso_request,
     const std::string& gltf_file,
     RHIRenderPass* target_render_pass)
-    : AsyncLoader(scheduler, device, pipeline_entries, target_render_pass)
+    : AsyncLoader(scheduler, device, target_render_pass)
     , gltf_file_(gltf_file)
-    , gltf_directory_(fs::path(gltf_file).parent_path()) {}
+    , gltf_directory_(fs::path(gltf_file).parent_path()) {
+    if (mesh_pso_request.render_pass == nullptr) {
+        mesh_pso_request.render_pass = target_render_pass;
+    }
+    mesh_pso_request_ = mesh_pso_request;
+    add_pso_request(std::move(mesh_pso_request));
+}
 
 GltfAsyncLoader::~GltfAsyncLoader() noexcept {
     for (Mesh* mesh : mesh_storage_) {
@@ -192,10 +198,18 @@ void GltfAsyncLoader::load(Device* device) {
     }
 
     device_ = device;
-    if (pipeline_entries_ != nullptr && !pipeline_entries_->empty()
-        && (*pipeline_entries_)[0].is_graphics()) {
-        vertex_shader_ = (*pipeline_entries_)[0].vertex_shader();
-        pixel_shader_ = (*pipeline_entries_)[0].pixel_shader();
+    if (mesh_pso_request_.has_shader_paths()) {
+        vertex_shader_ = device->create_shader_from_file(
+            mesh_pso_request_.vertex_shader_path,
+            ShaderType::VertexShader,
+            mesh_pso_request_.vertex_options);
+        pixel_shader_ = device->create_shader_from_file(
+            mesh_pso_request_.pixel_shader_path,
+            ShaderType::PixelShader,
+            mesh_pso_request_.pixel_options);
+    } else if (mesh_pso_request_.has_shader_handles()) {
+        vertex_shader_ = mesh_pso_request_.vertex_shader;
+        pixel_shader_ = mesh_pso_request_.pixel_shader;
     }
 
     is_loaded_ = load_gltf_file();

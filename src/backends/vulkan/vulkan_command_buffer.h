@@ -26,7 +26,11 @@ public:
     void bind_pipeline(const RHIPipeline* pipeline) override;
     void bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t first_set, uint32_t descriptor_set_count, handle_ty pipeline_layout) override;
     void draw_indexed(uint32_t index_count, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance) override;
-    void push_constants(const void* data, uint32_t offset, uint32_t size) override;
+    void push_constants(
+        const void* data,
+        uint32_t offset,
+        uint32_t size,
+        uint32_t shader_stage_flags) override;
     void draw_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) override;
     void draw_indexed_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) override;
     void set_vertex_buffer(VertexBuffer* vertex_buffer, uint32_t base_vertex = 0) override;

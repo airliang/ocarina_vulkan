@@ -1,4 +1,5 @@
 #include "gpu_resource_thread.h"
+#include "staging_uploader.h"
 #include "pinned_task_ids.h"
 #include "frame_resources.h"
 #include "bindless_texture_registry.h"
@@ -22,7 +23,6 @@ void TextureGPUResourceRequest::process() {
     Texture* texture = nullptr;
     switch (kind) {
     case GPUResourceRequestType::TextureFromData: {
-        const void* data = pixel_data.empty() ? nullptr : pixel_data.data();
         texture = ocarina::new_with_allocator<Texture>(
             device->impl(),
             width,
@@ -32,7 +32,24 @@ void TextureGPUResourceRequest::process() {
             texture_view,
             sampler,
             uint4(0, 0, 0, 255),
-            data);
+            nullptr);
+        if (texture != nullptr) {
+            StagingUploader &uploader = GPUResourceThread::instance().staging_uploader();
+            if (!pixel_data.empty()) {
+                uploader.upload_texture_cpu_pixels(
+                    texture,
+                    pixel_data.data(),
+                    pixel_data.size());
+            } else {
+                std::vector<uint4> white(
+                    static_cast<size_t>(width) * height * depth,
+                    uint4(0, 0, 0, 255));
+                uploader.upload_texture_cpu_pixels(
+                    texture,
+                    white.data(),
+                    white.size() * sizeof(uint4));
+            }
+        }
         break;
     }
     case GPUResourceRequestType::RenderTarget:
@@ -103,8 +120,22 @@ GPUResourceThread& GPUResourceThread::instance() {
 GPUResourceThread::GPUResourceThread() noexcept
     : enki::IPinnedTask(pinned_task_thread_num(PinnedTaskIds::GPUResourceTask)) {}
 
+void GPUResourceThread::ensure_staging_uploader() {
+    if (staging_uploader_ != nullptr || device_ == nullptr) {
+        return;
+    }
+    staging_uploader_ = ocarina::new_with_allocator<StagingUploader>(device_->impl());
+}
+
+StagingUploader& GPUResourceThread::staging_uploader() {
+    ensure_staging_uploader();
+    OC_ASSERT(staging_uploader_ != nullptr);
+    return *staging_uploader_;
+}
+
 void GPUResourceThread::start(enki::TaskScheduler& scheduler, Device* device) {
     device_ = device;
+    ensure_staging_uploader();
     if (running_.exchange(true, std::memory_order_acq_rel)) {
         return;
     }
@@ -114,6 +145,10 @@ void GPUResourceThread::start(enki::TaskScheduler& scheduler, Device* device) {
 }
 
 void GPUResourceThread::shutdown() {
+    if (staging_uploader_ != nullptr) {
+        ocarina::delete_with_allocator(staging_uploader_);
+        staging_uploader_ = nullptr;
+    }
     if (device_ != nullptr) {
         device_->wait_idle();
     }
@@ -154,6 +189,11 @@ void GPUResourceThread::enqueue(std::shared_ptr<GPUResourceRequest> request) {
         return;
     }
     if (!is_running()) {
+        // Sync path (e.g. before the pinned loop starts): ensure uploader exists.
+        if (device_ == nullptr && request->device != nullptr) {
+            device_ = request->device;
+        }
+        ensure_staging_uploader();
         request->process();
         return;
     }

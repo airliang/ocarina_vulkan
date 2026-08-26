@@ -1,5 +1,6 @@
 #include "core/stl.h"
 #include "core/hash.h"
+#include "core/logging.h"
 #include "math/basic_types.h"
 #include "rhi/context.h"
 #include "rhi/common.h"
@@ -13,13 +14,14 @@
 #include "framework/resource_manager.h"
 #include "framework/material.h"
 #include "framework/async_loader.h"
-#include "framework/pipeline_compile_task.h"
+#include "framework/pso_request.h"
 #include "framework/frame_resources.h"
 #include "framework/scene.h"
 #include "framework/transform.h"
 #include "framework/mesh.h"
 #include "framework/internal_textures.h"
 #include "framework/bindless_texture_registry.h"
+#include "framework/pipeline_manager.h"
 #include "rhi/bindless_sampler.h"
 #include "rhi/resources/texture_sampler.h"
 #include "rhi/descriptor_set.h"
@@ -65,7 +67,7 @@ int main(int argc, char* argv[]) {
     context.parse_command_line(argc, argv);
 
     const uint2 window_size = make_uint2(1280, 720);
-    auto window = create_sdl_window("Culling Test - 100x100x100 Cubes", window_size);
+    auto window = create_sdl_window("Culling Test - 50x50x50 Cubes", window_size);
 
     InstanceCreation instance_creation{};
     instance_creation.windowHandle = window->get_window_handle();
@@ -85,20 +87,18 @@ int main(int argc, char* argv[]) {
 
     Renderer renderer(&device);
 
-    std::vector<PipelineCompileTask::Entry> pipeline_entries;
-    pipeline_entries.push_back(PipelineCompileTask::Entry::make_graphics(
-        fs::absolute(shader_vert).string(),
-        fs::absolute(shader_frag).string()));
+    const std::string shader_vert_abs = fs::absolute(shader_vert).string();
+    const std::string shader_frag_abs = fs::absolute(shader_frag).string();
 
     AsyncLoader async_loader(
         &renderer.task_scheduler(),
         &device,
-        &pipeline_entries,
-        [&](Device* load_device) {
+        [&, shader_vert_abs, shader_frag_abs](Device* load_device) {
+        std::set<string> options;
         material = ResourceManager::instance().create_material(
             load_device,
-            pipeline_entries[0].vertex_shader(),
-            pipeline_entries[0].pixel_shader());
+            load_device->create_shader_from_file(shader_vert_abs, ShaderType::VertexShader, options),
+            load_device->create_shader_from_file(shader_frag_abs, ShaderType::PixelShader, options));
         cube_mesh = Mesh::create_cube();
         white_handle = InternalTextures::instance().get_white_texture_handle(load_device);
         apply_mesh_material_defaults(material);
@@ -130,8 +130,8 @@ int main(int argc, char* argv[]) {
     camera.set_aspect_ratio(1280.0f / 720.0f);
     camera.set_znear(0.1f);
     camera.set_zfar(2000.0f);
-    camera.set_position({-80.0f, 120.0f, -80.0f});
-    camera.set_target({99.0f, 99.0f, 99.0f});
+    camera.set_position({-80.0f, 0.0f, -80.0f});
+    camera.set_target({99.0f, 0.0f, 99.0f});
 
     const uint64_t model_matrix_name_id = hash64("modelMatrix");
     const uint64_t model_matrix_inverse_name_id = hash64("modelMatrixInverse");
@@ -153,6 +153,10 @@ int main(int argc, char* argv[]) {
     render_pass_creation.swapchain_clear_depth = 1.0f;
     render_pass_creation.swapchain_clear_stencil = 0;
     RHIRenderPass* render_pass = device.create_render_pass(render_pass_creation);
+
+    async_loader.set_pso_requests({
+        PSORequest::make_graphics(shader_vert_abs, shader_frag_abs, render_pass),
+    });
 
     bool frustum_culling_enabled = true;
 

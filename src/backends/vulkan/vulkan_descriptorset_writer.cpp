@@ -13,7 +13,7 @@
 
 namespace ocarina {
 VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, VulkanDescriptorSet *descriptor_set) 
-    : descriptor_set_(descriptor_set) {
+    : descriptor_set_(descriptor_set), device_(device) {
     VulkanDescriptorSetLayout *layout = descriptor_set->layout();
     size_t bindings_count = layout->get_bindings_count();
     default_image_infos_.reserve(bindings_count);
@@ -77,7 +77,8 @@ VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, Vulka
         // Add other types of descriptors as needed
     }
 
-    build(device);
+    // Defer vkUpdateDescriptorSets until commit_updates() on the render thread.
+    pending_commit_ = !writes_.empty();
 }
 
 VulkanDescriptorSetWriter::~VulkanDescriptorSetWriter()
@@ -211,7 +212,7 @@ void VulkanDescriptorSetWriter::bind_sampler(uint32_t binding, VkDescriptorImage
 }
 
 void VulkanDescriptorSetWriter::build(VulkanDevice *device) {
-    if (writes_.empty()) {
+    if (writes_.empty() || device == nullptr) {
         return;
     }
     std::vector<VkWriteDescriptorSet> writes;
@@ -222,6 +223,14 @@ void VulkanDescriptorSetWriter::build(VulkanDevice *device) {
 
     vkUpdateDescriptorSets(device->logicalDevice(), writes.size(), writes.data(), 0, nullptr);
     writes_.clear();
+    pending_commit_ = false;
+}
+
+void VulkanDescriptorSetWriter::commit_updates() {
+    if (!pending_commit_ || device_ == nullptr) {
+        return;
+    }
+    build(device_);
 }
 
 void VulkanDescriptorSetWriter::update_buffer(

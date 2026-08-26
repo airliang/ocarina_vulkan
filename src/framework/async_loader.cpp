@@ -6,41 +6,23 @@
 
 namespace ocarina {
 
-std::vector<PipelineCompileTarget> AsyncLoader::build_compile_targets() const noexcept {
-    if (!compile_targets_.empty()) {
-        return compile_targets_;
-    }
-
-    std::vector<PipelineCompileTarget> targets;
-    if (pipeline_entries_ == nullptr || target_render_pass_ == nullptr) {
-        return targets;
-    }
-
-    targets.reserve(pipeline_entries_->size());
-    for (PipelineCompileTask::Entry& entry : *pipeline_entries_) {
-        targets.push_back(PipelineCompileTarget{&entry, target_render_pass_});
-    }
-    return targets;
-}
-
 uint32_t AsyncLoader::count_pending_shader_steps() const noexcept {
-    const std::vector<PipelineCompileTarget> targets = build_compile_targets();
     uint32_t shader_count = 0;
-    for (const PipelineCompileTarget& target : targets) {
-        if (target.entry != nullptr) {
-            shader_count += target.entry->pending_shader_count();
+    for (const PSORequest& request : pso_requests_) {
+        if (!request.has_shader_handles()) {
+            if (!request.vertex_shader_path.empty()) {
+                ++shader_count;
+            }
+            if (!request.pixel_shader_path.empty()) {
+                ++shader_count;
+            }
         }
     }
     return shader_count;
 }
 
 void AsyncLoader::run_pipeline_compile_tasks() noexcept {
-    if (scheduler_ == nullptr || device_ == nullptr) {
-        return;
-    }
-
-    const std::vector<PipelineCompileTarget> targets = build_compile_targets();
-    if (targets.empty()) {
+    if (scheduler_ == nullptr || device_ == nullptr || pso_requests_.empty()) {
         return;
     }
 
@@ -52,7 +34,21 @@ void AsyncLoader::run_pipeline_compile_tasks() noexcept {
         progress_listener_->set_phase("Compiling pipelines");
     }
 
-    PipelineManager::instance().compile_targets(targets, progress_listener_);
+    std::vector<PipelineCompileTask*> submitted;
+    submitted.reserve(pso_requests_.size());
+    for (PSORequest& request : pso_requests_) {
+        if (request.render_pass == nullptr) {
+            request.render_pass = target_render_pass_;
+        }
+        if (PipelineCompileTask* task =
+                PipelineManager::instance().enqueue(request, progress_listener_)) {
+            submitted.push_back(task);
+        }
+    }
+
+    for (PipelineCompileTask* task : submitted) {
+        scheduler_->WaitforTask(task);
+    }
 }
 
 void AsyncLoader::ExecuteRange(enki::TaskSetPartition range, uint32_t threadnum) {

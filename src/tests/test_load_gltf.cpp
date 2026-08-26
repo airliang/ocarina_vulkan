@@ -11,7 +11,7 @@
 #include "framework/camera.h"
 #include "framework/resource_manager.h"
 #include "framework/material.h"
-#include "framework/pipeline_compile_task.h"
+#include "framework/pso_request.h"
 #include "framework/frame_resources.h"
 #include "framework/gltf_async_loader.h"
 #include "framework/loading_progress_listener.h"
@@ -55,16 +55,20 @@ int main(int argc, char* argv[]) {
     renderer.set_camera(&camera);
     renderer.set_loading_progress_listener(&loading_progress);
 
-    std::vector<PipelineCompileTask::Entry> pipeline_entries;
-    pipeline_entries.push_back(PipelineCompileTask::Entry::make_graphics(
-        fs::absolute(shader_vert).string(),
-        fs::absolute(shader_frag).string()));
+    RenderPassCreation render_pass_creation;
+    render_pass_creation.swapchain_clear_color = make_float4(0.15f, 0.15f, 0.18f, 1.0f);
+    render_pass_creation.swapchain_clear_depth = 1.0f;
+    render_pass_creation.swapchain_clear_stencil = 0;
+    RHIRenderPass* render_pass = device.create_render_pass(render_pass_creation);
 
+    const std::string shader_vert_abs = fs::absolute(shader_vert).string();
+    const std::string shader_frag_abs = fs::absolute(shader_frag).string();
     GltfAsyncLoader gltf_loader(
         &renderer.task_scheduler(),
         &device,
-        &pipeline_entries,
-        fs::absolute(gltf_path).string());
+        PSORequest::make_graphics(shader_vert_abs, shader_frag_abs, render_pass),
+        fs::absolute(gltf_path).string(),
+        render_pass);
 
     const uint64_t model_matrix_name_id = hash64("modelMatrix");
     const uint64_t model_matrix_inverse_name_id = hash64("modelMatrixInverse");
@@ -80,12 +84,6 @@ int main(int argc, char* argv[]) {
             reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix_inverse)),
             sizeof(world_matrix_inverse));
     };
-
-    RenderPassCreation render_pass_creation;
-    render_pass_creation.swapchain_clear_color = make_float4(0.15f, 0.15f, 0.18f, 1.0f);
-    render_pass_creation.swapchain_clear_depth = 1.0f;
-    render_pass_creation.swapchain_clear_stencil = 0;
-    RHIRenderPass* render_pass = device.create_render_pass(render_pass_creation);
 
     ImguiRenderer imgui_renderer(*window);
     imgui_renderer.init(device);

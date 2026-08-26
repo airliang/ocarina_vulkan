@@ -35,14 +35,18 @@ struct ImguiCreation;
 
 class OC_RHI_API Device : public concepts::Noncopyable {
 public:
-    class Impl : public concepts::Noncopyable {
+    class OC_RHI_API Impl : public concepts::Noncopyable {
     protected:
         RHIContext *context_{};
         friend class Device;
 
     public:
         explicit Impl(RHIContext *ctx) : context_(ctx) {}
-        explicit Impl(RHIContext *ctx, const InstanceCreation &instance_creation) : context_(ctx) {}
+        explicit Impl(RHIContext *ctx, const InstanceCreation &instance_creation) : context_(ctx) {
+            (void)instance_creation;
+        }
+        virtual ~Impl() = default;
+
         [[nodiscard]] virtual handle_ty create_buffer(size_t size, const string &desc, bool exported = false) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_buffer(
             size_t size,
@@ -76,6 +80,13 @@ public:
                                                                      TextureUsageFlags usage) noexcept = 0;
         virtual void destroy_texture(handle_ty handle) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept = 0;
+        /// Cache lookup only; returns 0 / InvalidUI64 when the module is not loaded yet.
+        [[nodiscard]] virtual handle_ty find_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept {
+            (void)file_name;
+            (void)shader_type;
+            (void)options;
+            return InvalidUI64;
+        }
         virtual void destroy_shader(handle_ty handle) noexcept = 0;
         [[nodiscard]] RHIContext *context() noexcept { return context_; }
         virtual VertexBuffer *create_vertex_buffer() noexcept = 0;
@@ -85,7 +96,6 @@ public:
         virtual void wait_idle() noexcept {}
         virtual RHIRenderPass *create_render_pass(const RenderPassCreation &render_pass_creation) noexcept = 0;
         virtual void destroy_render_pass(RHIRenderPass *render_pass) noexcept = 0;
-        virtual std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) noexcept = 0;
         virtual bool build_pipeline_layout_desc(const handle_ty shaders[PipelineState::MAX_SHADER_STAGE], PipelineLayoutDesc& out_desc) noexcept = 0;
         virtual RHIPipelineLayout* create_pipeline_layout(const PipelineLayoutDesc& desc) noexcept = 0;
         virtual void destroy_pipeline_layout(RHIPipelineLayout* layout) noexcept = 0;
@@ -182,8 +192,18 @@ public:
     [[nodiscard]] Texture create_render_target_texture(uint32_t width, uint32_t height, PixelStorage pixel_storage,
                                                      TextureUsageFlags usage) const noexcept;
 
-    [[nodiscard]] handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, std::set<std::string> &options) {
+    [[nodiscard]] handle_ty create_shader_from_file(
+        const std::string &file_name,
+        ShaderType shader_type,
+        const std::set<std::string> &options) {
         return impl_->create_shader_from_file(file_name, shader_type, options);
+    }
+
+    [[nodiscard]] handle_ty find_shader_from_file(
+        const std::string &file_name,
+        ShaderType shader_type,
+        const std::set<std::string> &options) {
+        return impl_->find_shader_from_file(file_name, shader_type, options);
     }
 
     [[nodiscard]] VertexBuffer *create_vertex_buffer() {
@@ -212,10 +232,6 @@ public:
 
     void destroy_render_pass(RHIRenderPass *render_pass) {
         impl_->destroy_render_pass(render_pass);
-    }
-
-    [[nodiscard]] std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) {
-        return impl_->create_descriptor_set_layout(shaders, shaders_count);
     }
 
     [[nodiscard]] bool build_pipeline_layout_desc(const handle_ty shaders[PipelineState::MAX_SHADER_STAGE], PipelineLayoutDesc& out_desc) noexcept {

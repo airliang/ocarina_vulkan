@@ -3,12 +3,14 @@
 //
 
 #include "primitive.h"
-#include "pipeline_manager.h"
 #include "material.h"
 #include "entity_component_system.h"
 #include "core/hash.h"
 #include "mesh.h"
 #include "transform_component.h"
+#include "rhi/shader_base.h"
+#include <algorithm>
+#include <cstring>
 
 namespace ocarina {
 
@@ -22,6 +24,29 @@ void Primitive::sync_render_component_material_buffer(RenderComponent& render_co
     render_component.material_buffer_size = material_->material_buffer_size();
 }
 
+RenderComponent* Primitive::current_render_component() noexcept {
+    if (entity_index_ == InvalidUI32) {
+        return nullptr;
+    }
+    return &EntityComponentSystem::instance().render_component(entity_index_);
+}
+
+void Primitive::ensure_push_constants_from_shaders(RenderComponent& render_component) {
+    if (!render_component.push_constants.empty() || material_ == nullptr) {
+        return;
+    }
+
+    const PipelineState& pipeline_state = material_->get_pipeline_state();
+    const RHIShader* vertex = reinterpret_cast<const RHIShader*>(pipeline_state.shaders[0]);
+    const RHIShader* pixel = reinterpret_cast<const RHIShader*>(pipeline_state.shaders[1]);
+    if (vertex != nullptr) {
+        vertex->collect_push_constant_ranges(render_component.push_constants);
+    }
+    if (pixel != nullptr) {
+        pixel->collect_push_constant_ranges(render_component.push_constants);
+    }
+}
+
 void Primitive::set_material(Material* material) {
     if (material_ == material) {
         return;
@@ -31,15 +56,10 @@ void Primitive::set_material(Material* material) {
     last_push_constant_transform_version_ = InvalidUI32;
 
     if (entity_index_ != InvalidUI32) {
-        sync_render_component_material_buffer(
-            EntityComponentSystem::instance().render_component(entity_index_));
-    }
-}
-
-Primitive::~Primitive() {
-    if (push_constant_data_) {
-        ocarina::deallocate(push_constant_data_);
-        push_constant_data_ = nullptr;
+        RenderComponent& render_component =
+            EntityComponentSystem::instance().render_component(entity_index_);
+        render_component.push_constants.clear();
+        sync_render_component_material_buffer(render_component);
     }
 }
 
@@ -54,13 +74,13 @@ void Primitive::initialize_render_component(
     Device* device,
     RenderComponent& render_component,
     TransformComponent& transform) {
+    (void)device;
     if (render_component_initialized_) {
         return;
     }
 
     render_component.mesh_id = InvalidUI32;
-    render_component.push_constant_data = nullptr;
-    render_component.push_constant_size = 0;
+    render_component.push_constants.clear();
     render_component.material_buffer_offset = InvalidUI32;
     render_component.material_buffer_size = 0;
 
@@ -74,27 +94,14 @@ void Primitive::initialize_render_component(
         render_component.mesh_id = mesh_->mesh_id();
     }
 
-    const PipelineState& pipeline_state = material_->get_pipeline_state();
-    RHIPipelineLayout* pipeline_layout = PipelineManager::instance().get_pipeline_layout(
-        pipeline_state.shaders);
-    const uint32_t push_constant_size = pipeline_layout != nullptr ? pipeline_layout->push_constant_size : 0;
-    if (push_constant_data_ == nullptr && push_constant_size > 0) {
-        push_constant_data_ = ocarina::allocate(push_constant_size);
-        memset(push_constant_data_, 0, push_constant_size);
-    }
-
+    // Push-constant ranges come from shader reflection — no RHIPipelineLayout required.
+    ensure_push_constants_from_shaders(render_component);
     update_push_constants(transform);
 
-    render_component.push_constant_size = push_constant_size;
-    render_component.push_constant_data = push_constant_data_;
     render_component_initialized_ = true;
 }
 
 void Primitive::write_ssbo_index_push_constants() {
-    if (push_constant_data_ == nullptr) {
-        return;
-    }
-
     if (entity_index_ != InvalidUI32) {
         set_push_constant_variable(
             hash64("transform_index"),
@@ -114,6 +121,10 @@ void Primitive::write_ssbo_index_push_constants() {
 }
 
 void Primitive::update_push_constants(TransformComponent& transform) {
+    if (RenderComponent* render_component = current_render_component()) {
+        ensure_push_constants_from_shaders(*render_component);
+    }
+
     write_ssbo_index_push_constants();
 
     if (update_push_constant_function_ == nullptr) {
@@ -137,20 +148,30 @@ void Primitive::update_render_component(
 }
 
 void Primitive::set_push_constant_variable(uint64_t name_id, const std::byte* data, size_t size) {
-    if (push_constant_data_ == nullptr || material_ == nullptr) {
+    if (data == nullptr || size == 0) {
         return;
     }
 
-    const PipelineState& pipeline_state = material_->get_pipeline_state();
-    RHIPipelineLayout* pipeline_layout = PipelineManager::instance().get_pipeline_layout(
-        pipeline_state.shaders);
-    if (pipeline_layout == nullptr) {
+    RenderComponent* render_component = current_render_component();
+    if (render_component == nullptr) {
         return;
     }
 
-    const auto it = pipeline_layout->push_constant_variables_.find(name_id);
-    if (it != pipeline_layout->push_constant_variables_.end()) {
-        memcpy(push_constant_data_ + it->second.offset, data, size);
+    ensure_push_constants_from_shaders(*render_component);
+
+    for (PushConstantRange& range : render_component->push_constants) {
+        const auto it = range.variables.find(name_id);
+        if (it == range.variables.end()) {
+            continue;
+        }
+
+        const size_t copy_size = std::min(size, it->second.size);
+        if (it->second.offset + copy_size > range.size
+            || it->second.offset + copy_size > PushConstantRange::kMaxDataBytes) {
+            return;
+        }
+        std::memcpy(range.data.data() + it->second.offset, data, copy_size);
+        return;
     }
 }
 

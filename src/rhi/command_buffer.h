@@ -28,7 +28,11 @@ public:
         virtual void bind_pipeline(const RHIPipeline* pipeline) = 0;
         virtual void bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t first_set, uint32_t descriptor_set_count, handle_ty pipeline_layout) = 0;
         virtual void draw_indexed(uint32_t index_count, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance) = 0;
-        virtual void push_constants(const void* data, uint32_t offset, uint32_t size) = 0;
+        virtual void push_constants(
+            const void* data,
+            uint32_t offset,
+            uint32_t size,
+            uint32_t shader_stage_flags) = 0;
         virtual void draw_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) = 0;
         virtual void draw_indexed_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) = 0;
         virtual void set_vertex_buffer(VertexBuffer* vertex_buffer, uint32_t base_vertex = 0) = 0;
@@ -168,9 +172,13 @@ public:
     {
         impl_->copy_buffer_to_texture(src_buffer, dst_texture, regions, region_count);
     }
-    void push_constants(const void* data, uint32_t offset, uint32_t size)
+    void push_constants(
+        const void* data,
+        uint32_t offset,
+        uint32_t size,
+        uint32_t shader_stage_flags)
     {
-        impl_->push_constants(data, offset, size);
+        impl_->push_constants(data, offset, size, shader_stage_flags);
     }
     void submit_to_queue(QueueType queue_type, Fence* fence)
     {

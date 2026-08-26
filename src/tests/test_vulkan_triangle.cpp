@@ -24,7 +24,7 @@
 #include "framework/resource_manager.h"
 #include "framework/material.h"
 #include "framework/async_loader.h"
-#include "framework/pipeline_compile_task.h"
+#include "framework/pso_request.h"
 #include "framework/frame_resources.h"
 #include "framework/global_gpu_storage.h"
 
@@ -71,23 +71,18 @@ int main(int argc, char *argv[]) {
 
     const fs::path source_dir = fs::path(__FILE__).parent_path();
     const fs::path project_root = source_dir.parent_path().parent_path();
-    const fs::path shader_vert = project_root / "res/shaderlibrary/builtin/triangle.vert";
-    const fs::path shader_frag = project_root / "res/shaderlibrary/builtin/triangle.frag";
-
-    std::vector<PipelineCompileTask::Entry> pipeline_entries;
-    pipeline_entries.push_back(PipelineCompileTask::Entry::make_graphics(
-        fs::absolute(shader_vert).string(),
-        fs::absolute(shader_frag).string()));
+    const std::string shader_vert = fs::absolute(project_root / "res/shaderlibrary/builtin/triangle.vert").string();
+    const std::string shader_frag = fs::absolute(project_root / "res/shaderlibrary/builtin/triangle.frag").string();
 
     AsyncLoader async_loader(
         &renderer.task_scheduler(),
         &device,
-        &pipeline_entries,
-        [&material, &triangle_mesh, &pipeline_entries](Device* device) {
+        [&material, &triangle_mesh, shader_vert, shader_frag](Device* device) {
+        std::set<string> options;
         material = ResourceManager::instance().create_material(
             device,
-            pipeline_entries[0].vertex_shader(),
-            pipeline_entries[0].pixel_shader());
+            device->create_shader_from_file(shader_vert, ShaderType::VertexShader, options),
+            device->create_shader_from_file(shader_frag, ShaderType::PixelShader, options));
         triangle_mesh = create_triangle_mesh();
         ResourceManager::instance().add_mesh("triangle", triangle_mesh);
     });
@@ -118,6 +113,10 @@ int main(int argc, char *argv[]) {
     render_pass_creation.swapchain_clear_depth = 1.0f;
     render_pass_creation.swapchain_clear_stencil = 0;
     RHIRenderPass* render_pass = device.create_render_pass(render_pass_creation);
+
+    async_loader.set_pso_requests({
+        PSORequest::make_graphics(shader_vert, shader_frag, render_pass),
+    });
 
     renderer.set_scene(&scene);
     renderer.set_camera(&camera);

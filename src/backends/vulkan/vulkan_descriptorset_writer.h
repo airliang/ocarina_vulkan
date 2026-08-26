@@ -34,6 +34,9 @@ public:
     void bind_sampler(uint32_t binding, VkDescriptorImageInfo* sampler, uint32_t element_index = 0, uint32_t sampler_count = 1);
     void build(VulkanDevice* device);
 
+    /// Apply deferred constructor writes via vkUpdateDescriptorSets (render thread only).
+    void commit_updates();
+
     void update_buffer(uint64_t name_id, handle_ty buffer, uint32_t offset, uint32_t size) override;
     void update_storage_buffer(uint64_t name_id, handle_ty buffer, uint64_t offset, uint64_t size);
     void update_texture(uint64_t name_id, Texture *texture) override;
@@ -50,8 +53,10 @@ private:
     /// Capacity is reserved up front to keep pending write pointers stable.
     std::vector<VkDescriptorImageInfo> default_image_infos_;
     VulkanDescriptorSet *descriptor_set_ = nullptr;
+    VulkanDevice *device_ = nullptr;
     VulkanDescriptorImage *bindless_textures_descriptor_ = nullptr;
     VulkanDescriptorSampler *bindless_samplers_descriptor_ = nullptr;
+    bool pending_commit_ = false;
 };
 
 }// namespace ocarina

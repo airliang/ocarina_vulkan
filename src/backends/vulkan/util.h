@@ -505,4 +505,57 @@ static uint32_t get_vulkan_format_size(VkFormat format) {
     }
 }
 
+inline VkFormat vertex_format_to_vulkan(VertexFormat format) noexcept {
+    switch (format) {
+        case VertexFormat::R32_SFLOAT: return VK_FORMAT_R32_SFLOAT;
+        case VertexFormat::R32G32_SFLOAT: return VK_FORMAT_R32G32_SFLOAT;
+        case VertexFormat::R32G32B32_SFLOAT: return VK_FORMAT_R32G32B32_SFLOAT;
+        case VertexFormat::R32G32B32A32_SFLOAT: return VK_FORMAT_R32G32B32A32_SFLOAT;
+        case VertexFormat::R32_SINT: return VK_FORMAT_R32_SINT;
+        case VertexFormat::R32G32_SINT: return VK_FORMAT_R32G32_SINT;
+        case VertexFormat::R32G32B32_SINT: return VK_FORMAT_R32G32B32_SINT;
+        case VertexFormat::R32G32B32A32_SINT: return VK_FORMAT_R32G32B32A32_SINT;
+        case VertexFormat::R32_UINT: return VK_FORMAT_R32_UINT;
+        case VertexFormat::R32G32_UINT: return VK_FORMAT_R32G32_UINT;
+        case VertexFormat::R32G32B32_UINT: return VK_FORMAT_R32G32B32_UINT;
+        case VertexFormat::R32G32B32A32_UINT: return VK_FORMAT_R32G32B32A32_UINT;
+        case VertexFormat::R8G8B8A8_UNORM: return VK_FORMAT_R8G8B8A8_UNORM;
+        case VertexFormat::Undefined:
+        default:
+            return VK_FORMAT_UNDEFINED;
+    }
+}
+
+inline VertexFormat vertex_format_from_vulkan(VkFormat format) noexcept {
+    switch (format) {
+        case VK_FORMAT_R32_SFLOAT: return VertexFormat::R32_SFLOAT;
+        case VK_FORMAT_R32G32_SFLOAT: return VertexFormat::R32G32_SFLOAT;
+        case VK_FORMAT_R32G32B32_SFLOAT: return VertexFormat::R32G32B32_SFLOAT;
+        case VK_FORMAT_R32G32B32A32_SFLOAT: return VertexFormat::R32G32B32A32_SFLOAT;
+        case VK_FORMAT_R32_SINT: return VertexFormat::R32_SINT;
+        case VK_FORMAT_R32G32_SINT: return VertexFormat::R32G32_SINT;
+        case VK_FORMAT_R32G32B32_SINT: return VertexFormat::R32G32B32_SINT;
+        case VK_FORMAT_R32G32B32A32_SINT: return VertexFormat::R32G32B32A32_SINT;
+        case VK_FORMAT_R32_UINT: return VertexFormat::R32_UINT;
+        case VK_FORMAT_R32G32_UINT: return VertexFormat::R32G32_UINT;
+        case VK_FORMAT_R32G32B32_UINT: return VertexFormat::R32G32B32_UINT;
+        case VK_FORMAT_R32G32B32A32_UINT: return VertexFormat::R32G32B32A32_UINT;
+        case VK_FORMAT_R8G8B8A8_UNORM: return VertexFormat::R8G8B8A8_UNORM;
+        default:
+            return VertexFormat::Undefined;
+    }
+}
+
+inline VkVertexInputRate vertex_input_rate_to_vulkan(VertexInputRate rate) noexcept {
+    return rate == VertexInputRate::Instance
+        ? VK_VERTEX_INPUT_RATE_INSTANCE
+        : VK_VERTEX_INPUT_RATE_VERTEX;
+}
+
+inline VertexInputRate vertex_input_rate_from_vulkan(VkVertexInputRate rate) noexcept {
+    return rate == VK_VERTEX_INPUT_RATE_INSTANCE
+        ? VertexInputRate::Instance
+        : VertexInputRate::Vertex;
+}
+
 }// namespace ocarina 

@@ -170,6 +170,14 @@ handle_ty VulkanDevice::create_shader_from_file(const std::string &file_name, Sh
     return 0;
 }
 
+handle_ty VulkanDevice::find_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept {
+    VulkanShader* shader = VulkanDriver::instance().find_shader(shader_type, file_name, options, "main");
+    if (shader) {
+        return reinterpret_cast<handle_ty>(shader);
+    }
+    return InvalidUI64;
+}
+
 void VulkanDevice::destroy_buffer(handle_ty handle) noexcept {
     VulkanBuffer* buffer = (VulkanBuffer*)handle;
     if (buffer) {
@@ -520,12 +528,6 @@ RHIRenderPass *VulkanDevice::create_render_pass(const RenderPassCreation &render
 
 void VulkanDevice::destroy_render_pass(RHIRenderPass *render_pass) noexcept {
     VulkanDriver::instance().destroy_render_pass(static_cast<VulkanRenderPass*>(render_pass));
-}
-
-std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> VulkanDevice::create_descriptor_set_layout(void **shaders, uint32_t shaders_count) noexcept {
-    //VulkanShader **vulkan_shaders = reinterpret_cast<VulkanShader **>(shaders);
-    VulkanShader *vulkan_shaders[2] = {reinterpret_cast<VulkanShader *>(shaders[0]), reinterpret_cast<VulkanShader *>(shaders[1])};
-    return VulkanDriver::instance().create_descriptor_set_layout(vulkan_shaders, shaders_count);
 }
 
 //DescriptorSetWriter *VulkanDevice::create_descriptor_set_writer(DescriptorSet *descriptor_set, void **shaders, uint32_t shaders_count) noexcept {

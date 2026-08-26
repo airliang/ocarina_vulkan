@@ -17,6 +17,7 @@ namespace ocarina {
 
 class VulkanDevice;
 class VulkanDescriptorSetLayout;
+class DescriptorSetLayout;
 struct ShaderKey;
 
 struct VulkanShaderVariableBinding
@@ -113,7 +114,7 @@ public:
     VulkanShader(VulkanDevice *device, std::span<uint32_t> shaderCode, const std::string_view &entryPoint, VkShaderStageFlagBits stage);
     ~VulkanShader() override;
 
-    size_t get_vertex_attribute_count() {
+    size_t get_vertex_attribute_count() const {
         return vertex_attributes_.size();
     }
 
@@ -192,6 +193,35 @@ public:
         const char* struct_name,
         std::vector<RHIShader::UniformBufferMember>& members,
         uint32_t& struct_size) const override;
+
+    [[nodiscard]] bool has_descriptor_binding(const char* binding_name) const override;
+
+    [[nodiscard]] bool get_shader_vertex_inputs(
+        VertexInputAttributeDescription* out_attributes,
+        uint32_t* inout_attribute_count,
+        VertexInputBindingDescription* out_bindings,
+        uint32_t* inout_binding_count) const override;
+
+    void assign_descriptor_set_layouts(
+        const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>& layouts) noexcept {
+        descriptor_set_layouts_ = layouts;
+        descriptor_set_layouts_ready_ = true;
+    }
+
+    [[nodiscard]] const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>&
+    descriptor_set_layouts() const noexcept override {
+        return descriptor_set_layouts_;
+    }
+
+    [[nodiscard]] bool has_descriptor_set_layouts() const noexcept {
+        return descriptor_set_layouts_ready_;
+    }
+
+    void collect_push_constant_ranges(std::vector<PushConstantRange>& ranges) const override;
+
+private:
+    std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_layouts_ = {};
+    bool descriptor_set_layouts_ready_ = false;
 };
 
 struct ShaderKey {
@@ -237,6 +267,12 @@ public:
                                       const std::set<std::string> &options,
                                       const std::string &entry_point);
 
+    [[nodiscard]] VulkanShader* find_from_HLSL(
+        ShaderType shader_type,
+        const std::string &filename,
+        const std::set<std::string> &options,
+        const std::string &entry_point) const;
+
     VulkanShaderEntry get_shader_entry(handle_ty shader_handle) const;
     void clear(VulkanDevice *device);
     VulkanShader* get_shader(handle_ty shader_handle) const
@@ -250,7 +286,7 @@ public:
         return nullptr;
     }
 private:
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     std::unordered_map<ShaderKey, VulkanShader*, HashShaderKeyFunction> vulkan_shaders_;
     std::unordered_map<handle_ty, VulkanShader*> shaders_;
     std::map<handle_ty, VulkanShaderEntry> vulkan_shader_entries_;

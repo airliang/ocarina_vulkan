@@ -72,7 +72,7 @@ public:
         set_property(hash64(name), texture);
     }
 
-    /// True when every bound texture is GPU_Ready.
+    /// True when every bound texture is GPU_Visible (descriptor / bindless slot ready).
     /// Cached; re-evaluates only while textures_ready_ is still false.
     [[nodiscard]] bool is_renderable();
 
@@ -160,6 +160,7 @@ public:
 
     [[nodiscard]] const MaterialProperty* find_material_property(uint64_t name_id) const noexcept;
 
+    /// True when this material owns a local (non-global) descriptor set.
     [[nodiscard]] bool has_material_descriptor_set() const noexcept {
         return material_descriptor_set_ != nullptr;
     }
@@ -173,16 +174,15 @@ public:
     }
 
     [[nodiscard]] DescriptorSetLayout* material_descriptor_set_layout() const noexcept {
-        return material_descriptor_set_index_ != InvalidUI32
-            ? descriptor_set_layouts_[material_descriptor_set_index_]
-            : nullptr;
+        return material_descriptor_set_layout_;
     }
 
     [[nodiscard]] bool is_material_descriptor_set_index(uint32_t set_index) const noexcept {
         return material_descriptor_set_ != nullptr && material_descriptor_set_index_ == set_index;
     }
 
-    /// True when material_ubo lives on the same set as the global bindless array.
+    /// True when material_ubo lives on the same set as the global bindless array
+    /// (set itself is owned by FrameResources, not this material).
     [[nodiscard]] bool uses_shared_bindless_descriptor_set() const noexcept {
         return uses_shared_bindless_descriptor_set_;
     }
@@ -221,17 +221,25 @@ private:
         uint64_t buffer_name_id,
         uint32_t buffer_size,
         const std::vector<RHIShader::UniformBufferMember>& members);
-    [[nodiscard]] bool detect_global_material_buffer_layout() const noexcept;
+    /// Detect `g_materials` from pixel-shader reflection (not pipeline layout —
+    /// layout may still be null when Material is constructed under async PSO compile).
+    [[nodiscard]] static bool detect_global_material_buffer(
+        const RHIShader* pixel_shader) noexcept;
     void ensure_uniform_buffer_gpus();
     void upload_owned_uniform_buffer(uint64_t name_id, OwnedUniformBuffer& ubo);
+    /// Queue at most one pending uniform-buffer upload per material.
     void queue_uniform_buffer_update();
     [[nodiscard]] OwnedUniformBuffer* find_owned_uniform_buffer(uint64_t name_id) noexcept;
-    void bind_texture(uint64_t name_id, const TextureHandle& handle);
+    /// Store texture handle / bindless index; descriptor writes happen in FrameResources.
+    Texture* bind_texture(uint64_t name_id, const TextureHandle& handle);
     [[nodiscard]] bool evaluate_textures_ready();
     [[nodiscard]] static Texture* resolve_texture_handle(const TextureHandle& handle) noexcept;
+    /// Resolve a writable descriptor set by property / UBO binding name.
+    [[nodiscard]] DescriptorSet* find_descriptor_set_by_property_name(uint64_t name_id) const noexcept;
 
-    DescriptorSetLayout *descriptor_set_layout_ = nullptr;
+    /// Non-global descriptor set layouts only (indexed by Vulkan set index).
     std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_layouts_ = {};
+    DescriptorSetLayout* material_descriptor_set_layout_ = nullptr;
     PipelineState pipeline_state_;
     bool pipeline_dirty_ = true;
 
@@ -246,6 +254,7 @@ private:
     /// Owned GPU UBOs keyed by binding name id (local descriptor-set path only).
     std::unordered_map<uint64_t, OwnedUniformBuffer> uniform_buffers_;
 
+    /// Owned local descriptor set only (never a FrameResources global singleton).
     DescriptorSet* material_descriptor_set_ = nullptr;
     uint32_t material_descriptor_set_index_ = InvalidUI32;
     bool uses_shared_bindless_descriptor_set_ = false;
@@ -262,8 +271,6 @@ private:
     /// True while a uniform-buffer update for this material is already queued.
     bool in_update_queue_ = false;
 
-    /// Queue at most one pending uniform-buffer upload per material per frame batch.
-    void try_queue_uniform_buffer_update();
     void clear_uniform_buffer_update_queued() noexcept { in_update_queue_ = false; }
 
     friend class FrameResources;

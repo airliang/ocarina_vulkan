@@ -27,7 +27,7 @@
 #include "framework/resource_manager.h"
 #include "framework/material.h"
 #include "framework/async_loader.h"
-#include "framework/pipeline_compile_task.h"
+#include "framework/pso_request.h"
 #include "framework/frame_resources.h"
 #include "framework/global_gpu_storage.h"
 #include "framework/transform_component.h"
@@ -90,13 +90,10 @@ int main(int argc, char *argv[]) {
     const fs::path texture_vert = project_root / "res/shaderlibrary/builtin/texture.vert";
     const fs::path texture_frag = project_root / "res/shaderlibrary/builtin/texture.frag";
 
-    std::vector<PipelineCompileTask::Entry> pipeline_entries;
-    pipeline_entries.push_back(PipelineCompileTask::Entry::make_graphics(
-        fs::absolute(triangle_vert).string(),
-        fs::absolute(triangle_frag).string()));
-    pipeline_entries.push_back(PipelineCompileTask::Entry::make_graphics(
-        fs::absolute(texture_vert).string(),
-        fs::absolute(texture_frag).string()));
+    const std::string triangle_vert_abs = fs::absolute(triangle_vert).string();
+    const std::string triangle_frag_abs = fs::absolute(triangle_frag).string();
+    const std::string texture_vert_abs = fs::absolute(texture_vert).string();
+    const std::string texture_frag_abs = fs::absolute(texture_frag).string();
 
     const TextureUsageFlags offscreen_usage = static_cast<TextureUsageFlags>(
         static_cast<uint32_t>(TextureUsageFlags::RenderTarget) | static_cast<uint32_t>(TextureUsageFlags::ShaderReadOnly));
@@ -112,16 +109,16 @@ int main(int argc, char *argv[]) {
     AsyncLoader async_loader(
         &renderer.task_scheduler(),
         &device,
-        &pipeline_entries,
-        [&](Device* load_device) {
+        [&, triangle_vert_abs, triangle_frag_abs, texture_vert_abs, texture_frag_abs](Device* load_device) {
+        std::set<string> options;
         triangle_material = ResourceManager::instance().create_material(
             load_device,
-            pipeline_entries[0].vertex_shader(),
-            pipeline_entries[0].pixel_shader());
+            load_device->create_shader_from_file(triangle_vert_abs, ShaderType::VertexShader, options),
+            load_device->create_shader_from_file(triangle_frag_abs, ShaderType::PixelShader, options));
         quad_material = ResourceManager::instance().create_material(
             load_device,
-            pipeline_entries[1].vertex_shader(),
-            pipeline_entries[1].pixel_shader());
+            load_device->create_shader_from_file(texture_vert_abs, ShaderType::VertexShader, options),
+            load_device->create_shader_from_file(texture_frag_abs, ShaderType::PixelShader, options));
         quad_mesh = ResourceManager::instance().create_mesh("quad");
     });
 
@@ -169,9 +166,9 @@ int main(int argc, char *argv[]) {
     renderer.pass_group(PassGroupId::Offscreen).add_render_pass(offscreen_pass);
     renderer.pass_group(PassGroupId::UI).add_render_pass(swapchain_pass);
 
-    async_loader.set_compile_targets({
-        PipelineCompileTarget{&pipeline_entries[0], offscreen_pass},
-        PipelineCompileTarget{&pipeline_entries[1], swapchain_pass},
+    async_loader.set_pso_requests({
+        PSORequest::make_graphics(triangle_vert_abs, triangle_frag_abs, offscreen_pass),
+        PSORequest::make_graphics(texture_vert_abs, texture_frag_abs, swapchain_pass),
     });
 
     ImguiRenderer imgui_renderer(*window);

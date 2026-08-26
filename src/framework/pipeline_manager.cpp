@@ -2,6 +2,7 @@
 
 #include "frame_resources.h"
 #include "loading_progress_listener.h"
+#include "rhi/context.h"
 #include "rhi/device.h"
 #include "rhi/renderpass.h"
 
@@ -16,6 +17,7 @@ void PipelineManager::initialize(Device* device, enki::TaskScheduler* scheduler)
     device_ = device;
     scheduler_ = scheduler;
     shutdown_requested_.store(false, std::memory_order_release);
+    default_requests_enqueued_ = false;
     initialized_ = device_ != nullptr && scheduler_ != nullptr;
 }
 
@@ -30,9 +32,63 @@ void PipelineManager::shutdown() noexcept {
     initialized_ = false;
     device_ = nullptr;
     scheduler_ = nullptr;
+    default_requests_enqueued_ = false;
 }
 
-bool PipelineManager::try_mark_pending(const PipelineCacheKey& key) noexcept {
+fs::path PipelineManager::resolve_builtin_shader_dir() const {
+    if (!shader_library_root_.empty()) {
+        return shader_library_root_;
+    }
+
+    fs::path cursor = RHIContext::instance().runtime_directory();
+    for (int i = 0; i < 8; ++i) {
+        const fs::path candidate = cursor / "res" / "shaderlibrary" / "builtin";
+        if (fs::exists(candidate / "triangle.vert")) {
+            return candidate;
+        }
+        if (!cursor.has_parent_path() || cursor == cursor.root_path()) {
+            break;
+        }
+        cursor = cursor.parent_path();
+    }
+    return {};
+}
+
+void PipelineManager::create_default_psos(RHIRenderPass* render_pass) {
+    if (!initialized_ || render_pass == nullptr || default_requests_enqueued_) {
+        return;
+    }
+
+    const fs::path builtin = resolve_builtin_shader_dir();
+    if (builtin.empty()) {
+        return;
+    }
+
+    const auto make_abs = [&](const char* name) {
+        return fs::absolute(builtin / name).string();
+    };
+
+    enqueue(PSORequest::make_graphics(
+        make_abs("mesh.vert"), make_abs("mesh.frag"), render_pass));
+
+    default_requests_enqueued_ = true;
+}
+
+bool PipelineManager::try_mark_pending_request(const PSORequest& request) noexcept {
+    std::lock_guard<std::mutex> lock(pending_mutex_);
+    if (pending_requests_.find(request) != pending_requests_.end()) {
+        return false;
+    }
+    pending_requests_.insert(request);
+    return true;
+}
+
+void PipelineManager::clear_pending_request(const PSORequest& request) noexcept {
+    std::lock_guard<std::mutex> lock(pending_mutex_);
+    pending_requests_.erase(request);
+}
+
+bool PipelineManager::try_mark_pending_key(const PipelineCacheKey& key) noexcept {
     std::lock_guard<std::mutex> lock(pending_mutex_);
     if (pending_keys_.find(key) != pending_keys_.end()) {
         return false;
@@ -42,55 +98,77 @@ bool PipelineManager::try_mark_pending(const PipelineCacheKey& key) noexcept {
 }
 
 void PipelineManager::on_compile_task_finished(
-    const PipelineState& pipeline_state,
-    RHIRenderPass* render_pass) noexcept {
-    if (render_pass == nullptr) {
-        return;
+    const PSORequest& request,
+    const PipelineCacheKey& key) noexcept {
+    {
+        std::lock_guard<std::mutex> lock(pending_mutex_);
+        pending_requests_.erase(request);
+        if (key.render_pass != nullptr) {
+            pending_keys_.erase(key);
+        }
     }
-    const PipelineCacheKey key = MakePipelineCacheKey(pipeline_state, render_pass);
-    std::lock_guard<std::mutex> lock(pending_mutex_);
-    pending_keys_.erase(key);
 }
 
-void PipelineManager::insert_pipeline_cache(
-    const PipelineState& pipeline_state,
-    RHIRenderPass* render_pass,
-    RHIPipeline* pipeline) noexcept {
-    if (pipeline == nullptr || render_pass == nullptr) {
+void PipelineManager::insert_pipeline_cache(const PipelineCacheKey& key, RHIPipeline* pipeline) noexcept {
+    if (pipeline == nullptr || key.render_pass == nullptr) {
         return;
     }
-    const PipelineCacheKey key = MakePipelineCacheKey(pipeline_state, render_pass);
     std::lock_guard<std::mutex> cache_lock(cache_mutex_);
     pipelines_.emplace(key, pipeline);
 }
 
-void PipelineManager::enqueue(const PipelineState& pipeline_state, RHIRenderPass* render_pass) {
-    if (!initialized_ || render_pass == nullptr || scheduler_ == nullptr
+PipelineCompileTask* PipelineManager::enqueue(
+    PSORequest request,
+    LoadingProgressListener* progress_listener) {
+    if (!initialized_ || scheduler_ == nullptr || device_ == nullptr
+        || request.render_pass == nullptr
         || shutdown_requested_.load(std::memory_order_acquire)) {
-        return;
+        return nullptr;
     }
 
-    const PipelineCacheKey key = MakePipelineCacheKey(pipeline_state, render_pass);
+    if (!try_mark_pending_request(request)) {
+        return nullptr;
+    }
 
-    {
-        std::lock_guard<std::mutex> cache_lock(cache_mutex_);
-        if (pipelines_.find(key) != pipelines_.end()) {
-            return;
+    // Resolve shader modules from cache when paths are provided.
+    if (request.has_shader_paths() && !request.has_shader_handles()) {
+        const handle_ty vs = device_->find_shader_from_file(
+            request.vertex_shader_path,
+            ShaderType::VertexShader,
+            request.vertex_options);
+        const handle_ty ps = device_->find_shader_from_file(
+            request.pixel_shader_path,
+            ShaderType::PixelShader,
+            request.pixel_options);
+
+        if (vs != 0 && vs != InvalidUI64 && ps != 0 && ps != InvalidUI64) {
+            request.vertex_shader = vs;
+            request.pixel_shader = ps;
         }
     }
 
-    if (!try_mark_pending(key)) {
-        return;
+    if (request.has_shader_handles()) {
+        const PipelineCacheKey key = request.make_cache_key();
+        if (has_pipeline(key)) {
+            clear_pending_request(request);
+            return nullptr;
+        }
+        if (!try_mark_pending_key(key)) {
+            clear_pending_request(request);
+            return nullptr;
+        }
     }
 
     PipelineCompileTask* task = task_pool_.Acquire();
-    task->Initialize(
-        device_,
-        this,
-        &task_pool_,
-        pipeline_state,
-        render_pass);
+    task->Initialize(device_, this, &task_pool_, std::move(request), progress_listener);
     scheduler_->AddTaskSetToPipe(task);
+    return task;
+}
+
+PipelineCompileTask* PipelineManager::enqueue(
+    const PipelineState& pipeline_state,
+    RHIRenderPass* render_pass) {
+    return enqueue(PSORequest::from_pipeline_state(pipeline_state, render_pass), nullptr);
 }
 
 void PipelineManager::update() {
@@ -100,78 +178,9 @@ void PipelineManager::update() {
     task_pool_.reclaim();
 }
 
-void PipelineManager::submit_compile_target(
-    const PipelineCompileTarget& target,
-    LoadingProgressListener* progress_listener) {
-    if (target.entry == nullptr || target.render_pass == nullptr) {
-        return;
-    }
-
-    if (!target.entry->is_graphics()) {
-        PipelineCompileTask* task = task_pool_.Acquire();
-        task->Initialize(
-            device_,
-            this,
-            &task_pool_,
-            target.entry,
-            target.render_pass,
-            progress_listener);
-        scheduler_->AddTaskSetToPipe(task);
-        return;
-    }
-
-    const PipelineState pipeline_state = PipelineCompileTask::MakePipelineStateFromEntry(target.entry);
-    if (has_pipeline(pipeline_state, target.render_pass)) {
-        return;
-    }
-
-    const PipelineCacheKey key{pipeline_state, target.render_pass};
-    if (!try_mark_pending(key)) {
-        return;
-    }
-
-    PipelineCompileTask* task = task_pool_.Acquire();
-    task->Initialize(
-        device_,
-        this,
-        &task_pool_,
-        target.entry,
-        target.render_pass,
-        progress_listener);
-    scheduler_->AddTaskSetToPipe(task);
-}
-
-void PipelineManager::compile_targets(
-    const std::vector<PipelineCompileTarget>& targets,
-    LoadingProgressListener* progress_listener) {
-    if (!initialized_ || scheduler_ == nullptr || device_ == nullptr
-        || targets.empty() || shutdown_requested_.load(std::memory_order_acquire)) {
-        return;
-    }
-
-    std::unordered_set<PipelineCompileTask::Entry*> resolved_entries;
-    for (const PipelineCompileTarget& target : targets) {
-        if (target.entry == nullptr) {
-            continue;
-        }
-        if (!resolved_entries.insert(target.entry).second) {
-            continue;
-        }
-
-        PipelineCompileTask::ResolveEntryShaders(device_, target.entry, progress_listener);
-        if (target.entry->is_graphics()) {
-            const PipelineState pipeline_state =
-                PipelineCompileTask::MakePipelineStateFromEntry(target.entry);
-            create_and_cache_pipeline_layout(pipeline_state.shaders);
-        }
-    }
-
-    for (const PipelineCompileTarget& target : targets) {
-        submit_compile_target(target, progress_listener);
-    }
-}
-
-RHIPipeline* PipelineManager::get_pipeline(const PipelineState& pipeline_state, RHIRenderPass* render_pass) const noexcept {
+RHIPipeline* PipelineManager::get_pipeline(
+    const PipelineState& pipeline_state,
+    RHIRenderPass* render_pass) const noexcept {
     if (render_pass == nullptr) {
         return nullptr;
     }
@@ -182,7 +191,14 @@ RHIPipeline* PipelineManager::get_pipeline(const PipelineState& pipeline_state, 
     return it != pipelines_.end() ? it->second : nullptr;
 }
 
-bool PipelineManager::has_pipeline(const PipelineState& pipeline_state, RHIRenderPass* render_pass) const noexcept {
+bool PipelineManager::has_pipeline(const PipelineCacheKey& key) const noexcept {
+    std::lock_guard<std::mutex> cache_lock(cache_mutex_);
+    return pipelines_.find(key) != pipelines_.end();
+}
+
+bool PipelineManager::has_pipeline(
+    const PipelineState& pipeline_state,
+    RHIRenderPass* render_pass) const noexcept {
     return get_pipeline(pipeline_state, render_pass) != nullptr;
 }
 
@@ -236,7 +252,6 @@ RHIPipelineLayout* PipelineManager::create_and_cache_pipeline_layout(
         }
     }
 
-    // Register FRAME/SCENE/shared-bindless sets from binding names (outside cache lock).
     FrameResources::instance().ensure_global_descriptor_sets(cached_layout);
     return cached_layout;
 }
@@ -245,6 +260,7 @@ void PipelineManager::clear_cache() noexcept {
     {
         std::lock_guard<std::mutex> lock(pending_mutex_);
         pending_keys_.clear();
+        pending_requests_.clear();
     }
 
     if (device_ == nullptr) {

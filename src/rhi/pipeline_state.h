@@ -264,8 +264,21 @@ struct PipelineStateHash {
 };
 
 struct PushConstantVariable {
-    size_t offset;
-    size_t size;
+    size_t offset = 0;
+    size_t size = 0;
+};
+
+/// One reflected push-constant block with a fixed-size CPU staging buffer.
+/// Created from shader reflection; not tied to RHIPipelineLayout readiness.
+struct PushConstantRange {
+    static constexpr size_t kMaxDataBytes = 128;
+
+    std::array<std::byte, kMaxDataBytes> data{};
+    uint16_t offset = 0;
+    uint16_t size = 0;
+    uint8_t shader_stage = 0;
+    string name;
+    std::unordered_map<uint64_t, PushConstantVariable> variables;
 };
 
 struct PipelineLayoutPushConstantRange {
@@ -288,15 +301,16 @@ struct RHIPipelineLayout {
     handle_ty handle = InvalidUI64;
     uint32_t push_constant_size = 0;
     uint32_t push_constant_shader_stage_flags = 0;
-    std::unordered_map<uint64_t, PushConstantVariable> push_constant_variables_;
     std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_layouts_ = {};
+    /// Set indices that are process-wide globals for this layout (FRAME / SCENE / bindless…).
+    std::array<uint32_t, MAX_DESCRIPTOR_SETS_PER_SHADER> global_descriptor_set_indices_ = {};
+    uint8_t global_descriptor_set_count_ = 0;
 };
 
 struct RHIPipeline
 {
     handle_ty pipeline_layout = InvalidUI64;
     uint32_t push_constant_size = 0;
-    std::unordered_map<uint64_t, PushConstantVariable> push_constant_variables_;
 };
 
 }// namespace ocarina

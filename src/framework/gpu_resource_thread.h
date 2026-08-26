@@ -17,6 +17,7 @@ namespace ocarina {
 class Device;
 class Texture;
 class Mesh;
+class StagingUploader;
 
 enum class GPUResourceRequestType : uint8_t {
     TextureFromData,
@@ -109,14 +110,19 @@ public:
     /// If the thread is not running yet, processes immediately on the caller.
     void enqueue(std::shared_ptr<GPUResourceRequest> request);
 
+    /// Shared growable staging uploader for this thread's CPU → GPU copies.
+    [[nodiscard]] StagingUploader &staging_uploader();
+
 private:
     [[nodiscard]] bool should_stop() const noexcept;
+    void ensure_staging_uploader();
 
     ThreadSafeQueue<std::shared_ptr<GPUResourceRequest>> queue_;
     std::atomic<bool> running_{false};
     std::atomic<bool> shutdown_requested_{false};
     enki::TaskScheduler* scheduler_ = nullptr;
     Device* device_ = nullptr;
+    StagingUploader* staging_uploader_ = nullptr;
 };
 
 }// namespace ocarina

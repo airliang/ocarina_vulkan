@@ -3,12 +3,13 @@
 #include "core/header.h"
 #include "core/hash.h"
 #include "core/util.h"
-#include "rhi/pipeline_state.h"
+#include "pipeline_state.h"
 
 namespace ocarina {
 
 class RHIRenderPass;
 
+/// Cache key for graphics PSOs. Vertex inputs are implied by the vertex shader handle.
 struct PipelineCacheKey {
     PipelineState pipeline_state{};
     RHIRenderPass* render_pass = nullptr;
@@ -22,7 +23,10 @@ struct PipelineCacheKey {
 inline PipelineCacheKey MakePipelineCacheKey(
     const PipelineState& pipeline_state,
     RHIRenderPass* render_pass) noexcept {
-    return PipelineCacheKey{pipeline_state.ForCacheKey(), render_pass};
+    PipelineCacheKey key{};
+    key.pipeline_state = pipeline_state.ForCacheKey();
+    key.render_pass = render_pass;
+    return key;
 }
 
 struct PipelineCacheKeyHash {

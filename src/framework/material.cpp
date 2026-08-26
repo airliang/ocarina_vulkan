@@ -1,28 +1,50 @@
 #include "material.h"
 #include "core/hash.h"
+#include "core/logging.h"
 #include "entity_component_system.h"
-#include "pipeline_manager.h"
 #include "resource_manager.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/device.h"
+#include "rhi/pipeline_state.h"
 #include "rhi/shader_base.h"
 #include "rhi/resources/resource.h"
 #include "framework/frame_resources.h"
 #include <algorithm>
 
 namespace ocarina {
+namespace {
+
+void collect_non_global_descriptor_set_layouts(
+    const RHIShader* shader,
+    std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>& out_layouts) {
+    if (shader == nullptr) {
+        return;
+    }
+    for (DescriptorSetLayout* layout : shader->descriptor_set_layouts()) {
+        if (layout == nullptr || FrameResources::is_global_singleton_layout(layout)) {
+            continue;
+        }
+        const uint32_t set_index = layout->get_descriptor_set_index();
+        if (set_index < out_layouts.size()) {
+            out_layouts[set_index] = layout;
+        }
+    }
+}
+
+}// namespace
 
 Material::Material(Device* device, handle_ty vertex_shader, handle_ty pixel_shader) : device_(device) {
     pipeline_state_ = PipelineState::MakeGraphicsDefault(vertex_shader, pixel_shader);
 
-    // Descriptor set layouts / pipeline layout are created in PipelineCompileTask /
-    // PipelineManager, which also registers FRAME/SCENE/shared-bindless sets.
-    if (RHIPipelineLayout* pipeline_layout =
-            PipelineManager::instance().get_pipeline_layout(pipeline_state_.shaders)) {
-        descriptor_set_layouts_ = pipeline_layout->descriptor_set_layouts_;
-    }
+    const RHIShader* vertex = reinterpret_cast<const RHIShader*>(vertex_shader);
+    const RHIShader* pixel = reinterpret_cast<const RHIShader*>(pixel_shader);
+    uses_global_material_buffer_ = detect_global_material_buffer(pixel);
 
-    uses_global_material_buffer_ = detect_global_material_buffer_layout();
+    // Layouts come from shaders (created after reflection), not from RHIPipelineLayout /
+    // async PSO compile — so local sets are available as soon as shaders exist.
+    collect_non_global_descriptor_set_layouts(vertex, descriptor_set_layouts_);
+    collect_non_global_descriptor_set_layouts(pixel, descriptor_set_layouts_);
+
     create_material_descriptor_set();
     init_material_properties(pixel_shader);
     ensure_uniform_buffer_gpus();
@@ -100,20 +122,9 @@ void Material::add_uniform_buffer_property(
     }
 }
 
-bool Material::detect_global_material_buffer_layout() const noexcept {
-    static const uint64_t kGMaterials = hash64(kMaterialsBufferName);
-    for (DescriptorSetLayout* layout : descriptor_set_layouts_) {
-        if (layout == nullptr || !FrameResources::is_global_singleton_layout(layout)) {
-            continue;
-        }
-        const size_t bindings_count = layout->get_bindings_count();
-        for (size_t i = 0; i < bindings_count; ++i) {
-            if (layout->get_binding_name_id(i) == kGMaterials) {
-                return true;
-            }
-        }
-    }
-    return false;
+bool Material::detect_global_material_buffer(const RHIShader* pixel_shader) noexcept {
+    return pixel_shader != nullptr
+        && pixel_shader->has_descriptor_binding(kMaterialsBufferName);
 }
 
 void Material::init_material_properties(handle_ty pixel_shader) {
@@ -136,7 +147,7 @@ void Material::init_material_properties(handle_ty pixel_shader) {
     //    Each UBO becomes a UniformBuffer property; its members become UniformMember properties.
     if (!uses_global_material_buffer_ && !uses_shared_bindless_descriptor_set_) {
         for (DescriptorSetLayout* layout : descriptor_set_layouts_) {
-            if (layout == nullptr || FrameResources::is_global_singleton_layout(layout)) {
+            if (layout == nullptr) {
                 continue;
             }
             const size_t bindings_count = layout->get_bindings_count();
@@ -186,49 +197,72 @@ Material::OwnedUniformBuffer* Material::find_owned_uniform_buffer(uint64_t name_
     return &it->second;
 }
 
+DescriptorSet* Material::find_descriptor_set_by_property_name(uint64_t name_id) const noexcept {
+    if (name_id == 0) {
+        return material_descriptor_set_;
+    }
+
+    if (DescriptorSet* set = FrameResources::instance().get_global_descriptor_set(name_id)) {
+        return set;
+    }
+
+    const MaterialProperty* property = find_material_property(name_id);
+    if (property != nullptr && property->uniform_buffer_name_id != 0
+        && property->uniform_buffer_name_id != name_id) {
+        if (DescriptorSet* set =
+                FrameResources::instance().get_global_descriptor_set(property->uniform_buffer_name_id)) {
+            return set;
+        }
+    }
+
+    return material_descriptor_set_;
+}
+
 void Material::create_material_descriptor_set() {
     // Only allocate sets that are not process-wide globals (FRAME / SCENE / shared bindless).
-    // Those are created during pipeline layout registration in PipelineManager.
     uint32_t material_set_index = InvalidUI32;
+    DescriptorSetLayout* material_layout = nullptr;
     for (size_t set_index = 0; set_index < descriptor_set_layouts_.size(); ++set_index) {
         DescriptorSetLayout* layout = descriptor_set_layouts_[set_index];
         if (layout == nullptr) {
             continue;
         }
-        if (FrameResources::is_global_singleton_layout(layout)) {
-            continue;
-        }
         material_set_index = static_cast<uint32_t>(set_index);
+        material_layout = layout;
         break;
     }
 
-    // Legacy material_ubo may live on the shared bindless MATERIAL_SET.
+    // Legacy material_ubo may live on the shared bindless MATERIAL_SET (FrameResources-owned).
     if (material_set_index == InvalidUI32 && !uses_global_material_buffer_) {
-        for (size_t set_index = 0; set_index < descriptor_set_layouts_.size(); ++set_index) {
-            DescriptorSetLayout* layout = descriptor_set_layouts_[set_index];
-            if (layout == nullptr || !layout->has_uniform_buffer_binding()) {
+        const RHIShader* shaders[2] = {
+            reinterpret_cast<const RHIShader*>(pipeline_state_.shaders[0]),
+            reinterpret_cast<const RHIShader*>(pipeline_state_.shaders[1]),
+        };
+        for (const RHIShader* shader : shaders) {
+            if (shader == nullptr) {
                 continue;
             }
-            if (FrameResources::is_global_singleton_layout(layout)) {
+            for (DescriptorSetLayout* layout : shader->descriptor_set_layouts()) {
+                if (layout == nullptr
+                    || !layout->has_uniform_buffer_binding()
+                    || !FrameResources::is_global_singleton_layout(layout)) {
+                    continue;
+                }
                 material_descriptor_set_index_ = layout->get_descriptor_set_index();
-                material_descriptor_set_ =
-                    FrameResources::instance().get_descriptor_set(material_descriptor_set_index_);
-                uses_shared_bindless_descriptor_set_ = material_descriptor_set_ != nullptr;
+                material_descriptor_set_ = nullptr;
+                material_descriptor_set_layout_ = nullptr;
+                uses_shared_bindless_descriptor_set_ = true;
                 return;
             }
         }
     }
 
-    if (material_set_index == InvalidUI32) {
-        return;
-    }
-
-    DescriptorSetLayout* material_layout = descriptor_set_layouts_[material_set_index];
-    if (material_layout == nullptr) {
+    if (material_set_index == InvalidUI32 || material_layout == nullptr) {
         return;
     }
 
     material_descriptor_set_index_ = material_set_index;
+    material_descriptor_set_layout_ = material_layout;
     uses_shared_bindless_descriptor_set_ = false;
     material_descriptor_set_ = material_layout->allocate_descriptor_set();
 }
@@ -254,7 +288,15 @@ void Material::set_property(uint64_t name_id, const void* data, size_t size) {
             ecs.material_parameters_buffer().data() + material_buffer_offset_;
         const size_t copy_size = std::min(size, static_cast<size_t>(property->size));
         memcpy(buffer_data + property->offset, data, copy_size);
-        try_queue_uniform_buffer_update();
+        queue_uniform_buffer_update();
+        return;
+    }
+
+    // Resolve the descriptor set that owns this UBO binding by property / binding name.
+    if (find_descriptor_set_by_property_name(
+            property->uniform_buffer_name_id != 0 ? property->uniform_buffer_name_id : name_id)
+        == nullptr
+        && material_descriptor_set_ == nullptr) {
         return;
     }
 
@@ -293,7 +335,7 @@ Texture* Material::resolve_texture_handle(const TextureHandle& handle) noexcept 
     return BindlessTextureRegistry::instance().get_texture(handle.bindless_index_);
 }
 
-void Material::bind_texture(uint64_t name_id, const TextureHandle& handle) {
+Texture* Material::bind_texture(uint64_t name_id, const TextureHandle& handle) {
     texture_handles_[name_id] = handle;
     if (uses_global_material_buffer_ && handle.bindless_index_ != InvalidUI32) {
         set_property(name_id, handle.bindless_index_);
@@ -302,33 +344,23 @@ void Material::bind_texture(uint64_t name_id, const TextureHandle& handle) {
     Texture* texture = resolve_texture_handle(handle);
     if (texture != nullptr) {
         texture_handles_[name_id].texture_ = texture;
-        if (!uses_global_material_buffer_ &&
-            !uses_shared_bindless_descriptor_set_ &&
-            material_descriptor_set_ != nullptr) {
-            material_descriptor_set_->update_texture(name_id, texture);
-        }
     }
     textures_ready_.store(false, std::memory_order_relaxed);
+    return texture;
 }
 
 bool Material::evaluate_textures_ready() {
     bool all_ready = true;
     for (auto& [name_id, handle] : texture_handles_) {
+        (void)name_id;
         Texture* texture = resolve_texture_handle(handle);
         if (texture == nullptr) {
             all_ready = false;
             continue;
         }
         handle.texture_ = texture;
-        if (!texture->is_gpu_ready()) {
+        if (texture->gpu_resource_state() < GPUResourceState::GPU_Visible) {
             all_ready = false;
-            continue;
-        }
-
-        if (!uses_global_material_buffer_ &&
-            !uses_shared_bindless_descriptor_set_ &&
-            material_descriptor_set_ != nullptr) {
-            material_descriptor_set_->update_texture(name_id, texture);
         }
     }
     return all_ready;
@@ -373,14 +405,19 @@ void Material::ensure_uniform_buffer_gpus() {
 }
 
 void Material::upload_owned_uniform_buffer(uint64_t name_id, OwnedUniformBuffer& ubo) {
-    if (material_descriptor_set_ == nullptr || ubo.buffer.handle() == 0 || ubo.size == 0) {
+    if (ubo.buffer.handle() == 0 || ubo.size == 0) {
+        return;
+    }
+
+    DescriptorSet* descriptor_set = find_descriptor_set_by_property_name(name_id);
+    if (descriptor_set == nullptr) {
         return;
     }
 
     ubo.buffer.copy_from_immediately(ubo.cpu_data.data(), ubo.size);
 
     if (!ubo.descriptor_bound) {
-        material_descriptor_set_->update_buffer(
+        descriptor_set->update_buffer(
             name_id,
             ubo.buffer.handle(),
             0,
@@ -390,7 +427,7 @@ void Material::upload_owned_uniform_buffer(uint64_t name_id, OwnedUniformBuffer&
     ubo.dirty = false;
 }
 
-void Material::try_queue_uniform_buffer_update() {
+void Material::queue_uniform_buffer_update() {
     if (in_update_queue_) {
         return;
     }
@@ -399,13 +436,8 @@ void Material::try_queue_uniform_buffer_update() {
         MaterialUpdateRequest::make_uniform_buffer(this));
 }
 
-void Material::queue_uniform_buffer_update() {
-    try_queue_uniform_buffer_update();
-}
-
 void Material::apply_material_parameters_upload() {
     if (uses_global_material_buffer_) {
-        // Global `g_materials` uploads are handled directly in FrameResources.
         return;
     }
 
@@ -423,10 +455,6 @@ void Material::apply_material_parameters_upload() {
 }
 
 void Material::add_sampler(uint64_t name_id, const TextureSampler& sampler) {
-    if (material_descriptor_set_ == nullptr) {
-        return;
-    }
-
     FrameResources::instance().queue_material_update(
         MaterialUpdateRequest::make_sampler(this, name_id, sampler));
 }

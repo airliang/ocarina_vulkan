@@ -2,9 +2,10 @@
 
 #include "core/header.h"
 #include "core/stl.h"
-#include "pipeline_cache_key.h"
 #include "pipeline_compile_task.h"
 #include "pipeline_layout_cache_key.h"
+#include "pso_request.h"
+#include "rhi/pipeline_cache_key.h"
 #include "rhi/pipeline_state.h"
 
 #include <atomic>
@@ -28,16 +29,29 @@ public:
     void initialize(Device* device, enki::TaskScheduler* scheduler);
     void shutdown() noexcept;
 
-    // Runtime: acquire a pooled PipelineCompileTask and AddTaskSetToPipe immediately.
-    void enqueue(const PipelineState& pipeline_state, RHIRenderPass* render_pass);
+    /// Optional root for builtin shaders (res/shaderlibrary/builtin). Auto-detected if empty.
+    void set_shader_library_root(fs::path root) noexcept { shader_library_root_ = std::move(root); }
 
-    // Reclaim finished pooled tasks (safe to call every frame from the render thread).
+    /// Enqueue the default mesh PSO for @p render_pass (typically the swapchain pass).
+    void create_default_psos(RHIRenderPass* render_pass);
+
+    /// Enqueue a PSO compile request. Ignores duplicates already in the request queue.
+    /// Returns the submitted task (or nullptr if ignored / already cached).
+    PipelineCompileTask* enqueue(
+        PSORequest request,
+        LoadingProgressListener* progress_listener = nullptr);
+
+    /// Runtime path: material already has resolved shader handles.
+    PipelineCompileTask* enqueue(
+        const PipelineState& pipeline_state,
+        RHIRenderPass* render_pass);
+
     void update();
 
     [[nodiscard]] RHIPipeline* get_pipeline(const PipelineState& pipeline_state, RHIRenderPass* render_pass) const noexcept;
     [[nodiscard]] bool has_pipeline(const PipelineState& pipeline_state, RHIRenderPass* render_pass) const noexcept;
+    [[nodiscard]] bool has_pipeline(const PipelineCacheKey& key) const noexcept;
 
-    // Creates descriptor-set layouts + pipeline layout and caches them.
     RHIPipelineLayout* create_and_cache_pipeline_layout(
         const handle_ty shaders[PipelineState::MAX_SHADER_STAGE]);
 
@@ -49,37 +63,28 @@ public:
         return get_pipeline_layout(shaders);
     }
 
-    // Async-load: resolve shaders synchronously, then submit one async task per target.
-    void compile_targets(
-        const std::vector<PipelineCompileTarget>& targets,
-        LoadingProgressListener* progress_listener = nullptr);
+    void insert_pipeline_cache(const PipelineCacheKey& key, RHIPipeline* pipeline) noexcept;
 
-    void insert_pipeline_cache(
-        const PipelineState& pipeline_state,
-        RHIRenderPass* render_pass,
-        RHIPipeline* pipeline) noexcept;
-
-    void on_compile_task_finished(
-        const PipelineState& pipeline_state,
-        RHIRenderPass* render_pass) noexcept;
+    void on_compile_task_finished(const PSORequest& request, const PipelineCacheKey& key) noexcept;
 
     [[nodiscard]] PipelineCompileTaskPool& task_pool() noexcept { return task_pool_; }
-
     [[nodiscard]] Device* device() const noexcept { return device_; }
     [[nodiscard]] enki::TaskScheduler* scheduler() const noexcept { return scheduler_; }
 
 private:
     friend class PipelineCompileTask;
 
-    void submit_compile_target(
-        const PipelineCompileTarget& target,
-        LoadingProgressListener* progress_listener = nullptr);
     void clear_cache() noexcept;
-    [[nodiscard]] bool try_mark_pending(const PipelineCacheKey& key) noexcept;
+    [[nodiscard]] fs::path resolve_builtin_shader_dir() const;
+    [[nodiscard]] bool try_mark_pending_request(const PSORequest& request) noexcept;
+    void clear_pending_request(const PSORequest& request) noexcept;
+    [[nodiscard]] bool try_mark_pending_key(const PipelineCacheKey& key) noexcept;
 
     Device* device_ = nullptr;
     enki::TaskScheduler* scheduler_ = nullptr;
     PipelineCompileTaskPool task_pool_;
+    fs::path shader_library_root_;
+    bool default_requests_enqueued_ = false;
 
     mutable std::mutex cache_mutex_;
     std::unordered_map<PipelineCacheKey, RHIPipeline*, PipelineCacheKeyHash> pipelines_;
@@ -87,6 +92,7 @@ private:
 
     std::mutex pending_mutex_;
     std::unordered_set<PipelineCacheKey, PipelineCacheKeyHash> pending_keys_;
+    std::unordered_set<PSORequest, PSORequestHash, PSORequestIdentityEqual> pending_requests_;
 
     std::atomic<bool> shutdown_requested_{false};
     bool initialized_ = false;

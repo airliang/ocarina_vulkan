@@ -3,7 +3,7 @@
 #include "core/header.h"
 #include "core/stl.h"
 #include "ext/enkiTS/src/TaskScheduler.h"
-#include "pipeline_compile_task.h"
+#include "pso_request.h"
 
 namespace ocarina {
 
@@ -11,18 +11,16 @@ class Device;
 class LoadingProgressListener;
 class RHIRenderPass;
 
-/// Worker-thread loader: compiles pipelines (shaders → layouts → PSO), then runs load().
+/// Worker-thread loader: enqueues PSORequests, then runs load().
 class AsyncLoader : public enki::ITaskSet {
 public:
     AsyncLoader(
         enki::TaskScheduler* scheduler,
         Device* device,
-        std::vector<PipelineCompileTask::Entry>* pipeline_entries,
         RHIRenderPass* target_render_pass = nullptr,
         LoadingProgressListener* progress_listener = nullptr)
         : scheduler_(scheduler),
           device_(device),
-          pipeline_entries_(pipeline_entries),
           target_render_pass_(target_render_pass),
           progress_listener_(progress_listener)
     {
@@ -33,13 +31,11 @@ public:
     AsyncLoader(
         enki::TaskScheduler* scheduler,
         Device* device,
-        std::vector<PipelineCompileTask::Entry>* pipeline_entries,
         ocarina::function<void(Device*)> task,
         RHIRenderPass* target_render_pass = nullptr,
         LoadingProgressListener* progress_listener = nullptr)
         : scheduler_(scheduler),
           device_(device),
-          pipeline_entries_(pipeline_entries),
           target_render_pass_(target_render_pass),
           progress_listener_(progress_listener),
           task_(std::move(task))
@@ -74,10 +70,14 @@ public:
         complete_callback_ = std::move(complete_callback);
     }
 
-    // One compile task per target (Entry + render pass). Preferred over target_render_pass_.
-    void set_compile_targets(std::vector<PipelineCompileTarget> targets) noexcept
+    void set_pso_requests(std::vector<PSORequest> requests) noexcept
     {
-        compile_targets_ = std::move(targets);
+        pso_requests_ = std::move(requests);
+    }
+
+    void add_pso_request(PSORequest request) noexcept
+    {
+        pso_requests_.push_back(std::move(request));
     }
 
     void set_target_render_pass(RHIRenderPass* render_pass) noexcept
@@ -99,13 +99,11 @@ protected:
     [[nodiscard]] virtual uint32_t count_load_progress_steps() { return 0; }
 
     void run_pipeline_compile_tasks() noexcept;
-    [[nodiscard]] std::vector<PipelineCompileTarget> build_compile_targets() const noexcept;
     [[nodiscard]] uint32_t count_pending_shader_steps() const noexcept;
 
     enki::TaskScheduler* scheduler_ = nullptr;
     Device* device_ = nullptr;
-    std::vector<PipelineCompileTask::Entry>* pipeline_entries_ = nullptr;
-    std::vector<PipelineCompileTarget> compile_targets_;
+    std::vector<PSORequest> pso_requests_;
     RHIRenderPass* target_render_pass_ = nullptr;
     LoadingProgressListener* progress_listener_ = nullptr;
 

@@ -30,7 +30,7 @@
 #include "framework/material.h"
 #include "framework/transform.h"
 #include "framework/async_loader.h"
-#include "framework/pipeline_compile_task.h"
+#include "framework/pso_request.h"
 #include "rhi/bindless_sampler.h"
 #include "rhi/fence.h"
 #include "framework/frame_resources.h"
@@ -67,20 +67,18 @@ int main(int argc, char *argv[]) {
 
     Renderer renderer(&device);
 
-    std::vector<PipelineCompileTask::Entry> pipeline_entries;
-    pipeline_entries.push_back(PipelineCompileTask::Entry::make_graphics(
-        fs::absolute(shader_vert).string(),
-        fs::absolute(shader_frag).string()));
+    const std::string shader_vert_abs = fs::absolute(shader_vert).string();
+    const std::string shader_frag_abs = fs::absolute(shader_frag).string();
 
     AsyncLoader async_loader(
         &renderer.task_scheduler(),
         &device,
-        &pipeline_entries,
-        [&material, &quad_mesh, &texture_handle, &pipeline_entries, &texture_path](Device* local_device) {
+        [&material, &quad_mesh, &texture_handle, shader_vert_abs, shader_frag_abs, texture_path](Device* local_device) {
+        std::set<string> options;
         material = ResourceManager::instance().create_material(
             local_device,
-            pipeline_entries[0].vertex_shader(),
-            pipeline_entries[0].pixel_shader());
+            local_device->create_shader_from_file(shader_vert_abs, ShaderType::VertexShader, options),
+            local_device->create_shader_from_file(shader_frag_abs, ShaderType::PixelShader, options));
 
         Image image = Image::load(texture_path, ColorSpace::SRGB);
         TextureViewCreation texture_view = {};
@@ -130,6 +128,10 @@ int main(int argc, char *argv[]) {
     render_pass_creation.swapchain_clear_depth = 1.0f;
     render_pass_creation.swapchain_clear_stencil = 0;
     RHIRenderPass *render_pass = device.create_render_pass(render_pass_creation);
+
+    async_loader.set_pso_requests({
+        PSORequest::make_graphics(shader_vert_abs, shader_frag_abs, render_pass),
+    });
 
     auto setup_quad_with_pipeline = [&](Primitive& quad) {
         setup_quad(quad);

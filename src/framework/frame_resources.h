@@ -18,6 +18,7 @@ namespace ocarina {
 class DescriptorSetLayout;
 class DescriptorSet;
 class Camera;
+class CommandBuffer;
 class Device;
 class Material;
 
@@ -85,7 +86,6 @@ public:
     DescriptorSet* get_global_descriptor_set(const std::string& name) const;
 
     /// Create-or-return a process-wide descriptor set at @p descriptor_set_index.
-    /// Global sets are stored in a vector indexed by set index (starting at 0).
     DescriptorSet* get_or_create_descriptor_set(
         uint32_t descriptor_set_index,
         const std::vector<uint64_t>& binding_name_ids,
@@ -108,8 +108,11 @@ public:
     /// `g_textures` / `samplers` / `g_materials` / bindless (MATERIAL).
     [[nodiscard]] static bool is_global_singleton_layout(const DescriptorSetLayout* layout) noexcept;
 
-    /// Create any FRAME/SCENE/shared-bindless sets declared by @p pipeline_layout (idempotent).
-    void ensure_global_descriptor_sets(const RHIPipelineLayout* pipeline_layout);
+    /// Create FRAME/SCENE/shared-bindless sets and record their set indices on @p pipeline_layout.
+    void ensure_global_descriptor_sets(RHIPipelineLayout* pipeline_layout);
+
+    /// Bind globals listed in @p pipeline_layout->global_descriptor_set_indices_.
+    void bind_global_descriptor_sets(CommandBuffer& cmd, const RHIPipelineLayout* pipeline_layout);
 
     /// Queue a bindless descriptor write (safe from loader / GPU-resource threads).
     /// Flushed on the render thread in update_per_frame().
@@ -128,15 +131,12 @@ public:
     [[nodiscard]] GlobalUniformBuffer& global_uniform_buffer() noexcept { return global_ubo_; }
     [[nodiscard]] const GlobalUniformBuffer& global_uniform_buffer() const noexcept { return global_ubo_; }
 
-    /// GPU buffer for `global_ubo` (FRAME_SET).
     [[nodiscard]] TypedBuffer<GlobalUniformBuffer>& global_ubo_buffer() noexcept { return global_ubo_buffer_; }
     [[nodiscard]] const TypedBuffer<GlobalUniformBuffer>& global_ubo_buffer() const noexcept { return global_ubo_buffer_; }
 
-    /// StructuredBuffer<Transform> transforms SSBO (SCENE_SET / BIND_TRANSFORM).
     [[nodiscard]] TypedBuffer<GPUTransform>& transform_buffer() noexcept { return transform_buffer_; }
     [[nodiscard]] const TypedBuffer<GPUTransform>& transform_buffer() const noexcept { return transform_buffer_; }
 
-    /// StructuredBuffer<MaterialParams> g_materials (MATERIAL_SET / BIND_MATERIAL).
     [[nodiscard]] TypedBuffer<MaterialParams>& material_buffer() noexcept { return material_buffer_; }
     [[nodiscard]] const TypedBuffer<MaterialParams>& material_buffer() const noexcept { return material_buffer_; }
 
@@ -145,16 +145,12 @@ public:
     void set_sun_intensity(float intensity) noexcept;
     void set_light_position(const float3& position) noexcept;
 
-    /// Optional extension hook (global UBO is always updated by the framework first).
     void set_update_callback(UpdateCallback cb) {
         update_ = std::move(cb);
     }
 
-    /// Called on the render thread each frame. Uploads globals, flushes bindless / material queues.
     void update_per_frame(double dt, Camera* camera = nullptr);
 
-    /// Destroy owned GPU buffers. Must be called while Device / VkDevice is still alive
-    /// (e.g. from Renderer::shutdown). Safe to call multiple times.
     void release_gpu_buffers();
 
 private:
@@ -170,7 +166,7 @@ private:
     void grow_material_gpu_buffer(size_t byte_count);
     void bind_global_ubo_if_needed();
     void bind_transform_storage_buffer_if_needed();
-    void bind_material_storage_buffer_if_needed();
+    void bind_material_storage_buffer();
     DescriptorSet* find_bindless_descriptor_set_locked() const;
 
     Device* device_ = nullptr;
@@ -196,6 +192,9 @@ private:
     bool transform_storage_descriptor_bound_ = false;
     TypedBuffer<MaterialParams> material_buffer_{};
     bool material_storage_descriptor_bound_ = false;
+    /// True when `material_buffer_` must be written into the global `g_materials` set.
+    /// Cleared only after a successful bind (retries across frames until the set exists).
+    bool material_storage_descriptor_dirty_ = false;
     UpdateCallback update_ = nullptr;
 };
 

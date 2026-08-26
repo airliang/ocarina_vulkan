@@ -14,11 +14,7 @@ class Texture;
 
 struct InstanceCreation {
     const char *applicationName;
-#ifdef _DEBUG
     bool validation = true;
-#else
-    bool validation = false;
-#endif
     std::vector<const char *> instanceExtentions;
     uint64_t windowHandle = InvalidUI64;
     /// Drawable size in pixels. Must be non-zero before creating a Vulkan device.
@@ -191,6 +187,63 @@ struct VertexBinding
 {
     uint32_t binding = 0;
     uint32_t stride = 0;
+};
+
+/// Backend-agnostic vertex attribute format (converted to VkFormat / DXGI_FORMAT in backends).
+enum class VertexFormat : uint16_t {
+    Undefined = 0,
+    R32_SFLOAT,
+    R32G32_SFLOAT,
+    R32G32B32_SFLOAT,
+    R32G32B32A32_SFLOAT,
+    R32_SINT,
+    R32G32_SINT,
+    R32G32B32_SINT,
+    R32G32B32A32_SINT,
+    R32_UINT,
+    R32G32_UINT,
+    R32G32B32_UINT,
+    R32G32B32A32_UINT,
+    R8G8B8A8_UNORM,
+};
+
+enum class VertexInputRate : uint8_t {
+    Vertex = 0,
+    Instance = 1,
+};
+
+struct VertexInputAttributeDescription {
+    uint8_t location = 0;
+    uint8_t binding = 0;
+    VertexFormat format = VertexFormat::Undefined;
+    uint32_t offset = 0;
+
+    bool operator==(const VertexInputAttributeDescription& other) const noexcept {
+        return location == other.location
+            && binding == other.binding
+            && format == other.format
+            && offset == other.offset;
+    }
+
+    bool operator!=(const VertexInputAttributeDescription& other) const noexcept {
+        return !(*this == other);
+    }
+};
+
+struct VertexInputBindingDescription {
+    uint16_t binding = 0;
+    VertexInputRate input_rate = VertexInputRate::Vertex;
+    uint32_t stride = 0;
+
+    bool operator==(const VertexInputBindingDescription& other) const noexcept {
+        return binding == other.binding
+            && input_rate == other.input_rate
+            && stride == other.stride;
+    }
+
+    bool operator!=(const VertexInputBindingDescription& other) const noexcept {
+        return !(*this == other);
+    }
 };
 
 /// Vertex attribute enum.

@@ -70,6 +70,7 @@ public:
                                                          TextureUsageFlags usage) noexcept override;
     void destroy_texture(handle_ty handle) noexcept override;
     [[nodiscard]] handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string>& options) noexcept override;
+    [[nodiscard]] handle_ty find_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string>& options) noexcept override;
     void destroy_shader(handle_ty handle) noexcept override;
     void shutdown();
     VertexBuffer* create_vertex_buffer() noexcept override;
@@ -80,7 +81,6 @@ public:
     void wait_idle() noexcept override;
     RHIRenderPass *create_render_pass(const RenderPassCreation &render_pass_creation) noexcept override;
     void destroy_render_pass(RHIRenderPass *render_pass) noexcept override;
-    std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(void **shaders, uint32_t shaders_count) noexcept override;    
     //DescriptorSetWriter *create_descriptor_set_writer(DescriptorSet *descriptor_set, void** shaders, uint32_t shaders_count) noexcept override;
     void bind_pipeline(const CommandBuffer& cmd_buffer, const handle_ty pipeline) noexcept override;
     bool build_pipeline_layout_desc(const handle_ty shaders[PipelineState::MAX_SHADER_STAGE], PipelineLayoutDesc& out_desc) noexcept override;

@@ -30,7 +30,7 @@ public:
     GltfAsyncLoader(
         enki::TaskScheduler* scheduler,
         Device* device,
-        std::vector<PipelineCompileTask::Entry>* pipeline_entries,
+        PSORequest mesh_pso_request,
         const std::string& gltf_file,
         RHIRenderPass* target_render_pass = nullptr);
 
@@ -59,6 +59,7 @@ private:
 
     std::string gltf_file_;
     fs::path gltf_directory_;
+    PSORequest mesh_pso_request_{};
     std::unique_ptr<tinygltf::Model> gltf_model_;
     bool gltf_model_parsed_ = false;
     bool gltf_parse_success_ = false;

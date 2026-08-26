@@ -55,6 +55,11 @@ public:
                                 const std::string &filename,
                                 const std::set<std::string> &options,
                                 const std::string &entry_point);
+    [[nodiscard]] VulkanShader* find_shader(
+        ShaderType shader_type,
+        const std::string &filename,
+        const std::set<std::string> &options,
+        const std::string &entry_point) const;
     VulkanShader* get_shader(handle_ty shader) const;
     OC_MAKE_MEMBER_GETTER(current_buffer, )
     [[nodiscard]] uint32_t current_frame() const noexcept;
@@ -64,7 +69,9 @@ public:
     //    return draw_cmd_buffers_[current_buffer_];
     //}
 
-    std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(VulkanShader *shaders[], uint32_t shaders_count);
+    void ensure_shader_descriptor_set_layouts(VulkanShader* shader);
+    [[nodiscard]] std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>
+    collect_pipeline_descriptor_set_layouts(VulkanShader* vertex_shader, VulkanShader* pixel_shader);
 
     /// Acquire the next swapchain image. Returns false when the surface is not
     /// drawable (minimized) or recreation failed; the caller must skip the frame.

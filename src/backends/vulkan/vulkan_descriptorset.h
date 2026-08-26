@@ -9,6 +9,7 @@
 #include "rhi/descriptor_set.h"
 #include <vulkan/vulkan.h>
 #include "vulkan_shader.h"
+#include <mutex>
 
 namespace ocarina {
 
@@ -191,6 +192,7 @@ public:
     void update_texture(uint64_t name_id, Texture *texture) override;
     void update_sampler(uint64_t name_id, const TextureSampler& sampler) override;
     void update_bindless_texture_at_index(uint32_t index, Texture *texture) override;
+    void commit_updates() override;
     VulkanDescriptorSetLayout *get_layout() const {
         return layout_;
     }
@@ -248,7 +250,14 @@ public:
     //VkDescriptorSet get_descriptor_set(const VulkanDescriptorSetLayout &layout, VulkanDevice *device);
     void clear();
 
-    std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> create_descriptor_set_layout(VulkanShader **shaders, uint32_t shaders_count);
+    /// Create (or reuse cached) descriptor set layouts for one shader from its reflection
+    /// bindings and store them on the shader. Safe to call multiple times.
+    void ensure_descriptor_set_layouts(VulkanShader* shader);
+
+    /// Assemble layouts for a graphics pipeline from VS+PS. Uses already-created per-shader
+    /// layouts when sets do not conflict; otherwise creates a merged cached layout.
+    [[nodiscard]] std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>
+    collect_pipeline_descriptor_set_layouts(VulkanShader* vertex_shader, VulkanShader* pixel_shader);
 
     struct DescriptorLayoutKey {
         std::vector<VulkanShaderVariableBinding> bindings;
@@ -332,6 +341,10 @@ public:
     };
 
     //VulkanDescriptorSetLayout* get_empty_descriptor_set_layout();
+
+    [[nodiscard]] std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>
+    create_or_get_descriptor_set_layouts(VulkanShader** shaders, uint32_t shaders_count);
+
 private:
     VulkanDevice *device_ = nullptr;
     //std::unordered_map<DescriptorLayoutKey, VulkanDescriptorSetLayout *, HashDescriptorLayoutKeyFunction> descriptor_set_layouts_;
@@ -342,6 +355,7 @@ private:
 
     std::unordered_map<uint64_t, VulkanDescriptorSetLayout*> descriptor_set_layouts_;
     std::array<DescriptorLayoutKey, MAX_DESCRIPTOR_SETS_PER_SHADER> cached_descriptor_set_layout_keys_ = {};
+    std::mutex layout_mutex_;
 };
 
 }// namespace ocarina

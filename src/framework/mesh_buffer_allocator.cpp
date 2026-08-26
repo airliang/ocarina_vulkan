@@ -1,4 +1,6 @@
 #include "mesh_buffer_allocator.h"
+#include "gpu_resource_thread.h"
+#include "staging_uploader.h"
 #include "rhi/device.h"
 #include "rhi/index_buffer.h"
 #include "rhi/resources/resource.h"
@@ -192,21 +194,26 @@ MeshGeometrySlice MeshBufferAllocator::upload(const MeshGeometryInput& input) {
     OC_ASSERT(vertex_buffer != nullptr);
     OC_ASSERT(index_buffer != nullptr);
 
-    vertex_buffer->upload_attribute_range(
+    StagingUploader& uploader = GPUResourceThread::instance().staging_uploader();
+
+    uploader.upload_vertex_attribute_range(
+        vertex_buffer,
         VertexAttributeType::Enum::Position,
         input.positions,
         slice.vertex_offset,
         input.vertex_count);
 
     if (input.normals != nullptr) {
-        vertex_buffer->upload_attribute_range(
+        uploader.upload_vertex_attribute_range(
+            vertex_buffer,
             VertexAttributeType::Enum::Normal,
             input.normals,
             slice.vertex_offset,
             input.vertex_count);
     } else {
         std::vector<Vector3> normals(input.vertex_count, kDefaultNormal);
-        vertex_buffer->upload_attribute_range(
+        uploader.upload_vertex_attribute_range(
+            vertex_buffer,
             VertexAttributeType::Enum::Normal,
             normals.data(),
             slice.vertex_offset,
@@ -214,14 +221,16 @@ MeshGeometrySlice MeshBufferAllocator::upload(const MeshGeometryInput& input) {
     }
 
     if (input.uvs != nullptr) {
-        vertex_buffer->upload_attribute_range(
+        uploader.upload_vertex_attribute_range(
+            vertex_buffer,
             VertexAttributeType::Enum::TexCoord0,
             input.uvs,
             slice.vertex_offset,
             input.vertex_count);
     } else {
         std::vector<Vector2> uvs(input.vertex_count, kDefaultUv);
-        vertex_buffer->upload_attribute_range(
+        uploader.upload_vertex_attribute_range(
+            vertex_buffer,
             VertexAttributeType::Enum::TexCoord0,
             uvs.data(),
             slice.vertex_offset,
@@ -229,21 +238,24 @@ MeshGeometrySlice MeshBufferAllocator::upload(const MeshGeometryInput& input) {
     }
 
     if (input.colors != nullptr) {
-        vertex_buffer->upload_attribute_range(
+        uploader.upload_vertex_attribute_range(
+            vertex_buffer,
             VertexAttributeType::Enum::Color0,
             input.colors,
             slice.vertex_offset,
             input.vertex_count);
     } else {
         std::vector<Vector4> colors(input.vertex_count, kDefaultColor);
-        vertex_buffer->upload_attribute_range(
+        uploader.upload_vertex_attribute_range(
+            vertex_buffer,
             VertexAttributeType::Enum::Color0,
             colors.data(),
             slice.vertex_offset,
             input.vertex_count);
     }
 
-    index_buffer->upload_indices_range(
+    uploader.upload_index_buffer_range(
+        index_buffer,
         input.indices,
         slice.index_offset,
         input.index_count);

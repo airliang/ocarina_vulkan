@@ -3,9 +3,11 @@
 #include "entity_component_system.h"
 #include "material.h"
 #include "resource_manager.h"
+#include "rhi/command_buffer.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/device.h"
 #include "rhi/resources/resource.h"
+#include "core/logging.h"
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -71,6 +73,7 @@ void FrameResources::release_gpu_buffers() {
         material_buffer_.reset();
     }
     material_storage_descriptor_bound_ = false;
+    material_storage_descriptor_dirty_ = false;
 
     // Drop the device pointer so later singleton teardown cannot recreate Vulkan objects.
     device_ = nullptr;
@@ -104,10 +107,12 @@ bool FrameResources::is_global_singleton_layout(const DescriptorSetLayout* layou
     return false;
 }
 
-void FrameResources::ensure_global_descriptor_sets(const RHIPipelineLayout* pipeline_layout) {
+void FrameResources::ensure_global_descriptor_sets(RHIPipelineLayout* pipeline_layout) {
     if (pipeline_layout == nullptr) {
         return;
     }
+
+    pipeline_layout->global_descriptor_set_count_ = 0;
 
     for (DescriptorSetLayout* layout : pipeline_layout->descriptor_set_layouts_) {
         if (layout == nullptr || !is_global_singleton_layout(layout)) {
@@ -124,6 +129,38 @@ void FrameResources::ensure_global_descriptor_sets(const RHIPipelineLayout* pipe
             set_index,
             binding_name_ids,
             [layout]() { return layout->allocate_descriptor_set(); });
+
+        if (pipeline_layout->global_descriptor_set_count_ < MAX_DESCRIPTOR_SETS_PER_SHADER) {
+            pipeline_layout->global_descriptor_set_indices_[pipeline_layout->global_descriptor_set_count_++] =
+                set_index;
+        }
+    }
+}
+
+void FrameResources::bind_global_descriptor_sets(
+    CommandBuffer& cmd,
+    const RHIPipelineLayout* pipeline_layout) {
+    if (pipeline_layout == nullptr
+        || pipeline_layout->handle == 0
+        || pipeline_layout->handle == InvalidUI64) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(global_descriptor_sets_mutex_);
+    for (uint8_t i = 0; i < pipeline_layout->global_descriptor_set_count_; ++i) {
+        const uint32_t set_index = pipeline_layout->global_descriptor_set_indices_[i];
+        if (set_index >= global_descriptor_sets_.size()) {
+            continue;
+        }
+        DescriptorSet* descriptor_set = global_descriptor_sets_[set_index];
+        if (descriptor_set == nullptr) {
+            continue;
+        }
+        cmd.bind_descriptor_sets(
+            &descriptor_set,
+            set_index,
+            1,
+            pipeline_layout->handle);
     }
 }
 
@@ -212,7 +249,6 @@ void FrameResources::flush_pending_bindless_updates() {
 
     PendingBindlessUpdate update;
     if (bindless_set == nullptr) {
-        // Bindless set not created yet — drain and re-queue for a later frame.
         std::vector<PendingBindlessUpdate> deferred;
         while (pending_bindless_updates_.try_pop(update)) {
             deferred.push_back(std::move(update));
@@ -268,23 +304,83 @@ void FrameResources::process_material_update() {
 
         switch (request.kind) {
             case MaterialUpdateKind::Texture: {
-                request.material->bind_texture(request.name_id, request.texture_handle);
+                OC_INFO(
+                    "[material_update] Texture: material=",
+                    reinterpret_cast<uintptr_t>(request.material),
+                    " name_id=",
+                    request.name_id,
+                    " tex=",
+                    reinterpret_cast<uintptr_t>(request.texture_handle.texture_),
+                    " bindless=",
+                    request.texture_handle.bindless_index_);
+                Texture* texture =
+                    request.material->bind_texture(request.name_id, request.texture_handle);
+                if (texture == nullptr || !texture->is_gpu_ready()) {
+                    OC_INFO(
+                        "[material_update] Texture deferred: texture=",
+                        texture != nullptr ? "yes" : "null",
+                        " gpu_ready=",
+                        texture != nullptr && texture->is_gpu_ready());
+                    deferred.push_back(std::move(request));
+                    break;
+                }
+
+                // Prefer global set registered under this binding / property name.
+                DescriptorSet* descriptor_set = get_global_descriptor_set(request.name_id);
+                if (descriptor_set == nullptr) {
+                    descriptor_set = request.material->get_material_descriptor_set();
+                }
+                if (descriptor_set == nullptr) {
+                    // Bindless / g_materials path: index was written in bind_texture; no local set.
+                    if (request.material->uses_global_material_buffer()
+                        || request.material->uses_shared_bindless_descriptor_set()) {
+                        OC_INFO(
+                            "[material_update] Texture: no local set, bindless/global path "
+                            "uses_global=",
+                            request.material->uses_global_material_buffer(),
+                            " uses_shared_bindless=",
+                            request.material->uses_shared_bindless_descriptor_set());
+                        if (request.texture_handle.bindless_index_ != InvalidUI32) {
+                            texture->set_gpu_resource_state(GPUResourceState::GPU_Visible);
+                        }
+                        break;
+                    }
+                    OC_INFO("[material_update] Texture deferred: descriptor set not ready");
+                    deferred.push_back(std::move(request));
+                    break;
+                }
+
+                descriptor_set->update_texture(request.name_id, texture);
+                texture->set_gpu_resource_state(GPUResourceState::GPU_Visible);
+                OC_INFO(
+                    "[material_update] Texture applied: set=",
+                    reinterpret_cast<uintptr_t>(descriptor_set));
                 break;
             }
             case MaterialUpdateKind::Sampler: {
-                DescriptorSet* descriptor_set = request.material->get_material_descriptor_set();
+                OC_INFO(
+                    "[material_update] Sampler: material=",
+                    reinterpret_cast<uintptr_t>(request.material),
+                    " name_id=",
+                    request.name_id);
+                DescriptorSet* descriptor_set = get_global_descriptor_set(request.name_id);
                 if (descriptor_set == nullptr) {
+                    descriptor_set = request.material->get_material_descriptor_set();
+                }
+                if (descriptor_set == nullptr) {
+                    OC_INFO("[material_update] Sampler deferred: descriptor set not ready");
                     deferred.push_back(std::move(request));
                     break;
                 }
 
                 descriptor_set->update_sampler(request.name_id, request.sampler);
+                OC_INFO(
+                    "[material_update] Sampler applied: set=",
+                    reinterpret_cast<uintptr_t>(descriptor_set));
                 break;
             }
             case MaterialUpdateKind::UniformBuffer: {
                 if (request.material->uses_global_material_buffer()) {
-                    // Global `g_materials` path uses a StructuredBuffer<MaterialParams>.
-                    // Copy only the updated material slot directly into GPU buffer.
                     EntityComponentSystem& ecs = EntityComponentSystem::instance();
                     if (request.material->has_material_buffer()) {
                         const uint32_t offset = request.material->material_buffer_offset();
@@ -295,7 +391,8 @@ void FrameResources::process_material_update() {
                             if (required_bytes > material_buffer_.size_in_byte()) {
                                 grow_material_gpu_buffer(required_bytes);
                             }
-                            bind_material_storage_buffer_if_needed();
+                            // Descriptor bind happens in update_per_frame once the global set exists.
+                            material_storage_descriptor_dirty_ = true;
 
                             if (material_buffer_.handle() != 0) {
                                 const uint8_t* src =
@@ -374,6 +471,7 @@ void FrameResources::create_default_gpu_buffers() {
             GraphicBufferBindFlags::StructuredBuffer,
             EntityComponentSystem::kMaterialsBufferName);
         material_storage_descriptor_bound_ = false;
+        material_storage_descriptor_dirty_ = true;
     }
 }
 
@@ -494,6 +592,7 @@ void FrameResources::grow_material_gpu_buffer(size_t byte_count) {
         GraphicBufferBindFlags::StructuredBuffer,
         EntityComponentSystem::kMaterialsBufferName);
     material_storage_descriptor_bound_ = false;
+    material_storage_descriptor_dirty_ = true;
 
     // CPU staging is the source of truth — refill the new buffer so other slots survive.
     EntityComponentSystem& ecs = EntityComponentSystem::instance();
@@ -505,13 +604,18 @@ void FrameResources::grow_material_gpu_buffer(size_t byte_count) {
     }
 }
 
-void FrameResources::bind_material_storage_buffer_if_needed() {
-    if (material_storage_descriptor_bound_ || material_buffer_.handle() == 0) {
+void FrameResources::bind_material_storage_buffer() {
+    if (material_buffer_.handle() == 0) {
+        return;
+    }
+    if (material_storage_descriptor_bound_) {
+        material_storage_descriptor_dirty_ = false;
         return;
     }
 
     DescriptorSet* material_set = get_global_descriptor_set(EntityComponentSystem::kMaterialsBufferName);
     if (material_set == nullptr) {
+        // Keep dirty so update_per_frame retries after the global set is registered.
         return;
     }
 
@@ -521,6 +625,7 @@ void FrameResources::bind_material_storage_buffer_if_needed() {
         0,
         material_buffer_.size_in_byte());
     material_storage_descriptor_bound_ = true;
+    material_storage_descriptor_dirty_ = false;
 }
 
 void FrameResources::bind_global_ubo_if_needed() {
@@ -576,6 +681,21 @@ void FrameResources::update_per_frame(double dt, Camera* camera) {
     upload_transform_buffer();
     flush_pending_bindless_updates();
     process_material_update();
+    if (material_storage_descriptor_dirty_) {
+        bind_material_storage_buffer();
+    }
+
+    // Ensure deferred constructor writes (defaults) land on the render thread
+    // even for sets that were not yet bound this frame.
+    {
+        std::lock_guard<std::mutex> lock(global_descriptor_sets_mutex_);
+        for (DescriptorSet* set : global_descriptor_sets_) {
+            if (set != nullptr) {
+                set->commit_updates();
+            }
+        }
+    }
+
     if (update_) {
         update_(*this, dt);
     }

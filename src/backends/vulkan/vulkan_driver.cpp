@@ -13,6 +13,9 @@
 #include "vulkan_texture.h"
 #include "rhi/resources/texture_sampler.h"
 #include "rhi/resources/texture.h"
+#include "rhi/resources/buffer.h"
+#include "rhi/command_buffer.h"
+#include "rhi/fence.h"
 #include "vulkan_command_buffer.h"
 
 namespace ocarina {
@@ -96,6 +99,14 @@ VulkanShader *VulkanDriver::create_shader(ShaderType shader_type,
                                           const std::set<std::string> &options,
                                           const std::string &entry_point){
     return vulkan_shader_manager->get_or_create_from_HLSL(vulkan_device_, shader_type, filename, options, entry_point);
+}
+
+VulkanShader* VulkanDriver::find_shader(
+    ShaderType shader_type,
+    const std::string &filename,
+    const std::set<std::string> &options,
+    const std::string &entry_point) const {
+    return vulkan_shader_manager->find_from_HLSL(shader_type, filename, options, entry_point);
 }
 
 VulkanShader* VulkanDriver::get_shader(handle_ty shader) const
@@ -752,8 +763,23 @@ void VulkanDriver::bind_descriptor_sets(VkCommandBuffer cmd, DescriptorSet **des
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, first_set, descriptor_sets_num, descriptor_set_handles.data(), 0, nullptr);
 }
 
-std::array<DescriptorSetLayout *, MAX_DESCRIPTOR_SETS_PER_SHADER> VulkanDriver::create_descriptor_set_layout(VulkanShader *shaders[], uint32_t shaders_count) {
-    return vulkan_descriptor_manager->create_descriptor_set_layout(shaders, shaders_count);
+void VulkanDriver::ensure_shader_descriptor_set_layouts(VulkanShader* shader) {
+    if (vulkan_descriptor_manager == nullptr || shader == nullptr) {
+        return;
+    }
+    vulkan_descriptor_manager->ensure_descriptor_set_layouts(shader);
+}
+
+std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>
+VulkanDriver::collect_pipeline_descriptor_set_layouts(
+    VulkanShader* vertex_shader,
+    VulkanShader* pixel_shader) {
+    if (vulkan_descriptor_manager == nullptr) {
+        return {};
+    }
+    return vulkan_descriptor_manager->collect_pipeline_descriptor_set_layouts(
+        vertex_shader,
+        pixel_shader);
 }
 
 //VkPipelineLayout VulkanDriver::get_pipeline_layout(VkDescriptorSetLayout *descriptset_layouts, uint8_t descriptset_layouts_count, VkPushConstantRange *push_constants, uint32_t push_constant_array_size) {
@@ -769,12 +795,37 @@ void VulkanDriver::create_internal_textures() {
         TextureSampler sampler = {TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT};
         internal_textures_[INTERNAL_TEXTURE_WHITE] = ocarina::new_with_allocator<VulkanTexture>(
             vulkan_device_, 4, 4, 1, PixelStorage::BYTE4, texture_view, sampler, uint4(255, 255, 255, 255), nullptr);
+
+        // One-shot staging upload (driver init is outside GPUResourceThread).
         std::vector<uint4> white_pixels(4 * 4, uint4(255, 255, 255, 255));
-        Texture::upload_cpu_pixels(
-            vulkan_device_,
-            internal_textures_[INTERNAL_TEXTURE_WHITE],
-            white_pixels.data(),
-            white_pixels.size() * sizeof(uint4));
+        const size_t byte_size = white_pixels.size() * sizeof(uint4);
+        const handle_ty staging_handle = vulkan_device_->create_buffer(
+            byte_size,
+            GraphicBufferBindFlags::CopySrc,
+            "internal_white_staging",
+            false);
+        Buffer *staging = reinterpret_cast<Buffer *>(staging_handle);
+        if (staging != nullptr) {
+            staging->copy_from_immediately(white_pixels.data(), static_cast<uint32_t>(byte_size));
+            BufferTextureCopy region{};
+            region.width = 4;
+            region.height = 4;
+            region.depth = 1;
+            region.layer_count = 1;
+
+            CommandBuffer cmd = vulkan_device_->get_command_buffer(QueueType::Copy);
+            cmd.begin();
+            const handle_ty tex_handle = reinterpret_cast<handle_ty>(internal_textures_[INTERNAL_TEXTURE_WHITE]);
+            cmd.transition_texture_layout(tex_handle, TextureLayout::Undefined, TextureLayout::TransferDst);
+            cmd.copy_buffer_to_texture(staging_handle, tex_handle, &region, 1);
+            cmd.transition_texture_layout(tex_handle, TextureLayout::TransferDst, TextureLayout::ShaderReadOnly);
+            cmd.end();
+            Fence fence = vulkan_device_->create_fence();
+            cmd.submit_to_queue(QueueType::Copy, &fence);
+            fence.wait();
+            vulkan_device_->release_command_buffer(cmd);
+            vulkan_device_->destroy_buffer(staging_handle);
+        }
     }
 }
 

@@ -6,6 +6,8 @@
 #include "util.h"
 #include "vulkan_device.h"
 #include "shader_compiler.h"
+#include "vulkan_driver.h"
+#include "core/hash.h"
 #include <algorithm>
 #include <numeric>
 #include <cstring>
@@ -50,6 +52,7 @@ VulkanShader *VulkanShader::create_from_HLSL(Device::Impl *device, ShaderType sh
         vulkan_shader->get_vertex_attributes(compiled.reflection);
         vulkan_shader->create_vertex_stream_binding();
     }
+    VulkanDriver::instance().ensure_shader_descriptor_set_layouts(vulkan_shader);
     return vulkan_shader;
 }
 
@@ -203,6 +206,18 @@ VulkanShader* VulkanShaderManager::get_or_create_from_HLSL(VulkanDevice *device,
     return shader;
 }
 
+VulkanShader* VulkanShaderManager::find_from_HLSL(
+    ShaderType shader_type,
+    const std::string& filename,
+    const std::set<std::string> &options,
+    const std::string& entry_point) const
+{
+    ShaderKey shader_key{shader_type, filename, entry_point, options};
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto it = vulkan_shaders_.find(shader_key);
+    return it != vulkan_shaders_.end() ? it->second : nullptr;
+}
+
 VulkanShaderEntry VulkanShaderManager::get_shader_entry(handle_ty shader_handle) const
 {
     auto it = vulkan_shader_entries_.find(shader_handle);
@@ -286,6 +301,101 @@ bool VulkanShader::get_struct_members(
         return !members.empty() && struct_size > 0;
     }
     return false;
+}
+
+bool VulkanShader::has_descriptor_binding(const char* binding_name) const {
+    if (binding_name == nullptr || binding_name[0] == '\0') {
+        return false;
+    }
+    for (const VulkanShaderVariableBinding& binding : variables_) {
+        if (std::strcmp(binding.name, binding_name) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void VulkanShader::collect_push_constant_ranges(std::vector<PushConstantRange>& ranges) const {
+    for (const PushConstant& pc : push_constants_) {
+        if (pc.size == 0) {
+            continue;
+        }
+
+        PushConstantRange* existing = nullptr;
+        for (PushConstantRange& range : ranges) {
+            if (range.name == pc.name && range.offset == static_cast<uint16_t>(pc.offset)
+                && range.size == static_cast<uint16_t>(std::min<uint32_t>(pc.size, PushConstantRange::kMaxDataBytes))) {
+                existing = &range;
+                break;
+            }
+        }
+
+        if (existing == nullptr) {
+            PushConstantRange range;
+            range.name = pc.name;
+            range.offset = static_cast<uint16_t>(pc.offset);
+            range.size = static_cast<uint16_t>(
+                std::min<uint32_t>(pc.size, static_cast<uint32_t>(PushConstantRange::kMaxDataBytes)));
+            range.shader_stage = static_cast<uint8_t>(pc.stage_flags & 0xFFu);
+            range.data.fill(std::byte{0});
+            for (const ShaderReflection::ShaderVariable& variable : pc.shader_variables) {
+                PushConstantVariable pc_variable;
+                pc_variable.offset = variable.offset;
+                pc_variable.size = variable.size;
+                range.variables.emplace(hash64(variable.name), pc_variable);
+            }
+            ranges.push_back(std::move(range));
+        } else {
+            existing->shader_stage = static_cast<uint8_t>(
+                (static_cast<uint32_t>(existing->shader_stage) | pc.stage_flags) & 0xFFu);
+            for (const ShaderReflection::ShaderVariable& variable : pc.shader_variables) {
+                PushConstantVariable pc_variable;
+                pc_variable.offset = variable.offset;
+                pc_variable.size = variable.size;
+                existing->variables.emplace(hash64(variable.name), pc_variable);
+            }
+        }
+    }
+}
+
+bool VulkanShader::get_shader_vertex_inputs(
+    VertexInputAttributeDescription* out_attributes,
+    uint32_t* inout_attribute_count,
+    VertexInputBindingDescription* out_bindings,
+    uint32_t* inout_binding_count) const {
+    if (out_attributes == nullptr || inout_attribute_count == nullptr
+        || out_bindings == nullptr || inout_binding_count == nullptr) {
+        return false;
+    }
+
+    if (get_vertex_attribute_count() == 0) {
+        *inout_attribute_count = 0;
+        *inout_binding_count = 0;
+        return true;
+    }
+
+    const uint32_t attr_count = static_cast<uint32_t>(vertex_stream_binding_.attribute_descriptions_.size());
+    const uint32_t bind_count = static_cast<uint32_t>(vertex_stream_binding_.binding_descriptions_.size());
+    if (attr_count > *inout_attribute_count || bind_count > *inout_binding_count) {
+        return false;
+    }
+
+    for (uint32_t i = 0; i < attr_count; ++i) {
+        const VkVertexInputAttributeDescription& src = vertex_stream_binding_.attribute_descriptions_[i];
+        out_attributes[i].location = static_cast<uint8_t>(src.location);
+        out_attributes[i].binding = static_cast<uint8_t>(src.binding);
+        out_attributes[i].format = vertex_format_from_vulkan(src.format);
+        out_attributes[i].offset = src.offset;
+    }
+    for (uint32_t i = 0; i < bind_count; ++i) {
+        const VkVertexInputBindingDescription& src = vertex_stream_binding_.binding_descriptions_[i];
+        out_bindings[i].binding = static_cast<uint16_t>(src.binding);
+        out_bindings[i].stride = src.stride;
+        out_bindings[i].input_rate = vertex_input_rate_from_vulkan(src.inputRate);
+    }
+    *inout_attribute_count = attr_count;
+    *inout_binding_count = bind_count;
+    return true;
 }
 
 }// namespace ocarina

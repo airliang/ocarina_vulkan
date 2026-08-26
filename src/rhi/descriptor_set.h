@@ -23,6 +23,9 @@ public:
     virtual void update_sampler(uint64_t name_id, const TextureSampler& sampler) = 0;
     virtual void update_bindless_texture_at_index(uint32_t index, Texture *texture) = 0;
 
+    /// Flush deferred descriptor writes (e.g. default placeholders). Call on the render thread.
+    virtual void commit_updates() {}
+
 private:
 };
 
