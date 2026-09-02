@@ -8,6 +8,7 @@
 #include "core/image_base.h"
 #include "rhi/graphics_descriptions.h"
 #include "rhi/resources/texture_sampler.h"
+#include "rhi/shader_program.h"
 
 static std::string errorString(VkResult errorCode) {
     switch (errorCode) {
@@ -450,6 +451,27 @@ constexpr uint32_t MAX_BINDLESS_TEXTURE_ARRAY_SIZE = 1024;
 constexpr uint32_t MAX_BINDLESS_SAMPLER_ARRAY_SIZE = 64;
 constexpr uint32_t MAX_BINDLESS_BUFFER_ARRAY_SIZE = 128;
 
+inline VkDescriptorType to_vulkan_descriptor_type(ShaderBindingType type) {
+    switch (type) {
+        case ShaderBindingType::UniformBuffer:
+            return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        case ShaderBindingType::SampledImage:
+            return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        case ShaderBindingType::CombinedImageSampler:
+            return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        case ShaderBindingType::StorageImage:
+            return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        case ShaderBindingType::Sampler:
+            return VK_DESCRIPTOR_TYPE_SAMPLER;
+        case ShaderBindingType::StorageBuffer:
+            return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        default:
+            return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    }
+}
+
+inline uint32_t get_vulkan_bindless_resource_max_count(ShaderBindingType type);
+
 static uint32_t get_vulkan_bindless_resource_max_count(VkDescriptorType descriptor_type /*, VkPhysicalDeviceProperties device_properties*/) {
     switch (descriptor_type) {
         case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
@@ -470,6 +492,10 @@ static uint32_t get_vulkan_bindless_resource_max_count(VkDescriptorType descript
         default:
             return 1;
     }
+}
+
+inline uint32_t get_vulkan_bindless_resource_max_count(ShaderBindingType type) {
+    return get_vulkan_bindless_resource_max_count(to_vulkan_descriptor_type(type));
 }
 
 static uint32_t get_vulkan_format_size(VkFormat format) {

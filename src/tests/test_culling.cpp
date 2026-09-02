@@ -95,10 +95,10 @@ int main(int argc, char* argv[]) {
         &device,
         [&, shader_vert_abs, shader_frag_abs](Device* load_device) {
         std::set<string> options;
-        material = ResourceManager::instance().create_material(
-            load_device,
-            load_device->create_shader_from_file(shader_vert_abs, ShaderType::VertexShader, options),
-            load_device->create_shader_from_file(shader_frag_abs, ShaderType::PixelShader, options));
+        ResourceManager& resources = ResourceManager::instance();
+        ShaderProgram* program = resources.create_shader_program(
+            load_device, shader_vert_abs, shader_frag_abs, options, options);
+        material = resources.create_material(load_device, program);
         cube_mesh = Mesh::create_cube();
         white_handle = InternalTextures::instance().get_white_texture_handle(load_device);
         apply_mesh_material_defaults(material);

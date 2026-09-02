@@ -2,9 +2,12 @@
 #include "vulkan_device.h"
 #include "vulkan_descriptorset.h"
 #include "vulkan_shader.h"
+#include "rhi/shader_program.h"
 #include "util.h"
 #include "vulkan_driver.h"
 #include "vulkan_descriptorset_writer.h"
+
+#include <cstring>
 
 namespace ocarina {
 
@@ -47,7 +50,7 @@ void VulkanDescriptorSet::update_storage_buffer(
 
 void VulkanDescriptorSet::update_texture(uint64_t name_id, Texture *texture) {
     //if bindless texture, we need to update the descriptor set
-    VulkanShaderVariableBinding* binding = layout_->get_binding_by_nameid(name_id);
+    ShaderVariableBinding* binding = layout_->get_binding_by_nameid(name_id);
     if (binding)
     {
         if (writer_) {
@@ -58,7 +61,7 @@ void VulkanDescriptorSet::update_texture(uint64_t name_id, Texture *texture) {
 }
 
 void VulkanDescriptorSet::update_sampler(uint64_t name_id, const TextureSampler& sampler) {
-    VulkanShaderVariableBinding* binding = layout_->get_binding_by_nameid(name_id);
+    ShaderVariableBinding* binding = layout_->get_binding_by_nameid(name_id);
     if (binding)
     {
         if (writer_) {
@@ -71,10 +74,10 @@ void VulkanDescriptorSet::update_sampler(uint64_t name_id, const TextureSampler&
 void VulkanDescriptorSet::update_bindless_texture_at_index(uint32_t index, Texture *texture) {
     size_t binding_count = layout_->get_bindings_count();
     for (size_t i = 0; i < binding_count; ++i) {
-        VulkanShaderVariableBinding* binding = layout_->get_binding(i);
+        ShaderVariableBinding* binding = layout_->get_binding(i);
         if (binding && binding->is_bindless &&
-            (binding->type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
-             binding->type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)) {
+            (binding->type == ShaderBindingType::CombinedImageSampler ||
+             binding->type == ShaderBindingType::SampledImage)) {
             if (writer_) {
                 writer_->update_bindless_texture_at_index(index, texture);
             }
@@ -113,25 +116,15 @@ VulkanDescriptorSetLayout::~VulkanDescriptorSetLayout()
     }
 }
 
-void VulkanDescriptorSetLayout::add_binding(const char* name,
-    uint32_t binding,
-    VkDescriptorType descriptor_type,
-    VkShaderStageFlags stage_flags,
-    bool is_bindless,
-    uint32_t size,
-    uint32_t count)
-{
-    char *end;
-    uint64_t nameid = hash64(name);
+void VulkanDescriptorSetLayout::add_binding(const ShaderVariableBinding& binding) {
+    const uint64_t nameid = hash64(binding.name);
 
     auto it = name_to_bindings_.find(nameid);
-    if (it != name_to_bindings_.end())
-    {
-        // Multi-stage resource (e.g. global_ubo in vertex + fragment): OR stage flags.
-        VulkanShaderVariableBinding& existing = bindings_[it->second];
-        existing.shader_stage |= stage_flags;
-        if (size > existing.size) {
-            existing.size = size;
+    if (it != name_to_bindings_.end()) {
+        ShaderVariableBinding& existing = bindings_[it->second];
+        existing.stage_flags |= binding.stage_flags;
+        if (binding.size > existing.size) {
+            existing.size = binding.size;
         }
         layout_built_ = false;
         hashkey_ = InvalidUI64;
@@ -139,25 +132,18 @@ void VulkanDescriptorSetLayout::add_binding(const char* name,
     }
 
     name_to_bindings_.insert(std::make_pair(nameid, bindings_.size()));
-    VulkanShaderVariableBinding descriptor_binding;
-    strcpy(descriptor_binding.name, name);
-    descriptor_binding.binding = binding;
-    descriptor_binding.type = descriptor_type;
-    descriptor_binding.shader_stage = stage_flags;
-    descriptor_binding.count = count;
-    descriptor_binding.size = size;
-    descriptor_binding.is_bindless = is_bindless;
+    ShaderVariableBinding descriptor_binding = binding;
 
-    if (is_bindless)
-    {
+    if (descriptor_binding.is_bindless) {
         has_bindless_ = true;
+        descriptor_binding.count = get_vulkan_bindless_resource_max_count(descriptor_binding.type);
     }
 
-    //bindings_.insert(std::make_pair(binding, descriptor_binding));
     bindings_.push_back(descriptor_binding);
 
-    switch (descriptor_type)
-    {
+    const VkDescriptorType descriptor_type = to_vulkan_descriptor_type(descriptor_binding.type);
+    const uint32_t count = descriptor_binding.count;
+    switch (descriptor_type) {
     case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
     case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
         descriptor_count_.srv += count;
@@ -181,8 +167,8 @@ void VulkanDescriptorSetLayout::add_binding(const char* name,
 }
 
 bool VulkanDescriptorSetLayout::has_uniform_buffer_binding() const {
-    for (const VulkanShaderVariableBinding& binding : bindings_) {
-        if (binding.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
+    for (const ShaderVariableBinding& binding : bindings_) {
+        if (binding.type == ShaderBindingType::UniformBuffer) {
             return true;
         }
     }
@@ -190,8 +176,8 @@ bool VulkanDescriptorSetLayout::has_uniform_buffer_binding() const {
 }
 
 bool VulkanDescriptorSetLayout::has_storage_buffer_binding() const {
-    for (const VulkanShaderVariableBinding& binding : bindings_) {
-        if (binding.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
+    for (const ShaderVariableBinding& binding : bindings_) {
+        if (binding.type == ShaderBindingType::StorageBuffer) {
             return true;
         }
     }
@@ -233,9 +219,9 @@ bool VulkanDescriptorSetLayout::build_layout()
     {
         VkDescriptorSetLayoutBinding descriptor_binding{};
         descriptor_binding.binding = it.binding;
-        descriptor_binding.descriptorType = it.type;
-        descriptor_binding.stageFlags = it.shader_stage;
-        descriptor_binding.descriptorCount = it.count; 
+        descriptor_binding.descriptorType = to_vulkan_descriptor_type(it.type);
+        descriptor_binding.stageFlags = static_cast<VkShaderStageFlags>(it.stage_flags);
+        descriptor_binding.descriptorCount = it.count;
         layout_bindings.push_back(descriptor_binding);
 
         if (it.is_bindless) {
@@ -263,12 +249,12 @@ bool VulkanDescriptorSetLayout::build_layout()
     }
 
     std::unordered_map<VkDescriptorType, uint32_t> type_totals;
-    for (const VulkanShaderVariableBinding& binding : bindings_) {
+    for (const ShaderVariableBinding& binding : bindings_) {
         const uint32_t per_set_count = binding.is_bindless
             ? get_vulkan_bindless_resource_max_count(binding.type)
             : binding.count;
         const uint32_t set_count = usage_ == DescriptorSetUsage::PerInstance ? max_sets : 1;
-        type_totals[binding.type] += per_set_count * set_count;
+        type_totals[to_vulkan_descriptor_type(binding.type)] += per_set_count * set_count;
     }
 
     std::vector<VkDescriptorPoolSize> pool_sizes;
@@ -356,7 +342,7 @@ void VulkanDescriptorSetLayout::free_descriptor_set(VkDescriptorSet descriptor_s
     }
 }
 
-VulkanShaderVariableBinding* VulkanDescriptorSetLayout::get_binding(uint64_t index) {
+ShaderVariableBinding* VulkanDescriptorSetLayout::get_binding(uint64_t index) {
     //auto it = bindings_.find(binding);
     //if (it != bindings_.end()) {
     //    return &it->second;
@@ -366,7 +352,7 @@ VulkanShaderVariableBinding* VulkanDescriptorSetLayout::get_binding(uint64_t ind
     return &bindings_[index];
 }
 
-VulkanShaderVariableBinding *VulkanDescriptorSetLayout::get_binding_by_nameid(uint64_t name_id) {
+ShaderVariableBinding *VulkanDescriptorSetLayout::get_binding_by_nameid(uint64_t name_id) {
     auto it = name_to_bindings_.find(name_id);
     if (it != name_to_bindings_.end()) {
         uint32_t binding_index = it->second;
@@ -447,25 +433,23 @@ VkDescriptorSet VulkanDescriptorPool::get_descriptor_set(VkDescriptorSetLayout l
 
 
 std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>
-VulkanDescriptorManager::create_or_get_descriptor_set_layouts(
-    VulkanShader** shaders,
-    uint32_t shaders_count) {
+VulkanDescriptorManager::create_or_get_descriptor_set_layouts(ShaderProgram* program) {
     std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_layouts = {};
 
     for (auto& layout_key : cached_descriptor_set_layout_keys_) {
         layout_key.bindings.clear();
     }
 
-    for (uint32_t i = 0; i < shaders_count; ++i) {
-        VulkanShader* shader = shaders[i];
-        if (shader == nullptr) {
-            continue;
-        }
-
-        const uint32_t variables_count = shader->get_shader_variables_count();
-        for (uint32_t j = 0; j < variables_count; ++j) {
-            const VulkanShaderVariableBinding& binding = shader->get_shader_variable(j);
-            cached_descriptor_set_layout_keys_[binding.descriptor_set].add_binding(binding);
+    if (program != nullptr) {
+        for (const ShaderVariableBinding& binding : program->variables()) {
+            if (binding.descriptor_set == static_cast<uint8_t>(DescriptorSetIndex::FRAME_SET)) {
+                continue;
+            }
+            ShaderVariableBinding program_binding = binding;
+            if (program_binding.is_bindless) {
+                program_binding.count = get_vulkan_bindless_resource_max_count(program_binding.type);
+            }
+            cached_descriptor_set_layout_keys_[binding.descriptor_set].add_binding(program_binding);
         }
     }
 
@@ -480,19 +464,17 @@ VulkanDescriptorManager::create_or_get_descriptor_set_layouts(
                 device_,
                 layout_key.bindings[0].descriptor_set);
             for (const auto& binding : layout_key.bindings) {
-                layout->add_binding(
-                    binding.name,
-                    binding.binding,
-                    binding.type,
-                    binding.shader_stage,
-                    binding.is_bindless,
-                    binding.size,
-                    binding.count);
+                layout->add_binding(binding);
                 layout->set_name(binding.name);
             }
             descriptor_set_layouts[layout->get_descriptor_set_index()] = layout;
             descriptor_set_layouts_.insert(std::make_pair(hashkey, layout));
         }
+    }
+
+    if (frame_descriptor_set_layout_ != nullptr) {
+        descriptor_set_layouts[static_cast<size_t>(DescriptorSetIndex::FRAME_SET)] =
+            frame_descriptor_set_layout_;
     }
 
     for (size_t i = 0; i < descriptor_set_layouts.size(); ++i) {
@@ -507,76 +489,57 @@ VulkanDescriptorManager::create_or_get_descriptor_set_layouts(
     return descriptor_set_layouts;
 }
 
-void VulkanDescriptorManager::ensure_descriptor_set_layouts(VulkanShader* shader) {
-    if (shader == nullptr || shader->has_descriptor_set_layouts()) {
-        return;
-    }
-
+DescriptorSetLayout* VulkanDescriptorManager::create_frame_descriptor_set_layout(
+    span<const ShaderVariableBinding> bindings) {
     std::lock_guard<std::mutex> lock(layout_mutex_);
-    if (shader->has_descriptor_set_layouts()) {
-        return;
+    if (frame_descriptor_set_layout_ != nullptr) {
+        return frame_descriptor_set_layout_;
     }
 
-    VulkanShader* shaders[1] = {shader};
-    shader->assign_descriptor_set_layouts(create_or_get_descriptor_set_layouts(shaders, 1));
+    auto* layout = ocarina::new_with_allocator<VulkanDescriptorSetLayout>(
+        device_,
+        static_cast<uint8_t>(DescriptorSetIndex::FRAME_SET));
+
+    for (const ShaderVariableBinding& binding : bindings) {
+        layout->add_binding(binding);
+        layout->set_name(binding.name);
+    }
+    layout->finalize_bindings();
+    layout->build_layout();
+
+    frame_descriptor_set_layout_ = layout;
+    return frame_descriptor_set_layout_;
+}
+
+DescriptorSetLayout* VulkanDescriptorManager::get_frame_descriptor_set_layout() {
+    std::lock_guard<std::mutex> lock(layout_mutex_);
+    return frame_descriptor_set_layout_;
 }
 
 std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>
-VulkanDescriptorManager::collect_pipeline_descriptor_set_layouts(
-    VulkanShader* vertex_shader,
-    VulkanShader* pixel_shader) {
+VulkanDescriptorManager::collect_shader_descriptor_set_layouts(ShaderProgram* program) {
+    if (program == nullptr) {
+        return {};
+    }
+
     std::lock_guard<std::mutex> lock(layout_mutex_);
-
-    if (vertex_shader != nullptr && !vertex_shader->has_descriptor_set_layouts()) {
-        VulkanShader* shaders[1] = {vertex_shader};
-        vertex_shader->assign_descriptor_set_layouts(create_or_get_descriptor_set_layouts(shaders, 1));
-    }
-    if (pixel_shader != nullptr && !pixel_shader->has_descriptor_set_layouts()) {
-        VulkanShader* shaders[1] = {pixel_shader};
-        pixel_shader->assign_descriptor_set_layouts(create_or_get_descriptor_set_layouts(shaders, 1));
-    }
-
-    std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> result = {};
-    bool needs_merged_create = false;
-    for (uint32_t i = 0; i < MAX_DESCRIPTOR_SETS_PER_SHADER; ++i) {
-        DescriptorSetLayout* vs_layout =
-            vertex_shader != nullptr ? vertex_shader->descriptor_set_layouts()[i] : nullptr;
-        DescriptorSetLayout* ps_layout =
-            pixel_shader != nullptr ? pixel_shader->descriptor_set_layouts()[i] : nullptr;
-        if (vs_layout != nullptr && ps_layout != nullptr && vs_layout != ps_layout) {
-            needs_merged_create = true;
-            break;
-        }
-        result[i] = vs_layout != nullptr ? vs_layout : ps_layout;
-    }
-
-    if (!needs_merged_create) {
-        return result;
-    }
-
-    VulkanShader* shaders[2] = {vertex_shader, pixel_shader};
-    return create_or_get_descriptor_set_layouts(shaders, 2);
+    return create_or_get_descriptor_set_layouts(program);
 }
 
 void VulkanDescriptorManager::clear()
 {
     std::lock_guard<std::mutex> lock(layout_mutex_);
-    //pools_.clear();
     for (auto layout : descriptor_set_layouts_)
     {
         VulkanDescriptorSetLayout* descriptor_set_layout = layout.second;
         ocarina::delete_with_allocator<VulkanDescriptorSetLayout>(descriptor_set_layout);
     }
+    descriptor_set_layouts_.clear();
 
-    global_descriptor_set_layouts_ = nullptr;
-    bindless_descriptor_set_layouts_ = nullptr;
-
-    //if (empty_descriptor_set_layout_)
-    //{
-    //    ocarina::delete_with_allocator<VulkanDescriptorSetLayout>(empty_descriptor_set_layout_);
-    //    empty_descriptor_set_layout_ = nullptr;
-    //}
-    //descriptor_set_layouts_.clear();
+    if (frame_descriptor_set_layout_ != nullptr) {
+        ocarina::delete_with_allocator(frame_descriptor_set_layout_);
+        frame_descriptor_set_layout_ = nullptr;
+    }
 }
 
 //VulkanDescriptorSetLayout* VulkanDescriptorManager::get_empty_descriptor_set_layout()

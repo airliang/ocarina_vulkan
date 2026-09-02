@@ -4,7 +4,6 @@
 #include "frame_resources.h"
 #include "bindless_texture_registry.h"
 #include "global_gpu_storage.h"
-#include "resource_manager.h"
 #include "mesh.h"
 #include "enki_task_debug.h"
 #include "rhi/device.h"
@@ -14,69 +13,52 @@
 
 namespace ocarina {
 
+TextureGPUResourceRequest::TextureGPUResourceRequest(Device* device, Texture* texture)
+    : texture_(texture) {
+    this->device = device;
+    OC_ASSERT(texture_ != nullptr);
+}
+
 void TextureGPUResourceRequest::process() {
+    OC_ASSERT(texture_ != nullptr);
     if (device == nullptr) {
         OC_ERROR("TextureGPUResourceRequest missing device");
         return;
     }
 
-    Texture* texture = nullptr;
+    Texture* texture = texture_;
     switch (kind) {
     case GPUResourceRequestType::TextureFromData: {
-        texture = ocarina::new_with_allocator<Texture>(
-            device->impl(),
-            width,
-            height,
-            depth,
-            pixel_storage,
-            texture_view,
-            sampler,
-            uint4(0, 0, 0, 255),
-            nullptr);
-        if (texture != nullptr) {
-            StagingUploader &uploader = GPUResourceThread::instance().staging_uploader();
-            if (!pixel_data.empty()) {
-                uploader.upload_texture_cpu_pixels(
-                    texture,
-                    pixel_data.data(),
-                    pixel_data.size());
-            } else {
-                std::vector<uint4> white(
-                    static_cast<size_t>(width) * height * depth,
-                    uint4(0, 0, 0, 255));
-                uploader.upload_texture_cpu_pixels(
-                    texture,
-                    white.data(),
-                    white.size() * sizeof(uint4));
-            }
+        StagingUploader& uploader = GPUResourceThread::instance().staging_uploader();
+        if (!pixel_data.empty()) {
+            uploader.upload_texture_cpu_pixels(
+                texture,
+                pixel_data.data(),
+                pixel_data.size());
+        } else {
+            const uint3 res = texture->resolution();
+            std::vector<uint4> white(
+                static_cast<size_t>(res.x) * res.y * res.z,
+                uint4(0, 0, 0, 255));
+            uploader.upload_texture_cpu_pixels(
+                texture,
+                white.data(),
+                white.size() * sizeof(uint4));
         }
         break;
     }
     case GPUResourceRequestType::RenderTarget:
-        texture = ocarina::new_with_allocator<Texture>(
-            device->impl(),
-            width,
-            height,
-            pixel_storage,
-            usage);
         break;
     default:
         break;
-    }
-
-    if (out_texture != nullptr) {
-        *out_texture = texture;
-    }
-
-    if (texture == nullptr) {
-        return;
     }
 
     texture->set_gpu_resource_state(GPUResourceState::GPU_Ready);
 
     const bool bindless =
         kind == GPUResourceRequestType::TextureFromData ||
-        (static_cast<uint32_t>(usage) & static_cast<uint32_t>(TextureUsageFlags::ShaderReadOnly)) != 0;
+        (static_cast<uint32_t>(texture->usage_flags()) &
+         static_cast<uint32_t>(TextureUsageFlags::ShaderReadOnly)) != 0;
 
     if (bindless) {
         if (bindless_index == InvalidUI32) {
@@ -85,10 +67,6 @@ void TextureGPUResourceRequest::process() {
             BindlessTextureRegistry::instance().bind_texture(bindless_index, texture);
         }
         FrameResources::instance().queue_bindless_texture_update(bindless_index, texture);
-    }
-
-    if (has_cache_key) {
-        ResourceManager::instance().complete_texture(cache_key, texture);
     }
 }
 

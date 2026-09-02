@@ -18,12 +18,6 @@ TextureHandle InternalTextures::get_white_texture_handle(Device* device) {
     TextureSampler sampler{TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT};
 
     if (white_handle_.bindless_index_ != InvalidUI32 && device_ == device) {
-        if (white_handle_.texture_ == nullptr) {
-            white_handle_ = ResourceManager::instance().get_texture_handle(
-                "__internal_white__",
-                texture_view,
-                sampler);
-        }
         return white_handle_;
     }
 

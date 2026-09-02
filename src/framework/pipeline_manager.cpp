@@ -2,7 +2,7 @@
 
 #include "frame_resources.h"
 #include "loading_progress_listener.h"
-#include "rhi/context.h"
+#include "resource_manager.h"
 #include "rhi/device.h"
 #include "rhi/renderpass.h"
 
@@ -17,7 +17,6 @@ void PipelineManager::initialize(Device* device, enki::TaskScheduler* scheduler)
     device_ = device;
     scheduler_ = scheduler;
     shutdown_requested_.store(false, std::memory_order_release);
-    default_requests_enqueued_ = false;
     initialized_ = device_ != nullptr && scheduler_ != nullptr;
 }
 
@@ -32,46 +31,6 @@ void PipelineManager::shutdown() noexcept {
     initialized_ = false;
     device_ = nullptr;
     scheduler_ = nullptr;
-    default_requests_enqueued_ = false;
-}
-
-fs::path PipelineManager::resolve_builtin_shader_dir() const {
-    if (!shader_library_root_.empty()) {
-        return shader_library_root_;
-    }
-
-    fs::path cursor = RHIContext::instance().runtime_directory();
-    for (int i = 0; i < 8; ++i) {
-        const fs::path candidate = cursor / "res" / "shaderlibrary" / "builtin";
-        if (fs::exists(candidate / "triangle.vert")) {
-            return candidate;
-        }
-        if (!cursor.has_parent_path() || cursor == cursor.root_path()) {
-            break;
-        }
-        cursor = cursor.parent_path();
-    }
-    return {};
-}
-
-void PipelineManager::create_default_psos(RHIRenderPass* render_pass) {
-    if (!initialized_ || render_pass == nullptr || default_requests_enqueued_) {
-        return;
-    }
-
-    const fs::path builtin = resolve_builtin_shader_dir();
-    if (builtin.empty()) {
-        return;
-    }
-
-    const auto make_abs = [&](const char* name) {
-        return fs::absolute(builtin / name).string();
-    };
-
-    enqueue(PSORequest::make_graphics(
-        make_abs("mesh.vert"), make_abs("mesh.frag"), render_pass));
-
-    default_requests_enqueued_ = true;
 }
 
 bool PipelineManager::try_mark_pending_request(const PSORequest& request) noexcept {
@@ -132,18 +91,15 @@ PipelineCompileTask* PipelineManager::enqueue(
 
     // Resolve shader modules from cache when paths are provided.
     if (request.has_shader_paths() && !request.has_shader_handles()) {
-        const handle_ty vs = device_->find_shader_from_file(
+        ShaderProgram* program = ResourceManager::instance().get_shader_program(
             request.vertex_shader_path,
-            ShaderType::VertexShader,
-            request.vertex_options);
-        const handle_ty ps = device_->find_shader_from_file(
             request.pixel_shader_path,
-            ShaderType::PixelShader,
+            request.vertex_options,
             request.pixel_options);
-
-        if (vs != 0 && vs != InvalidUI64 && ps != 0 && ps != InvalidUI64) {
-            request.vertex_shader = vs;
-            request.pixel_shader = ps;
+        if (program != nullptr) {
+            program->ensure_gpu_shaders(device_);
+            request.vertex_shader = program->shader_handle(ShaderType::VertexShader);
+            request.pixel_shader = program->shader_handle(ShaderType::PixelShader);
         }
     }
 

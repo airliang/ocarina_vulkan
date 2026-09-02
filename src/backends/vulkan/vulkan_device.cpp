@@ -3,6 +3,7 @@
 //
 
 #include "vulkan_device.h"
+#include "rhi/shader_program.h"
 #include "vulkan_frame_sync_config.h"
 #include "rhi/context.h"
 #include "rhi/imgui_creation.h"
@@ -158,23 +159,50 @@ void context_log_cb(unsigned int level, const char *tag, const char *message, vo
 }// namespace detail
 
 
-handle_ty VulkanDevice::create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept {
-    //VulkanShader *shader = VulkanShader::create_from_HLSL(this, shader_type, file_name, "main");
-    //if (shader) {
-    //    return (handle_ty)shader->shader_module();
-    //}
-    VulkanShader* shader = VulkanDriver::instance().create_shader(shader_type, file_name, options, "main");
-    if (shader) {
-        return (handle_ty)shader;
+handle_ty VulkanDevice::create_shader_from_program(ShaderProgram* program, ShaderType stage) noexcept {
+    if (program == nullptr) {
+        return 0;
+    }
+    VulkanShader* shader =
+        VulkanDriver::instance().get_or_create_shader_from_program(this, program, stage);
+    if (shader != nullptr) {
+        return reinterpret_cast<handle_ty>(shader);
     }
     return 0;
 }
 
-handle_ty VulkanDevice::find_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept {
-    VulkanShader* shader = VulkanDriver::instance().find_shader(shader_type, file_name, options, "main");
-    if (shader) {
-        return reinterpret_cast<handle_ty>(shader);
+std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>
+VulkanDevice::create_shader_descriptor_set_layouts(ShaderProgram* program) noexcept {
+    return VulkanDriver::instance().collect_shader_descriptor_set_layouts(program);
+}
+
+DescriptorSetLayout* VulkanDevice::create_frame_descriptor_set_layout(
+    span<const ShaderVariableBinding> bindings) noexcept {
+    return VulkanDriver::instance().create_frame_descriptor_set_layout(bindings);
+}
+
+void VulkanDevice::release_shader_program(ShaderProgram* program) noexcept {
+    VulkanDriver::instance().release_program_shaders(program);
+}
+
+handle_ty VulkanDevice::create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept {
+    if (shader_type != ShaderType::ComputeShader) {
+        return 0;
     }
+    ShaderProgram* program = ShaderProgram::compile_compute_from_HLSL(file_name, options, "main");
+    if (program == nullptr) {
+        return 0;
+    }
+    if (!program->has_descriptor_set_layouts()) {
+        program->create_descriptor_set_layouts(create_shader_descriptor_set_layouts(program));
+    }
+    return create_shader_from_program(program, ShaderType::ComputeShader);
+}
+
+handle_ty VulkanDevice::find_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept {
+    (void)file_name;
+    (void)shader_type;
+    (void)options;
     return InvalidUI64;
 }
 

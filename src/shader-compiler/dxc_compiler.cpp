@@ -3,7 +3,6 @@
 //
 
 #include "dxc_compiler.h"
-#include "shader_reflection.h"
 #include "core/logging.h"
 #include <fstream>
 #ifdef _WIN32
@@ -80,83 +79,6 @@ public:
     IDxcUtils* pUtils;
     std::string shader_file_directory;
 };
-
-bool DXCCompiler::preprocess(const char *hlsl, uint32_t size, const std::string &full_file_path, VkShaderStageFlagBits stage, const std::vector<std::string> &include_paths, std::string &plattern_hlsl) {
-    ComPtr<IDxcUtils> dxc_utils = {};
-    ComPtr<IDxcCompiler3> dxc_compiler = {};
-
-    DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(dxc_utils.ReleaseAndGetAddressOf()));
-    DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(dxc_compiler.ReleaseAndGetAddressOf()));
-
-    std::vector<LPCWSTR> args;
-    args.push_back(DXC_ARG_PACK_MATRIX_COLUMN_MAJOR);
-    args.push_back(L"-HV");
-    args.push_back(L"2021");
-    args.push_back(L"-T");
-    if (stage == VK_SHADER_STAGE_VERTEX_BIT) {
-        args.push_back(L"vs_6_0");
-    } else if (stage == VK_SHADER_STAGE_FRAGMENT_BIT) {
-        args.push_back(L"ps_6_0");
-    } else if (stage == VK_SHADER_STAGE_COMPUTE_BIT) {
-        args.push_back(L"cs_6_0");
-    }
-
-    std::string file_dir = get_file_directory(full_file_path);
-    args.push_back(L"-I");
-    std::wstring wpath = string_to_wstring(file_dir);
-    args.push_back(wpath.c_str());
-    for (size_t i = 0; i < include_paths.size(); ++i)
-    {
-        args.push_back(L"-I");
-        args.push_back(std::wstring(include_paths[i].begin(), include_paths[i].end()).c_str());
-    }
-
-    args.push_back(L"-P");
-    args.push_back(L"-fspv-reflect");
-
-    //args.push_back(L"-E");
-    //std::wstring wEntry(entryPoint.begin(), entryPoint.end());
-    //args.push_back(wEntry.c_str());
-    //args.push_back(L"-spirv");
-    //args.push_back(L"-fspv-target-env=vulkan1.1");
-
-    DxcBuffer src_buffer = {
-        hlsl,
-        static_cast<std::uint32_t>(size),
-        0,
-    };
-
-    CustomIncludeHandler preprocessIncludeHandler(dxc_utils.Get());
-
-    ComPtr<IDxcResult> operationResult;
-    HRESULT hr = dxc_compiler->Compile(&src_buffer, args.data(), args.size(), &preprocessIncludeHandler, IID_PPV_ARGS(&operationResult));
-
-    ComPtr<IDxcBlobUtf8> errors = nullptr;
-    hr = operationResult->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&errors), nullptr);
-
-    std::string errorLog;
-    if (errors != nullptr && errors->GetStringLength() > 0) {
-        errorLog = errors->GetStringPointer();
-        spdlog::error("Preprocess failed with error: \"{}\"\n", errorLog);
-    }
-
-    ComPtr<IDxcBlobUtf8> shader_obj;
-    hr = operationResult->GetOutput(DXC_OUT_HLSL, IID_PPV_ARGS(&shader_obj), nullptr);
-    if (shader_obj != nullptr) {
-        size_t string_len = shader_obj->GetStringLength();
-        plattern_hlsl = shader_obj->GetStringPointer();
-    }
-
-    ComPtr<IDxcBlob> pReflectionData;
-    if (SUCCEEDED(operationResult->GetOutput(DXC_OUT_REFLECTION, IID_PPV_ARGS(pReflectionData.GetAddressOf()), nullptr))) {
-        DxcBuffer reflectionBuffer;
-        reflectionBuffer.Ptr = pReflectionData->GetBufferPointer();
-        reflectionBuffer.Size = pReflectionData->GetBufferSize();
-        reflectionBuffer.Encoding = 0;
-    }
-
-    return plattern_hlsl.size() > 0;
-}
 
 bool DXCCompiler::compile_hlsl_spriv(const CompileInput &input, CompileResult &result) {
     ComPtr<IDxcUtils> dxc_utils = {};
@@ -261,12 +183,6 @@ bool DXCCompiler::compile_hlsl_spriv(const CompileInput &input, CompileResult &r
 }
 
 void DXCCompiler::run_spriv_reflection(const std::vector<uint32_t> &spriv, ShaderType shader_type, ShaderReflection &shader_reflection) {
-    ComPtr<IDxcUtils> dxc_utils{};
-    ComPtr<IDxcContainerReflection> dxc_container_reflection{};
-
-    DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(dxc_utils.ReleaseAndGetAddressOf()));
-    DxcCreateInstance(CLSID_DxcContainerReflection, IID_PPV_ARGS(dxc_container_reflection.ReleaseAndGetAddressOf()));
-
     const void *shader_data = static_cast<const void*>(spriv.data());
     uint32_t shader_data_size = spriv.size() * sizeof(uint32_t);
 
@@ -636,35 +552,35 @@ void DXCCompiler::run_spriv_reflection(const std::vector<uint32_t> &spriv, Shade
             uint32_t offset_in_hlsl = spirvmodule.get_decoration(resource.id, spv::DecorationOffset);
             spirv_cross::SPIRType spirType = spirvmodule.get_type(resource.type_id);
 
-            VkFormat format = VK_FORMAT_UNDEFINED;
+            VertexFormat format = VertexFormat::Undefined;
 
             if (spirType.basetype == spirv_cross::SPIRType::Float) {
                 if (spirType.vecsize == 1)
-                    format = VK_FORMAT_R32_SFLOAT;
+                    format = VertexFormat::R32_SFLOAT;
                 else if (spirType.vecsize == 2)
-                    format = VK_FORMAT_R32G32_SFLOAT;
+                    format = VertexFormat::R32G32_SFLOAT;
                 else if (spirType.vecsize == 3)
-                    format = VK_FORMAT_R32G32B32_SFLOAT;
+                    format = VertexFormat::R32G32B32_SFLOAT;
                 else if (spirType.vecsize == 4)
-                    format = VK_FORMAT_R32G32B32A32_SFLOAT;
+                    format = VertexFormat::R32G32B32A32_SFLOAT;
             } else if (spirType.basetype == spirv_cross::SPIRType::Int) {
                 if (spirType.vecsize == 1)
-                    format = VK_FORMAT_R32_SINT;
+                    format = VertexFormat::R32_SINT;
                 else if (spirType.vecsize == 2)
-                    format = VK_FORMAT_R32G32_SINT;
+                    format = VertexFormat::R32G32_SINT;
                 else if (spirType.vecsize == 3)
-                    format = VK_FORMAT_R32G32B32_SINT;
+                    format = VertexFormat::R32G32B32_SINT;
                 else if (spirType.vecsize == 4)
-                    format = VK_FORMAT_R32G32B32A32_SINT;
+                    format = VertexFormat::R32G32B32A32_SINT;
             } else if (spirType.basetype == spirv_cross::SPIRType::UInt) {
                 if (spirType.vecsize == 1)
-                    format = VK_FORMAT_R32_UINT;
+                    format = VertexFormat::R32_UINT;
                 else if (spirType.vecsize == 2)
-                    format = VK_FORMAT_R32G32_UINT;
+                    format = VertexFormat::R32G32_UINT;
                 else if (spirType.vecsize == 3)
-                    format = VK_FORMAT_R32G32B32_UINT;
+                    format = VertexFormat::R32G32B32_UINT;
                 else if (spirType.vecsize == 4)
-                    format = VK_FORMAT_R32G32B32A32_UINT;
+                    format = VertexFormat::R32G32B32A32_UINT;
             }
 
             uint32_t size = spirType.vecsize * 4;

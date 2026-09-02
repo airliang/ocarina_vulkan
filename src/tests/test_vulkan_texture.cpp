@@ -69,10 +69,10 @@ int main(int argc, char *argv[]) {
         &device,
         [&material, &quad_mesh, &texture_handle, shader_vert_abs, shader_frag_abs, texture_path](Device* device) {
         std::set<string> options;
-        material = ResourceManager::instance().create_material(
-            device,
-            device->create_shader_from_file(shader_vert_abs, ShaderType::VertexShader, options),
-            device->create_shader_from_file(shader_frag_abs, ShaderType::PixelShader, options));
+        ResourceManager& resources = ResourceManager::instance();
+        ShaderProgram* program = resources.create_shader_program(
+            device, shader_vert_abs, shader_frag_abs, options, options);
+        material = resources.create_material(device, program);
 
         Image image = Image::load(texture_path, ColorSpace::SRGB);
         TextureViewCreation texture_view = {};

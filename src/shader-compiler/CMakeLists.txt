@@ -1,13 +1,8 @@
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-option(AUTO_LOCATE_VULKAN "AUTO_LOCATE_VULKAN" ON)
-if(AUTO_LOCATE_VULKAN)
-    find_package(Vulkan)
-endif()
-
 add_library(ocarina-shader-compiler SHARED
     shader_compiler.cpp
-    ${CMAKE_SOURCE_DIR}/src/backends/vulkan/dxc_compiler.cpp
+    dxc_compiler.cpp
 )
 
 target_compile_definitions(ocarina-shader-compiler PRIVATE OC_SHADER_COMPILER_EXPORT_DLL=1)
@@ -15,7 +10,6 @@ target_compile_definitions(ocarina-shader-compiler PRIVATE OC_SHADER_COMPILER_EX
 target_include_directories(ocarina-shader-compiler
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/src/backends/vulkan
         ${CMAKE_SOURCE_DIR}/src
 )
 
@@ -52,11 +46,7 @@ else()
     target_link_libraries(ocarina-shader-compiler PRIVATE dxc)
 endif()
 
-# RHIContext is used for shader rebuild/reuse.
-target_link_libraries(ocarina-shader-compiler PRIVATE ocarina-rhi ocarina-core)
-if(Vulkan_FOUND)
-    target_link_libraries(ocarina-shader-compiler PRIVATE Vulkan::Vulkan)
-endif()
+target_link_libraries(ocarina-shader-compiler PRIVATE ocarina-core)
 
 set_target_properties(ocarina-shader-compiler PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
@@ -65,4 +55,3 @@ set_target_properties(ocarina-shader-compiler PROPERTIES
     UNITY_BUILD OFF
     FOLDER "ocarina"
 )
-

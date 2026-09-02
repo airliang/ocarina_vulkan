@@ -41,27 +41,16 @@ struct GPUResourceRequest {
     std::string name;
 };
 
-/// Texture (from CPU pixels) or render-target create request.
+/// Upload CPU pixels or finalize bindless binding for an existing Texture.
 struct TextureGPUResourceRequest : GPUResourceRequest {
+    explicit TextureGPUResourceRequest(Device* device, Texture* texture);
+
     GPUResourceRequestType kind = GPUResourceRequestType::TextureFromData;
-    TextureViewCreation texture_view{};
-    TextureSampler sampler{};
-    PixelStorage pixel_storage = PixelStorage::BYTE4;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    uint32_t depth = 1;
-    TextureUsageFlags usage = TextureUsageFlags::None;
     /// Owned pixel bytes for TextureFromData (moved into the GPU thread).
     std::vector<uint8_t> pixel_data;
-
     /// Pre-allocated bindless slot (InvalidUI32 for non-bindless render targets).
     uint32_t bindless_index = InvalidUI32;
-    /// ResourceManager cache key used to publish Texture* when creation finishes.
-    uint64_t cache_key = 0;
-    bool has_cache_key = false;
-
-    /// Optional immediate out pointer (render-target sync path).
-    Texture** out_texture = nullptr;
+    Texture* texture_ = nullptr;
 
     [[nodiscard]] GPUResourceRequestType type() const noexcept override { return kind; }
     void process() override;

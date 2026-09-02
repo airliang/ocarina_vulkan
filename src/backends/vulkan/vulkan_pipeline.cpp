@@ -10,39 +10,6 @@
 
 namespace ocarina {
 
-namespace {
-
-uint32_t merge_push_constants(
-    VulkanShader* vertex_shader,
-    VulkanShader* pixel_shader,
-    std::array<PushConstant, PipelineLayoutDesc::MAX_PUSH_CONSTANT_RANGES>& push_constant_merges)
-{
-    const std::vector<PushConstant>& vertex_push_constants = vertex_shader->get_push_constants();
-    const std::vector<PushConstant>& pixel_push_constants = pixel_shader->get_push_constants();
-
-    uint32_t push_constant_count = 0;
-    for (const auto& vpc : vertex_push_constants) {
-        push_constant_merges[push_constant_count++] = vpc;
-    }
-
-    for (const auto& ppc : pixel_push_constants) {
-        bool found = false;
-        for (size_t i = 0; i < push_constant_count; ++i) {
-            if (ppc == push_constant_merges[i]) {
-                found = true;
-                push_constant_merges[i].stage_flags |= ppc.stage_flags;
-                break;
-            }
-        }
-        if (!found) {
-            push_constant_merges[push_constant_count++] = ppc;
-        }
-    }
-    return push_constant_count;
-}
-
-}// namespace
-
 bool build_vulkan_pipeline_layout_desc(
     const handle_ty shaders[PipelineState::MAX_SHADER_STAGE],
     PipelineLayoutDesc& out_desc) noexcept
@@ -53,11 +20,18 @@ bool build_vulkan_pipeline_layout_desc(
         return false;
     }
 
+    ShaderProgram* program = vertex_shader->program();
+    if (program == nullptr || program != pixel_shader->program()) {
+        return false;
+    }
+
     out_desc.shaders[0] = shaders[0];
     out_desc.shaders[1] = shaders[1];
+    out_desc.descriptor_set_layouts = program->descriptor_set_layouts();
 
-    out_desc.descriptor_set_layouts =
-        VulkanDriver::instance().collect_pipeline_descriptor_set_layouts(vertex_shader, pixel_shader);
+    if (DescriptorSetLayout* frame_layout = VulkanDriver::instance().get_frame_descriptor_set_layout()) {
+        out_desc.descriptor_set_layouts[static_cast<size_t>(DescriptorSetIndex::FRAME_SET)] = frame_layout;
+    }
 
     uint32_t max_set_index = 0;
     bool has_any_layout = false;
@@ -69,14 +43,17 @@ bool build_vulkan_pipeline_layout_desc(
     }
     out_desc.descriptor_set_count = has_any_layout ? static_cast<uint8_t>(max_set_index + 1) : 0;
 
-    std::array<PushConstant, PipelineLayoutDesc::MAX_PUSH_CONSTANT_RANGES> push_constant_merges = {};
-    const uint32_t push_constant_num = merge_push_constants(vertex_shader, pixel_shader, push_constant_merges);
-
-    out_desc.push_constant_count = static_cast<uint8_t>(push_constant_num);
-    for (uint32_t i = 0; i < push_constant_num; ++i) {
-        out_desc.push_constant_ranges[i].offset = push_constant_merges[i].offset;
-        out_desc.push_constant_ranges[i].size = push_constant_merges[i].size;
-        out_desc.push_constant_ranges[i].shader_stage_flags = push_constant_merges[i].stage_flags;
+    out_desc.push_constant_count = 0;
+    for (const ShaderPushConstant& push_constant : program->push_constants()) {
+        if (push_constant.size == 0
+            || out_desc.push_constant_count >= PipelineLayoutDesc::MAX_PUSH_CONSTANT_RANGES) {
+            continue;
+        }
+        out_desc.push_constant_ranges[out_desc.push_constant_count].offset = push_constant.offset;
+        out_desc.push_constant_ranges[out_desc.push_constant_count].size = push_constant.size;
+        out_desc.push_constant_ranges[out_desc.push_constant_count].shader_stage_flags =
+            push_constant.stage_flags;
+        ++out_desc.push_constant_count;
     }
 
     std::sort(

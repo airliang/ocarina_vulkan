@@ -70,6 +70,12 @@ public:
                                                          TextureUsageFlags usage) noexcept override;
     void destroy_texture(handle_ty handle) noexcept override;
     [[nodiscard]] handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string>& options) noexcept override;
+    [[nodiscard]] handle_ty create_shader_from_program(ShaderProgram* program, ShaderType stage) noexcept override;
+    [[nodiscard]] std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>
+    create_shader_descriptor_set_layouts(ShaderProgram* program) noexcept override;
+    [[nodiscard]] DescriptorSetLayout* create_frame_descriptor_set_layout(
+        span<const ShaderVariableBinding> bindings) noexcept override;
+    void release_shader_program(ShaderProgram* program) noexcept override;
     [[nodiscard]] handle_ty find_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string>& options) noexcept override;
     void destroy_shader(handle_ty handle) noexcept override;
     void shutdown();

@@ -29,12 +29,6 @@ public:
     void initialize(Device* device, enki::TaskScheduler* scheduler);
     void shutdown() noexcept;
 
-    /// Optional root for builtin shaders (res/shaderlibrary/builtin). Auto-detected if empty.
-    void set_shader_library_root(fs::path root) noexcept { shader_library_root_ = std::move(root); }
-
-    /// Enqueue the default mesh PSO for @p render_pass (typically the swapchain pass).
-    void create_default_psos(RHIRenderPass* render_pass);
-
     /// Enqueue a PSO compile request. Ignores duplicates already in the request queue.
     /// Returns the submitted task (or nullptr if ignored / already cached).
     PipelineCompileTask* enqueue(
@@ -75,7 +69,6 @@ private:
     friend class PipelineCompileTask;
 
     void clear_cache() noexcept;
-    [[nodiscard]] fs::path resolve_builtin_shader_dir() const;
     [[nodiscard]] bool try_mark_pending_request(const PSORequest& request) noexcept;
     void clear_pending_request(const PSORequest& request) noexcept;
     [[nodiscard]] bool try_mark_pending_key(const PipelineCacheKey& key) noexcept;
@@ -83,8 +76,6 @@ private:
     Device* device_ = nullptr;
     enki::TaskScheduler* scheduler_ = nullptr;
     PipelineCompileTaskPool task_pool_;
-    fs::path shader_library_root_;
-    bool default_requests_enqueued_ = false;
 
     mutable std::mutex cache_mutex_;
     std::unordered_map<PipelineCacheKey, RHIPipeline*, PipelineCacheKeyHash> pipelines_;

@@ -111,14 +111,13 @@ int main(int argc, char *argv[]) {
         &device,
         [&, triangle_vert_abs, triangle_frag_abs, texture_vert_abs, texture_frag_abs](Device* load_device) {
         std::set<string> options;
-        triangle_material = ResourceManager::instance().create_material(
-            load_device,
-            load_device->create_shader_from_file(triangle_vert_abs, ShaderType::VertexShader, options),
-            load_device->create_shader_from_file(triangle_frag_abs, ShaderType::PixelShader, options));
-        quad_material = ResourceManager::instance().create_material(
-            load_device,
-            load_device->create_shader_from_file(texture_vert_abs, ShaderType::VertexShader, options),
-            load_device->create_shader_from_file(texture_frag_abs, ShaderType::PixelShader, options));
+        ResourceManager& resources = ResourceManager::instance();
+        ShaderProgram* triangle_program = resources.create_shader_program(
+            load_device, triangle_vert_abs, triangle_frag_abs, options, options);
+        ShaderProgram* texture_program = resources.create_shader_program(
+            load_device, texture_vert_abs, texture_frag_abs, options, options);
+        triangle_material = resources.create_material(load_device, triangle_program);
+        quad_material = resources.create_material(load_device, texture_program);
         quad_mesh = ResourceManager::instance().create_mesh("quad");
     });
 

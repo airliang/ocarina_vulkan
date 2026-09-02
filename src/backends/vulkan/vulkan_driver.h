@@ -17,6 +17,8 @@ class VulkanDevice;
 class VulkanShaderManager;
 class VulkanDescriptorManager;
 class VulkanShader;
+class ShaderProgram;
+struct ShaderVariableBinding;
 struct InstanceCreation;
 struct PipelineState;
 class VulkanRenderPass;
@@ -51,15 +53,14 @@ public:
     void terminate();
     void submit_command_buffer(VkCommandBuffer cmd_buffer);
     inline VkDevice device() const;
-    VulkanShader *create_shader(ShaderType shader_type,
-                                const std::string &filename,
-                                const std::set<std::string> &options,
-                                const std::string &entry_point);
-    [[nodiscard]] VulkanShader* find_shader(
-        ShaderType shader_type,
-        const std::string &filename,
-        const std::set<std::string> &options,
-        const std::string &entry_point) const;
+    VulkanShader* get_or_create_shader_from_program(
+        VulkanDevice* device,
+        ShaderProgram* program,
+        ShaderType shader_type);
+    [[nodiscard]] VulkanShader* find_shader_from_program(
+        ShaderProgram* program,
+        ShaderType shader_type) const;
+    void release_program_shaders(ShaderProgram* program);
     VulkanShader* get_shader(handle_ty shader) const;
     OC_MAKE_MEMBER_GETTER(current_buffer, )
     [[nodiscard]] uint32_t current_frame() const noexcept;
@@ -69,9 +70,12 @@ public:
     //    return draw_cmd_buffers_[current_buffer_];
     //}
 
-    void ensure_shader_descriptor_set_layouts(VulkanShader* shader);
     [[nodiscard]] std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>
-    collect_pipeline_descriptor_set_layouts(VulkanShader* vertex_shader, VulkanShader* pixel_shader);
+    collect_shader_descriptor_set_layouts(ShaderProgram* program);
+
+    [[nodiscard]] DescriptorSetLayout* create_frame_descriptor_set_layout(
+        span<const ShaderVariableBinding> bindings);
+    [[nodiscard]] DescriptorSetLayout* get_frame_descriptor_set_layout();
 
     /// Acquire the next swapchain image. Returns false when the surface is not
     /// drawable (minimized) or recreation failed; the caller must skip the frame.

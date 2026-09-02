@@ -9,7 +9,6 @@
 #include "rhi/resources/texture.h"
 #include "rhi/resources/buffer.h"
 #include "bindless_texture_registry.h"
-#include <atomic>
 
 namespace ocarina {
 class DescriptorSetLayout;
@@ -17,6 +16,7 @@ class DescriptorSet;
 class TextureSampler;
 class Device;
 class FrameResources;
+class ShaderProgram;
 
 class Material {
 public:
@@ -41,11 +41,13 @@ public:
         uint64_t uniform_buffer_name_id = 0;
     };
 
-    Material(Device* device, handle_ty vertex_shader, handle_ty pixel_shader);
+    Material(Device* device, ShaderProgram* shader_program);
     ~Material();
 
     /// Destroy owned GPU uniform buffers. Must run while the Device / VkDevice is still alive.
     void release_gpu_buffers();
+
+    [[nodiscard]] ShaderProgram* get_shader_program() const noexcept { return shader_program_; }
 
     handle_ty get_vertex_shader() const { return pipeline_state_.shaders[0]; }
     handle_ty get_pixel_shader() const { return pipeline_state_.shaders[1]; }
@@ -66,15 +68,20 @@ public:
     }
 
     /// Bind a texture by handle (local descriptor set or bindless index member).
-    /// Draw waits on is_renderable() until Texture::is_gpu_ready() for every bound handle.
+    /// Draw waits on is_renderable() until every bound texture is GPU_Visible.
     void set_property(uint64_t name_id, const TextureHandle& texture);
     void set_property(const char* name, const TextureHandle& texture) {
         set_property(hash64(name), texture);
     }
 
-    /// True when every bound texture is GPU_Visible (descriptor / bindless slot ready).
-    /// Cached; re-evaluates only while textures_ready_ is still false.
+    /// True when GPU infrastructure is ready and every bound texture is GPU_Visible.
     [[nodiscard]] bool is_renderable();
+
+    /// True when descriptor sets / owned buffers exist for this material's shader path.
+    [[nodiscard]] bool is_GPU_ready();
+
+    /// Retry descriptor-set and buffer creation when ShaderProgram layouts become available.
+    void try_finish_gpu_init();
 
     void add_sampler(uint64_t name_id, const TextureSampler& sampler);
     void add_sampler(const char* name, const TextureSampler& sampler) {
@@ -118,10 +125,12 @@ public:
     }
 
     const PipelineState& get_pipeline_state() const {
+        const_cast<Material*>(this)->ensure_gpu_shaders();
         return pipeline_state_;
     }
 
     PipelineState& get_pipeline_state_mutable() {
+        ensure_gpu_shaders();
         return pipeline_state_;
     }
 
@@ -210,8 +219,9 @@ private:
         bool dirty = false;
     };
 
+    void init_material_properties(ShaderProgram* shader_program);
     void create_material_descriptor_set();
-    void init_material_properties(handle_ty pixel_shader);
+    void ensure_gpu_shaders();
     void add_uniform_buffer_property(
         const char* binding_name,
         uint32_t buffer_size,
@@ -224,16 +234,14 @@ private:
     /// Detect `g_materials` from pixel-shader reflection (not pipeline layout —
     /// layout may still be null when Material is constructed under async PSO compile).
     [[nodiscard]] static bool detect_global_material_buffer(
-        const RHIShader* pixel_shader) noexcept;
+        const ShaderProgram* shader_program) noexcept;
     void ensure_uniform_buffer_gpus();
     void upload_owned_uniform_buffer(uint64_t name_id, OwnedUniformBuffer& ubo);
     /// Queue at most one pending uniform-buffer upload per material.
     void queue_uniform_buffer_update();
     [[nodiscard]] OwnedUniformBuffer* find_owned_uniform_buffer(uint64_t name_id) noexcept;
-    /// Store texture handle / bindless index; descriptor writes happen in FrameResources.
-    Texture* bind_texture(uint64_t name_id, const TextureHandle& handle);
-    [[nodiscard]] bool evaluate_textures_ready();
-    [[nodiscard]] static Texture* resolve_texture_handle(const TextureHandle& handle) noexcept;
+    [[nodiscard]] bool requires_local_descriptor_set_layout() const noexcept;
+    [[nodiscard]] bool is_material_infrastructure_ready() const noexcept;
     /// Resolve a writable descriptor set by property / UBO binding name.
     [[nodiscard]] DescriptorSet* find_descriptor_set_by_property_name(uint64_t name_id) const noexcept;
 
@@ -244,6 +252,7 @@ private:
     bool pipeline_dirty_ = true;
 
     Device* device_ = nullptr;
+    ShaderProgram* shader_program_ = nullptr;
 
     /// Byte size / name of the primary params block (first local UBO or MaterialParams / g_materials).
     uint64_t material_params_buffer_name_id_ = 0;
@@ -266,7 +275,6 @@ private:
 
     /// Bound textures keyed by property / binding name id.
     std::unordered_map<uint64_t, TextureHandle> texture_handles_;
-    std::atomic<bool> textures_ready_{true};
 
     /// True while a uniform-buffer update for this material is already queued.
     bool in_update_queue_ = false;

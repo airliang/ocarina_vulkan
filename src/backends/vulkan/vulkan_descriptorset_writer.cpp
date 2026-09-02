@@ -19,8 +19,8 @@ VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, Vulka
     default_image_infos_.reserve(bindings_count);
     for (size_t i = 0; i < bindings_count; ++i)
     {
-        VulkanShaderVariableBinding* binding = layout->get_binding(i);
-        if (binding && binding->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
+        ShaderVariableBinding* binding = layout->get_binding(i);
+        if (binding && binding->type == ShaderBindingType::UniformBuffer) {
             // UBO memory is owned by FrameResources / Material — only track the binding here.
             VulkanDescriptorBuffer *descriptor_buffer = ocarina::new_with_allocator<VulkanDescriptorBuffer>();
             descriptor_buffer->binding = binding->binding;
@@ -28,14 +28,14 @@ VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, Vulka
             descriptor_buffer->buffer_ = nullptr;
             descriptors_.insert(std::make_pair(hash64(descriptor_buffer->name_), descriptor_buffer));
         }
-        else if (binding && binding->type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
+        else if (binding && binding->type == ShaderBindingType::StorageBuffer) {
             VulkanDescriptorBuffer *descriptor_buffer = ocarina::new_with_allocator<VulkanDescriptorBuffer>();
             descriptor_buffer->binding = binding->binding;
             descriptor_buffer->name_ = binding->name;
             descriptor_buffer->buffer_ = nullptr;
             descriptors_.insert(std::make_pair(hash64(descriptor_buffer->name_), descriptor_buffer));
         }
-        else if (binding->type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) {
+        else if (binding->type == ShaderBindingType::CombinedImageSampler) {
 
             VulkanDescriptorImage *descriptor_image = ocarina::new_with_allocator<VulkanDescriptorImage>();
             descriptor_image->binding = binding->binding;
@@ -49,7 +49,7 @@ VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, Vulka
             } else {
                 bind_default_texture(binding->binding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
             }
-        } else if (binding->type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
+        } else if (binding->type == ShaderBindingType::SampledImage) {
             VulkanDescriptorImage *descriptor_image = ocarina::new_with_allocator<VulkanDescriptorImage>();
             descriptor_image->binding = binding->binding;
             descriptor_image->name_ = binding->name;
@@ -62,7 +62,7 @@ VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, Vulka
             } else {
                 bind_default_texture(binding->binding, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
             }
-        } else if (binding->type == VK_DESCRIPTOR_TYPE_SAMPLER) {
+        } else if (binding->type == ShaderBindingType::Sampler) {
             VulkanDescriptorSampler *descriptor_sampler = ocarina::new_with_allocator<VulkanDescriptorSampler>();
             descriptor_sampler->binding = binding->binding;
             descriptor_sampler->name_ = binding->name;

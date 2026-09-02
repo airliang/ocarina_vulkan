@@ -16,6 +16,9 @@
 
 namespace ocarina {
 
+class ShaderProgram;
+struct ShaderVariableBinding;
+
 class RHIContext;
 
 class Buffer;
@@ -80,6 +83,15 @@ public:
                                                                      TextureUsageFlags usage) noexcept = 0;
         virtual void destroy_texture(handle_ty handle) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept = 0;
+        [[nodiscard]] virtual handle_ty create_shader_from_program(ShaderProgram* program, ShaderType stage) noexcept = 0;
+        /// Create descriptor set layouts from ShaderProgram merged reflection (no shader module required).
+        /// Does not assign them onto the program — callers use ShaderProgram::create_descriptor_set_layouts.
+        [[nodiscard]] virtual std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>
+        create_shader_descriptor_set_layouts(ShaderProgram* program) noexcept = 0;
+        /// Canonical FRAME set (set 0) layout; bindings are engine-owned, not from shader reflection.
+        [[nodiscard]] virtual DescriptorSetLayout* create_frame_descriptor_set_layout(
+            span<const ShaderVariableBinding> bindings) noexcept = 0;
+        virtual void release_shader_program(ShaderProgram* program) noexcept {}
         /// Cache lookup only; returns 0 / InvalidUI64 when the module is not loaded yet.
         [[nodiscard]] virtual handle_ty find_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept {
             (void)file_name;
@@ -197,6 +209,22 @@ public:
         ShaderType shader_type,
         const std::set<std::string> &options) {
         return impl_->create_shader_from_file(file_name, shader_type, options);
+    }
+
+    [[nodiscard]] std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>
+    create_shader_descriptor_set_layouts(ShaderProgram* program) {
+        return impl_->create_shader_descriptor_set_layouts(program);
+    }
+
+    [[nodiscard]] handle_ty create_shader_from_program(ShaderProgram* program, ShaderType stage);
+
+    [[nodiscard]] DescriptorSetLayout* create_frame_descriptor_set_layout(
+        span<const ShaderVariableBinding> bindings) {
+        return impl_->create_frame_descriptor_set_layout(bindings);
+    }
+
+    void release_shader_program(ShaderProgram* program) {
+        impl_->release_shader_program(program);
     }
 
     [[nodiscard]] handle_ty find_shader_from_file(

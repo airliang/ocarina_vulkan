@@ -58,15 +58,12 @@ public:
     }
 
     bool is_global_ubo() const { return is_global_ubo_; }
-    bool is_global_textures() const { return is_global_textures_; }
-    void set_is_global_textures(bool is_global) { is_global_textures_ = is_global; }
 
 private:
     std::string name_;
 
 protected:
     bool is_global_ubo_ = false;
-    bool is_global_textures_ = false;
 };
 
 class DescriptorSetWriter : concepts::Noncopyable {

@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "rhi/graphics_descriptions.h"
-#include "shader_reflection.h"
+#include "rhi/shader_reflection.h"
 
 namespace ocarina {
 
@@ -19,7 +19,8 @@ bool compile_hlsl_to_spirv_and_reflect(
     const std::string &filename,
     ShaderType shader_type,
     const std::string &entry_point,
-    CompiledShader &out);
+    CompiledShader &out,
+    bool rebuild_shaders = false);
 
 } // namespace ocarina
 

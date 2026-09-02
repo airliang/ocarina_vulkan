@@ -24,6 +24,7 @@ class Material;
 class Mesh;
 class Texture;
 class Primitive;
+class ShaderProgram;
 
 class GltfAsyncLoader : public AsyncLoader {
 public:
@@ -66,6 +67,7 @@ private:
     std::string gltf_parse_error_;
     handle_ty vertex_shader_ = InvalidUI64;
     handle_ty pixel_shader_ = InvalidUI64;
+    ShaderProgram* shader_program_ = nullptr;
     std::vector<Mesh*> mesh_storage_;
     std::unordered_map<int, TextureHandle> image_textures_;
     std::unordered_map<uint64_t, Mesh*> geometry_meshes_;

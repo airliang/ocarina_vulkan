@@ -2,7 +2,6 @@
 
 #include "dxc_compiler.h"
 #include "core/logging.h"
-#include "rhi/context.h"
 
 #include <fstream>
 
@@ -107,7 +106,8 @@ bool compile_hlsl_to_spirv_and_reflect(
     const std::string &filename,
     ShaderType shader_type,
     const std::string &entry_point,
-    CompiledShader &out) {
+    CompiledShader &out,
+    bool rebuild_shaders) {
 
     const std::string spv_path = get_spv_path_for_shader(filename);
     out.spirv.clear();
@@ -117,11 +117,10 @@ bool compile_hlsl_to_spirv_and_reflect(
     out.reflection.named_structs.clear();
     out.reflection.input_layouts.clear();
 
-    const bool rebuild = RHIContext::instance().rebuild_shaders();
-    const bool loaded_from_cache = !rebuild && load_spirv_from_file(spv_path, out.spirv);
+    const bool loaded_from_cache = !rebuild_shaders && load_spirv_from_file(spv_path, out.spirv);
 
     if (!loaded_from_cache) {
-        if (rebuild) {
+        if (rebuild_shaders) {
             OC_INFO_FORMAT("rebuildshader: compiling {} (ignoring {})", filename.c_str(), spv_path.c_str());
         }
 

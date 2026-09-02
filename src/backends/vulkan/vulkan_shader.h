@@ -1,294 +1,161 @@
-//
-// Created by Zero on 06/08/2022.
-//
-
-#pragma once
-
-#include "core/stl.h"
-#include "core/concepts.h"
-#include "core/util.h"
-#include "rhi/device.h"
-#include "rhi/shader_base.h"
-#include <vulkan/vulkan.h>
-#include "shader_reflection.h"
-#include <vector>
-#include <mutex>
-namespace ocarina {
-
-class VulkanDevice;
-class VulkanDescriptorSetLayout;
-class DescriptorSetLayout;
-struct ShaderKey;
-
-struct VulkanShaderVariableBinding
-{
-    
-    char name[256] = { 0 };
-    uint8_t binding = 0;
-    uint8_t descriptor_set = 0;
-    VkDescriptorType type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    VkShaderStageFlags shader_stage = VK_SHADER_STAGE_VERTEX_BIT;
-    uint32_t count = 1;
-    uint32_t size = 0;// size in bytes, only used for constant buffer
-    uint32_t array_size = 0;// only used for texture array
-    bool is_bindless = false;
-    VulkanShaderVariableBinding() = default;
-    VulkanShaderVariableBinding(const VulkanShaderVariableBinding& other)
-    {
-        binding = other.binding;
-        descriptor_set = other.descriptor_set;
-        type = other.type;
-        count = other.count;
-        shader_stage = other.shader_stage;
-        size = other.size;
-        shader_variables_ = other.shader_variables_;
-        array_size = other.array_size;
-        is_bindless = other.is_bindless;
-        strcpy(name, other.name);
-    }
-
-    VulkanShaderVariableBinding& operator = (const VulkanShaderVariableBinding& other)
-    {
-        binding = other.binding;
-        descriptor_set = other.descriptor_set;
-        type = other.type;
-        count = other.count;
-        shader_stage = other.shader_stage;
-        size = other.size;
-        array_size = other.array_size;
-        is_bindless = other.is_bindless;
-        strcpy(name, other.name);
-        shader_variables_ = other.shader_variables_;
-        return *this;
-    }
-
-    std::vector<ShaderReflection::ShaderVariable> shader_variables_;
-};
-
-struct PushConstant
-{
-    std::string name;
-    uint32_t offset = 0;
-    uint32_t size = 0;
-    VkShaderStageFlags stage_flags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-    std::vector<ShaderReflection::ShaderVariable> shader_variables;
-
-    bool operator==(const PushConstant &other) const {
-        return name == other.name && offset == other.offset && size == other.size && shader_variables == other.shader_variables;
-    }
-
-    bool operator!=(const PushConstant &other) const {
-        return !(*this == other);
-    }
-};
-
-struct VulkanVertexStreamBinding
-{
-    //std::vector<VkBuffer> buffers_;
-    std::vector<VertexAttributeType::Enum> attribute_types_;
-    std::vector<VkDeviceSize> offsets_;
-    std::vector<VkVertexInputBindingDescription> binding_descriptions_;
-    std::vector<VkVertexInputAttributeDescription> attribute_descriptions_;
-    //VulkanShader* vertex_shader_ = nullptr;
-    //static void create_from_vertex_shader(VulkanShader* vertex_shader, VulkanVertexBuffer* vertex_buffer, VulkanVertexStreamBinding& binding);
-};
-
-
-class VulkanShader : public RHIShader {
-public:
-private:
-    VkShaderModule shader_module_ = VK_NULL_HANDLE;
-    std::string entry_;
-    VulkanDevice *device_ = nullptr;
-    VkShaderStageFlagBits stage_;
-    std::vector< VulkanShaderVariableBinding> variables_;
-    std::vector<PushConstant> push_constants_;
-    std::vector<ShaderReflection::UniformBuffer> named_structs_;
-    std::vector<VertexAttribute> vertex_attributes_;  //only exist in vertex shader
-    void get_shader_variables(const ShaderReflection &reflection);
-    void get_vertex_attributes(const ShaderReflection &reflection);
-    VulkanVertexStreamBinding vertex_stream_binding_;
-
-    void create_vertex_stream_binding();
-public:
-    VulkanShader(VulkanDevice *device, std::span<uint32_t> shaderCode, const std::string_view &entryPoint, VkShaderStageFlagBits stage);
-    ~VulkanShader() override;
-
-    size_t get_vertex_attribute_count() const {
-        return vertex_attributes_.size();
-    }
-
-    VertexAttribute get_vertex_attribute(uint32_t index) const {
-        if (index < vertex_attributes_.size()) {
-            return vertex_attributes_[index];
-        }
-        return VertexAttribute();
-    }
-
-    OC_MAKE_MEMBER_GETTER(shader_module, );
-    OC_MAKE_MEMBER_GETTER(stage, );
-
-    const char* get_entry_point() const
-    {
-        return entry_.c_str();
-    }
-    static VulkanShader *create(Device::Impl *device,
-                                ShaderType shader_type, 
-                                std::span<uint32_t> shader_code, 
-                                const std::string_view &entry_point);
-
-    static VulkanShader *create_from_HLSL(Device::Impl *device, 
-        ShaderType shader_type, 
-        const std::string& filename, 
-        const std::string& entry_point);
-
-    static VkShaderStageFlagBits convert_vulkan_shader_stage(ShaderType shader_type)
-    {
-        switch (shader_type) {
-            case ocarina::ShaderType::VertexShader:
-                return VK_SHADER_STAGE_VERTEX_BIT;
-                break;
-            case ocarina::ShaderType::PixelShader:
-                return VK_SHADER_STAGE_FRAGMENT_BIT;
-                break;
-            case ocarina::ShaderType::GeometryShader:
-                return VK_SHADER_STAGE_GEOMETRY_BIT;
-                break;
-            case ocarina::ShaderType::ComputeShader:
-                return VK_SHADER_STAGE_COMPUTE_BIT;
-                break;
-            case ocarina::ShaderType::MeshShader:
-                return VK_SHADER_STAGE_MESH_BIT_EXT;
-                break;
-            default:
-                return VK_SHADER_STAGE_VERTEX_BIT;
-                break;
-        }
-    }
-
-    const std::vector<PushConstant> &get_push_constants() const {
-        return push_constants_;
-    }
-    
-    uint32_t get_shader_variables_count() const
-    {
-        return variables_.size();
-    }
-    const VulkanShaderVariableBinding& get_shader_variable(size_t index)
-    {
-        return variables_[index];
-    }
-
-    const VulkanVertexStreamBinding& get_vertex_stream_binding() const
-    {
-        return vertex_stream_binding_;
-    }
-
-    [[nodiscard]] bool get_uniform_buffer_members(
-        const char* buffer_name,
-        std::vector<RHIShader::UniformBufferMember>& members,
-        uint32_t& buffer_size) const override;
-
-    [[nodiscard]] bool get_struct_members(
-        const char* struct_name,
-        std::vector<RHIShader::UniformBufferMember>& members,
-        uint32_t& struct_size) const override;
-
-    [[nodiscard]] bool has_descriptor_binding(const char* binding_name) const override;
-
-    [[nodiscard]] bool get_shader_vertex_inputs(
-        VertexInputAttributeDescription* out_attributes,
-        uint32_t* inout_attribute_count,
-        VertexInputBindingDescription* out_bindings,
-        uint32_t* inout_binding_count) const override;
-
-    void assign_descriptor_set_layouts(
-        const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>& layouts) noexcept {
-        descriptor_set_layouts_ = layouts;
-        descriptor_set_layouts_ready_ = true;
-    }
-
-    [[nodiscard]] const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>&
-    descriptor_set_layouts() const noexcept override {
-        return descriptor_set_layouts_;
-    }
-
-    [[nodiscard]] bool has_descriptor_set_layouts() const noexcept {
-        return descriptor_set_layouts_ready_;
-    }
-
-    void collect_push_constant_ranges(std::vector<PushConstantRange>& ranges) const override;
-
-private:
-    std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_layouts_ = {};
-    bool descriptor_set_layouts_ready_ = false;
-};
-
-struct ShaderKey {
-    ShaderType shader_type = ShaderType::VertexShader;
-    std::string shader_code;
-    std::string entry_point;
-    std::set<std::string> options;
-
-    bool operator==(const ShaderKey &other) const {
-        return shader_type == other.shader_type && entry_point == other.entry_point && shader_code == other.shader_code && options == other.options;
-    }
-};
-
-struct VulkanShaderEntry
-{
-    VkShaderModule shader_module = VK_NULL_HANDLE;
-    VkShaderStageFlagBits stage;
-    const char *entry = nullptr;
-    bool is_valid() const
-    {
-        return shader_module != VK_NULL_HANDLE;
-    }
-};
-
-struct HashShaderKeyFunction {
-    uint64_t operator()(const ShaderKey &shader_key) const {
-        std::size_t res = 0;
-        hash_combine(res, *((uint64_t *)&shader_key.shader_type));
-        hash_combine(res, std::hash<std::string>()(shader_key.shader_code));
-        hash_combine(res, std::hash<std::string>()(shader_key.entry_point));
-        for (auto iter : shader_key.options) {
-            hash_combine(res, std::hash<std::string>()(iter));
-        }
-        return res;
-    }
-};
-
-class VulkanShaderManager : concepts::Noncopyable {
-public:
-    VulkanShader* get_or_create_from_HLSL(VulkanDevice *device,
-                                      ShaderType shader_type,
-                                      const std::string &filename,
-                                      const std::set<std::string> &options,
-                                      const std::string &entry_point);
-
-    [[nodiscard]] VulkanShader* find_from_HLSL(
-        ShaderType shader_type,
-        const std::string &filename,
-        const std::set<std::string> &options,
-        const std::string &entry_point) const;
-
-    VulkanShaderEntry get_shader_entry(handle_ty shader_handle) const;
-    void clear(VulkanDevice *device);
-    VulkanShader* get_shader(handle_ty shader_handle) const
-    {
-        auto it = shaders_.find(shader_handle);
-        if (it != shaders_.end())
-        {
-            return it->second;
-        }
-
-        return nullptr;
-    }
-private:
-    mutable std::mutex mutex_;
-    std::unordered_map<ShaderKey, VulkanShader*, HashShaderKeyFunction> vulkan_shaders_;
-    std::unordered_map<handle_ty, VulkanShader*> shaders_;
-    std::map<handle_ty, VulkanShaderEntry> vulkan_shader_entries_;
-};
-}// namespace ocarina
+//
+// Created by Zero on 06/08/2022.
+//
+
+#pragma once
+
+#include "core/stl.h"
+#include "core/concepts.h"
+#include "core/util.h"
+#include "rhi/device.h"
+#include "rhi/shader_base.h"
+#include "rhi/shader_program.h"
+#include "rhi/shader_program_key.h"
+#include <vulkan/vulkan.h>
+#include <vector>
+#include <mutex>
+
+namespace ocarina {
+
+class VulkanDevice;
+class VulkanDescriptorSetLayout;
+class DescriptorSetLayout;
+
+struct VulkanVertexStreamBinding {
+    std::vector<VertexAttributeType::Enum> attribute_types_;
+    std::vector<VkDeviceSize> offsets_;
+    std::vector<VkVertexInputBindingDescription> binding_descriptions_;
+    std::vector<VkVertexInputAttributeDescription> attribute_descriptions_;
+};
+
+/// GPU-side Vulkan shader module linked to a parent ShaderProgram.
+class VulkanShader : public RHIShader {
+public:
+    VulkanShader(
+        VulkanDevice* device,
+        ShaderProgram* program,
+        std::span<uint32_t> shader_code,
+        const std::string_view& entry_point,
+        VkShaderStageFlagBits stage,
+        ShaderType shader_type);
+    ~VulkanShader() override;
+
+    [[nodiscard]] size_t get_vertex_attribute_count() const {
+        return program() != nullptr ? program()->vertex_attributes().size() : 0;
+    }
+
+    [[nodiscard]] VertexAttribute get_vertex_attribute(uint32_t index) const {
+        if (program() != nullptr && index < program()->vertex_attributes().size()) {
+            return program()->vertex_attributes()[index];
+        }
+        return VertexAttribute();
+    }
+
+    OC_MAKE_MEMBER_GETTER(shader_module, );
+    OC_MAKE_MEMBER_GETTER(stage, );
+
+    [[nodiscard]] const char* get_entry_point() const { return entry_.c_str(); }
+
+    static VulkanShader* create_for_program(
+        VulkanDevice* device,
+        ShaderProgram* program,
+        ShaderType shader_type);
+
+    static VkShaderStageFlagBits convert_vulkan_shader_stage(ShaderType shader_type) {
+        switch (shader_type) {
+            case ShaderType::VertexShader:
+                return VK_SHADER_STAGE_VERTEX_BIT;
+            case ShaderType::PixelShader:
+                return VK_SHADER_STAGE_FRAGMENT_BIT;
+            case ShaderType::GeometryShader:
+                return VK_SHADER_STAGE_GEOMETRY_BIT;
+            case ShaderType::ComputeShader:
+                return VK_SHADER_STAGE_COMPUTE_BIT;
+            case ShaderType::MeshShader:
+                return VK_SHADER_STAGE_MESH_BIT_EXT;
+            default:
+                return VK_SHADER_STAGE_VERTEX_BIT;
+        }
+    }
+
+    [[nodiscard]] const std::vector<ShaderPushConstant>& get_push_constants() const { return push_constants_; }
+
+    [[nodiscard]] uint32_t get_shader_variables_count() const { return static_cast<uint32_t>(variables_.size()); }
+
+    [[nodiscard]] const ShaderVariableBinding& get_shader_variable(size_t index) const {
+        return variables_[index];
+    }
+
+    [[nodiscard]] const VulkanVertexStreamBinding& get_vertex_stream_binding() const {
+        return vertex_stream_binding_;
+    }
+
+private:
+    void build_stage_bindings_from_program();
+    void create_vertex_stream_binding();
+
+    VkShaderModule shader_module_ = VK_NULL_HANDLE;
+    std::string entry_;
+    VulkanDevice* device_ = nullptr;
+    VkShaderStageFlagBits stage_;
+    std::vector<ShaderVariableBinding> variables_;
+    std::vector<ShaderPushConstant> push_constants_;
+    VulkanVertexStreamBinding vertex_stream_binding_;
+};
+
+struct VulkanShaderEntry {
+    VkShaderModule shader_module = VK_NULL_HANDLE;
+    VkShaderStageFlagBits stage;
+    const char* entry = nullptr;
+    bool is_valid() const { return shader_module != VK_NULL_HANDLE; }
+};
+
+class VulkanShaderManager : concepts::Noncopyable {
+public:
+    VulkanShader* get_or_create_shader_from_program(
+        VulkanDevice* device,
+        ShaderProgram* program,
+        ShaderType shader_type);
+
+    [[nodiscard]] VulkanShader* find_shader_from_program(
+        ShaderProgram* program,
+        ShaderType shader_type) const;
+
+    void release_program_shaders(ShaderProgram* program);
+
+    VulkanShaderEntry get_shader_entry(handle_ty shader_handle) const;
+    void clear(VulkanDevice* device);
+    [[nodiscard]] VulkanShader* get_shader(handle_ty shader_handle) const {
+        auto it = shaders_.find(shader_handle);
+        if (it != shaders_.end()) {
+            return it->second;
+        }
+        return nullptr;
+    }
+
+private:
+    struct ProgramShaderKey {
+        ShaderProgram* program = nullptr;
+        ShaderType stage = ShaderType::VertexShader;
+
+        bool operator==(const ProgramShaderKey& other) const {
+            return program == other.program && stage == other.stage;
+        }
+    };
+
+    struct HashProgramShaderKey {
+        size_t operator()(const ProgramShaderKey& key) const {
+            size_t hash = 0;
+            hash_combine(hash, reinterpret_cast<uintptr_t>(key.program));
+            hash_combine(hash, *reinterpret_cast<const uint64_t*>(&key.stage));
+            return hash;
+        }
+    };
+
+    mutable std::mutex mutex_;
+    std::unordered_map<ProgramShaderKey, VulkanShader*, HashProgramShaderKey> program_shaders_;
+    std::unordered_map<handle_ty, VulkanShader*> shaders_;
+    std::map<handle_ty, VulkanShaderEntry> vulkan_shader_entries_;
+};
+
+} // namespace ocarina

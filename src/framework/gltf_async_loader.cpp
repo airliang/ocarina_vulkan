@@ -199,14 +199,18 @@ void GltfAsyncLoader::load(Device* device) {
 
     device_ = device;
     if (mesh_pso_request_.has_shader_paths()) {
-        vertex_shader_ = device->create_shader_from_file(
+        ResourceManager& resources = ResourceManager::instance();
+        shader_program_ = resources.create_shader_program(
+            device,
             mesh_pso_request_.vertex_shader_path,
-            ShaderType::VertexShader,
-            mesh_pso_request_.vertex_options);
-        pixel_shader_ = device->create_shader_from_file(
             mesh_pso_request_.pixel_shader_path,
-            ShaderType::PixelShader,
+            mesh_pso_request_.vertex_options,
             mesh_pso_request_.pixel_options);
+        if (shader_program_ != nullptr) {
+            shader_program_->ensure_gpu_shaders(device);
+            vertex_shader_ = shader_program_->shader_handle(ShaderType::VertexShader);
+            pixel_shader_ = shader_program_->shader_handle(ShaderType::PixelShader);
+        }
     } else if (mesh_pso_request_.has_shader_handles()) {
         vertex_shader_ = mesh_pso_request_.vertex_shader;
         pixel_shader_ = mesh_pso_request_.pixel_shader;
@@ -351,11 +355,10 @@ void GltfAsyncLoader::load_gltf_node(
 
             if (gltf_primitive.material >= 0 && gltf_primitive.material < static_cast<int>(model.materials.size())) {
                 load_material(prim, model.materials[gltf_primitive.material], model);
-            } else if (vertex_shader_ != InvalidUI64 && pixel_shader_ != InvalidUI64) {
+            } else if (shader_program_ != nullptr) {
                 Material* prim_material = ResourceManager::instance().create_unique_material(
                     device_,
-                    vertex_shader_,
-                    pixel_shader_);
+                    shader_program_);
                 prim.set_material(prim_material);
                 prim_material->set_property("baseColorFactor", make_float4(1.f, 1.f, 1.f, 1.f));
                 prim_material->set_property("roughness", 1.f);
@@ -589,11 +592,10 @@ TextureHandle GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::
 }
 
 void GltfAsyncLoader::load_material(Primitive& prim, const tinygltf::Material& material, const tinygltf::Model& model) {
-    if (vertex_shader_ != InvalidUI64 && pixel_shader_ != InvalidUI64) {
+    if (shader_program_ != nullptr) {
         Material* prim_material = ResourceManager::instance().create_unique_material(
             device_,
-            vertex_shader_,
-            pixel_shader_);
+            shader_program_);
         prim.set_material(prim_material);
     }
 

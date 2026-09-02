@@ -3,6 +3,7 @@
 #include "core/header.h"
 #include "core/stl.h"
 #include "core/concepts.h"
+#include "core/thread_safe_list.h"
 #include "core/thread_safe_queue.h"
 #include "rhi/graphics_descriptions.h"
 #include "rhi/pipeline_state.h"
@@ -75,6 +76,11 @@ public:
     static FrameResources& instance();
 
     void initialize(Device* device);
+
+    /// Hard-coded FRAME set (set 0): `global_ubo` at binding 0 for VS and PS.
+    [[nodiscard]] DescriptorSetLayout* frame_descriptor_set_layout() const noexcept {
+        return frame_descriptor_set_layout_;
+    }
 
     void add_global_descriptor_set(uint64_t name_id, DescriptorSet* descriptor_set);
 
@@ -161,6 +167,7 @@ private:
     void upload_transform_buffer();
     void flush_pending_bindless_updates();
     void process_material_update();
+    void create_global_descriptor_set();
     void create_default_gpu_buffers();
     void grow_transform_gpu_buffer(size_t element_count);
     void grow_material_gpu_buffer(size_t byte_count);
@@ -170,6 +177,7 @@ private:
     DescriptorSet* find_bindless_descriptor_set_locked() const;
 
     Device* device_ = nullptr;
+    DescriptorSetLayout* frame_descriptor_set_layout_ = nullptr;
 
     mutable std::mutex global_descriptor_sets_mutex_;
     /// Indexed by Vulkan descriptor set index; contiguous from 0 (nullptr = unused hole).
@@ -183,7 +191,7 @@ private:
     };
     ThreadSafeQueue<PendingBindlessUpdate> pending_bindless_updates_;
 
-    ThreadSafeQueue<MaterialUpdateRequest> material_update_queue_;
+    ThreadSafeList<MaterialUpdateRequest> material_update_queue_;
 
     GlobalUniformBuffer global_ubo_{};
     TypedBuffer<GlobalUniformBuffer> global_ubo_buffer_{};

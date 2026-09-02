@@ -79,10 +79,10 @@ int main(int argc, char *argv[]) {
         &device,
         [&material, &triangle_mesh, shader_vert, shader_frag](Device* device) {
         std::set<string> options;
-        material = ResourceManager::instance().create_material(
-            device,
-            device->create_shader_from_file(shader_vert, ShaderType::VertexShader, options),
-            device->create_shader_from_file(shader_frag, ShaderType::PixelShader, options));
+        ResourceManager& resources = ResourceManager::instance();
+        ShaderProgram* program = resources.create_shader_program(
+            device, shader_vert, shader_frag, options, options);
+        material = resources.create_material(device, program);
         triangle_mesh = create_triangle_mesh();
         ResourceManager::instance().add_mesh("triangle", triangle_mesh);
     });

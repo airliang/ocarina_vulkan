@@ -103,9 +103,6 @@ void RenderPassTask::add_render_pass(RHIRenderPass* render_pass) noexcept {
         return;
     }
     render_passes_.emplace_back(render_pass);
-    if (render_pass->is_swapchain_renderpass()) {
-        PipelineManager::instance().create_default_psos(render_pass);
-    }
 }
 
 void RenderPassTask::remove_render_pass(RHIRenderPass* render_pass) noexcept {

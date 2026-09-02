@@ -2,6 +2,7 @@
 
 #include "loading_progress_listener.h"
 #include "pipeline_manager.h"
+#include "resource_manager.h"
 #include "rhi/device.h"
 #include "rhi/pipeline_state.h"
 
@@ -45,22 +46,22 @@ void PipelineCompileTask::resolve_shaders() noexcept {
         return;
     }
 
-    if (request_.vertex_shader == 0 || request_.vertex_shader == InvalidUI64) {
-        request_.vertex_shader = device_->create_shader_from_file(
+    if (request_.vertex_shader == 0 || request_.vertex_shader == InvalidUI64
+        || request_.pixel_shader == 0 || request_.pixel_shader == InvalidUI64) {
+        ShaderProgram* program = ResourceManager::instance().create_shader_program(
+            device_,
             request_.vertex_shader_path,
-            ShaderType::VertexShader,
-            request_.vertex_options);
+            request_.pixel_shader_path,
+            request_.vertex_options,
+            request_.pixel_options);
+        if (program == nullptr) {
+            return;
+        }
+        program->ensure_gpu_shaders(device_);
+        request_.vertex_shader = program->shader_handle(ShaderType::VertexShader);
+        request_.pixel_shader = program->shader_handle(ShaderType::PixelShader);
         if (progress_listener_ != nullptr) {
             progress_listener_->advance();
-        }
-    }
-
-    if (request_.pixel_shader == 0 || request_.pixel_shader == InvalidUI64) {
-        request_.pixel_shader = device_->create_shader_from_file(
-            request_.pixel_shader_path,
-            ShaderType::PixelShader,
-            request_.pixel_options);
-        if (progress_listener_ != nullptr) {
             progress_listener_->advance();
         }
     }

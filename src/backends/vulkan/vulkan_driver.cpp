@@ -94,19 +94,21 @@ inline VkDevice VulkanDriver::device() const {
     return (*vulkan_device_)();
 }
 
-VulkanShader *VulkanDriver::create_shader(ShaderType shader_type,
-                                          const std::string &filename,
-                                          const std::set<std::string> &options,
-                                          const std::string &entry_point){
-    return vulkan_shader_manager->get_or_create_from_HLSL(vulkan_device_, shader_type, filename, options, entry_point);
+VulkanShader* VulkanDriver::get_or_create_shader_from_program(
+    VulkanDevice* device,
+    ShaderProgram* program,
+    ShaderType shader_type) {
+    return vulkan_shader_manager->get_or_create_shader_from_program(device, program, shader_type);
 }
 
-VulkanShader* VulkanDriver::find_shader(
-    ShaderType shader_type,
-    const std::string &filename,
-    const std::set<std::string> &options,
-    const std::string &entry_point) const {
-    return vulkan_shader_manager->find_from_HLSL(shader_type, filename, options, entry_point);
+VulkanShader* VulkanDriver::find_shader_from_program(
+    ShaderProgram* program,
+    ShaderType shader_type) const {
+    return vulkan_shader_manager->find_shader_from_program(program, shader_type);
+}
+
+void VulkanDriver::release_program_shaders(ShaderProgram* program) {
+    vulkan_shader_manager->release_program_shaders(program);
 }
 
 VulkanShader* VulkanDriver::get_shader(handle_ty shader) const
@@ -763,23 +765,27 @@ void VulkanDriver::bind_descriptor_sets(VkCommandBuffer cmd, DescriptorSet **des
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, first_set, descriptor_sets_num, descriptor_set_handles.data(), 0, nullptr);
 }
 
-void VulkanDriver::ensure_shader_descriptor_set_layouts(VulkanShader* shader) {
-    if (vulkan_descriptor_manager == nullptr || shader == nullptr) {
-        return;
-    }
-    vulkan_descriptor_manager->ensure_descriptor_set_layouts(shader);
-}
-
 std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>
-VulkanDriver::collect_pipeline_descriptor_set_layouts(
-    VulkanShader* vertex_shader,
-    VulkanShader* pixel_shader) {
+VulkanDriver::collect_shader_descriptor_set_layouts(ShaderProgram* program) {
     if (vulkan_descriptor_manager == nullptr) {
         return {};
     }
-    return vulkan_descriptor_manager->collect_pipeline_descriptor_set_layouts(
-        vertex_shader,
-        pixel_shader);
+    return vulkan_descriptor_manager->collect_shader_descriptor_set_layouts(program);
+}
+
+DescriptorSetLayout* VulkanDriver::create_frame_descriptor_set_layout(
+    span<const ShaderVariableBinding> bindings) {
+    if (vulkan_descriptor_manager == nullptr) {
+        return nullptr;
+    }
+    return vulkan_descriptor_manager->create_frame_descriptor_set_layout(bindings);
+}
+
+DescriptorSetLayout* VulkanDriver::get_frame_descriptor_set_layout() {
+    if (vulkan_descriptor_manager == nullptr) {
+        return nullptr;
+    }
+    return vulkan_descriptor_manager->get_frame_descriptor_set_layout();
 }
 
 //VkPipelineLayout VulkanDriver::get_pipeline_layout(VkDescriptorSetLayout *descriptset_layouts, uint8_t descriptset_layouts_count, VkPushConstantRange *push_constants, uint32_t push_constant_array_size) {

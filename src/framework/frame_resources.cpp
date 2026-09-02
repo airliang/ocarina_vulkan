@@ -6,10 +6,12 @@
 #include "rhi/command_buffer.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/device.h"
+#include "rhi/shader_program.h"
 #include "rhi/resources/resource.h"
 #include "core/logging.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <vector>
 
 namespace ocarina {
@@ -50,7 +52,44 @@ void FrameResources::initialize(Device* device) {
         release_gpu_buffers();
     }
     device_ = device;
+    create_global_descriptor_set();
     create_default_gpu_buffers();
+}
+
+void FrameResources::create_global_descriptor_set() {
+    if (device_ == nullptr || frame_descriptor_set_layout_ != nullptr) {
+        return;
+    }
+
+    ShaderVariableBinding global_ubo_binding{};
+    std::strncpy(global_ubo_binding.name, "global_ubo", sizeof(global_ubo_binding.name) - 1);
+    global_ubo_binding.binding = 0;
+    global_ubo_binding.descriptor_set = static_cast<uint8_t>(DescriptorSetIndex::FRAME_SET);
+    global_ubo_binding.type = ShaderBindingType::UniformBuffer;
+    global_ubo_binding.stage_flags = 1u | 16u; // VS | PS (Vulkan stage bits)
+    global_ubo_binding.size = static_cast<uint32_t>(sizeof(GlobalUniformBuffer));
+    global_ubo_binding.count = 1;
+    global_ubo_binding.is_bindless = false;
+
+    const ShaderVariableBinding frame_bindings[] = { global_ubo_binding };
+    frame_descriptor_set_layout_ = device_->create_frame_descriptor_set_layout(frame_bindings);
+    if (frame_descriptor_set_layout_ == nullptr) {
+        return;
+    }
+
+    DescriptorSet* descriptor_set = frame_descriptor_set_layout_->allocate_descriptor_set();
+    if (descriptor_set == nullptr) {
+        return;
+    }
+
+    const uint64_t global_ubo_name_id = hash64("global_ubo");
+    std::lock_guard<std::mutex> lock(global_descriptor_sets_mutex_);
+    if (global_descriptor_sets_.size() < 1) {
+        global_descriptor_sets_.resize(1, nullptr);
+    }
+    global_descriptor_sets_[0] = descriptor_set;
+    global_descriptor_sets_by_name_[global_ubo_name_id] = descriptor_set;
+    global_ubo_descriptor_bound_ = false;
 }
 
 void FrameResources::release_gpu_buffers() {
@@ -74,6 +113,13 @@ void FrameResources::release_gpu_buffers() {
     }
     material_storage_descriptor_bound_ = false;
     material_storage_descriptor_dirty_ = false;
+
+    {
+        std::lock_guard<std::mutex> lock(global_descriptor_sets_mutex_);
+        global_descriptor_sets_.clear();
+        global_descriptor_sets_by_name_.clear();
+    }
+    frame_descriptor_set_layout_ = nullptr;
 
     // Drop the device pointer so later singleton teardown cannot recreate Vulkan objects.
     device_ = nullptr;
@@ -274,9 +320,7 @@ void FrameResources::queue_material_update(MaterialUpdateRequest request) {
 
     switch (request.kind) {
         case MaterialUpdateKind::Texture:
-            if (request.name_id == 0 ||
-                (request.texture_handle.texture_ == nullptr &&
-                 request.texture_handle.bindless_index_ == InvalidUI32)) {
+            if (request.name_id == 0 || request.texture_handle.texture_ == nullptr) {
                 return;
             }
             break;
@@ -291,63 +335,56 @@ void FrameResources::queue_material_update(MaterialUpdateRequest request) {
             return;
     }
 
-    material_update_queue_.push(std::move(request));
+    material_update_queue_.push_back(std::move(request));
 }
 
 void FrameResources::process_material_update() {
-    std::vector<MaterialUpdateRequest> deferred;
-    MaterialUpdateRequest request;
-    while (material_update_queue_.try_pop(request)) {
+    material_update_queue_.for_each_remove_if([this](MaterialUpdateRequest& request) -> bool {
         if (request.material == nullptr) {
-            continue;
+            return true;
         }
+
+        request.material->try_finish_gpu_init();
 
         switch (request.kind) {
             case MaterialUpdateKind::Texture: {
+                Texture* texture = request.texture_handle.texture_;
+                if (texture == nullptr || !texture->is_gpu_ready()) {
+                    return false;
+                }
+                if (!request.material->is_material_infrastructure_ready()) {
+                    return false;
+                }
+
                 OC_INFO(
                     "[material_update] Texture: material=",
                     reinterpret_cast<uintptr_t>(request.material),
                     " name_id=",
                     request.name_id,
                     " tex=",
-                    reinterpret_cast<uintptr_t>(request.texture_handle.texture_),
+                    reinterpret_cast<uintptr_t>(texture),
                     " bindless=",
                     request.texture_handle.bindless_index_);
-                Texture* texture =
-                    request.material->bind_texture(request.name_id, request.texture_handle);
-                if (texture == nullptr || !texture->is_gpu_ready()) {
-                    OC_INFO(
-                        "[material_update] Texture deferred: texture=",
-                        texture != nullptr ? "yes" : "null",
-                        " gpu_ready=",
-                        texture != nullptr && texture->is_gpu_ready());
-                    deferred.push_back(std::move(request));
-                    break;
-                }
 
-                // Prefer global set registered under this binding / property name.
                 DescriptorSet* descriptor_set = get_global_descriptor_set(request.name_id);
                 if (descriptor_set == nullptr) {
                     descriptor_set = request.material->get_material_descriptor_set();
                 }
                 if (descriptor_set == nullptr) {
-                    // Bindless / g_materials path: index was written in bind_texture; no local set.
                     if (request.material->uses_global_material_buffer()
                         || request.material->uses_shared_bindless_descriptor_set()) {
                         OC_INFO(
-                            "[material_update] Texture: no local set, bindless/global path "
-                            "uses_global=",
+                            "[material_update] Texture: bindless/global path uses_global=",
                             request.material->uses_global_material_buffer(),
                             " uses_shared_bindless=",
                             request.material->uses_shared_bindless_descriptor_set());
                         if (request.texture_handle.bindless_index_ != InvalidUI32) {
                             texture->set_gpu_resource_state(GPUResourceState::GPU_Visible);
                         }
-                        break;
+                        return true;
                     }
-                    OC_INFO("[material_update] Texture deferred: descriptor set not ready");
-                    deferred.push_back(std::move(request));
-                    break;
+                    OC_INFO("[material_update] Texture pending: descriptor set not ready");
+                    return false;
                 }
 
                 descriptor_set->update_texture(request.name_id, texture);
@@ -355,9 +392,13 @@ void FrameResources::process_material_update() {
                 OC_INFO(
                     "[material_update] Texture applied: set=",
                     reinterpret_cast<uintptr_t>(descriptor_set));
-                break;
+                return true;
             }
             case MaterialUpdateKind::Sampler: {
+                if (!request.material->is_material_infrastructure_ready()) {
+                    return false;
+                }
+
                 OC_INFO(
                     "[material_update] Sampler: material=",
                     reinterpret_cast<uintptr_t>(request.material),
@@ -368,18 +409,21 @@ void FrameResources::process_material_update() {
                     descriptor_set = request.material->get_material_descriptor_set();
                 }
                 if (descriptor_set == nullptr) {
-                    OC_INFO("[material_update] Sampler deferred: descriptor set not ready");
-                    deferred.push_back(std::move(request));
-                    break;
+                    OC_INFO("[material_update] Sampler pending: descriptor set not ready");
+                    return false;
                 }
 
                 descriptor_set->update_sampler(request.name_id, request.sampler);
                 OC_INFO(
                     "[material_update] Sampler applied: set=",
                     reinterpret_cast<uintptr_t>(descriptor_set));
-                break;
+                return true;
             }
             case MaterialUpdateKind::UniformBuffer: {
+                if (!request.material->is_material_infrastructure_ready()) {
+                    return false;
+                }
+
                 if (request.material->uses_global_material_buffer()) {
                     EntityComponentSystem& ecs = EntityComponentSystem::instance();
                     if (request.material->has_material_buffer()) {
@@ -391,7 +435,6 @@ void FrameResources::process_material_update() {
                             if (required_bytes > material_buffer_.size_in_byte()) {
                                 grow_material_gpu_buffer(required_bytes);
                             }
-                            // Descriptor bind happens in update_per_frame once the global set exists.
                             material_storage_descriptor_dirty_ = true;
 
                             if (material_buffer_.handle() != 0) {
@@ -408,16 +451,12 @@ void FrameResources::process_material_update() {
                     request.material->apply_material_parameters_upload();
                 }
                 request.material->clear_uniform_buffer_update_queued();
-                break;
+                return true;
             }
             default:
-                break;
+                return true;
         }
-    }
-
-    for (MaterialUpdateRequest& pending : deferred) {
-        material_update_queue_.push(std::move(pending));
-    }
+    });
 }
 
 bool FrameResources::is_global_descriptor_set_index(uint32_t set_index) const {

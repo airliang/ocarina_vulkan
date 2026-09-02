@@ -8,11 +8,12 @@
 #include "rhi/resources/buffer.h"
 #include "rhi/device.h"
 #include "bindless_texture_registry.h"
+#include "rhi/shader_program_key.h"
+#include "rhi/shader_program.h"
 #include "material.h"
 #include <mutex>
 
 namespace ocarina {
-
 class Mesh;
 class Texture;
 class Image;
@@ -26,13 +27,37 @@ public:
 
     void cleanup();
 
-    static uint64_t make_material_key(handle_ty vertex_shader, handle_ty pixel_shader) noexcept;
+    static uint64_t make_material_key(ShaderProgram* shader_program) noexcept;
     static uint64_t make_texture_key(const std::string& name, const TextureViewCreation& texture_view, const TextureSampler& sampler) noexcept;
 
-    Material* create_material(Device* device, handle_ty vertex_shader, handle_ty pixel_shader);
-    Material* create_unique_material(Device* device, handle_ty vertex_shader, handle_ty pixel_shader);
-    Material* get_material(handle_ty vertex_shader, handle_ty pixel_shader) const noexcept;
-    bool release_material(handle_ty vertex_shader, handle_ty pixel_shader);
+    ShaderProgram* create_shader_program(
+        Device* device,
+        const std::string& vertex_shader_file,
+        const std::string& pixel_shader_file,
+        const std::set<std::string>& vertex_options,
+        const std::set<std::string>& pixel_options,
+        const std::string& entry_point = "main");
+    [[nodiscard]] ShaderProgram* get_shader_program(
+        const std::string& vertex_shader_file,
+        const std::string& pixel_shader_file,
+        const std::set<std::string>& vertex_options,
+        const std::set<std::string>& pixel_options,
+        const std::string& entry_point = "main") const noexcept;
+
+    ShaderProgram* create_compute_shader_program(
+        Device* device,
+        const std::string& compute_shader_file,
+        const std::set<std::string>& options,
+        const std::string& entry_point = "main");
+    [[nodiscard]] ShaderProgram* get_compute_shader_program(
+        const std::string& compute_shader_file,
+        const std::set<std::string>& options,
+        const std::string& entry_point = "main") const noexcept;
+
+    Material* create_material(Device* device, ShaderProgram* shader_program);
+    Material* create_unique_material(Device* device, ShaderProgram* shader_program);
+    Material* get_material(ShaderProgram* shader_program) const noexcept;
+    bool release_material(ShaderProgram* shader_program);
 
     Mesh* create_mesh(const std::string& name);
     Mesh* get_mesh(const std::string& name) const noexcept;
@@ -88,12 +113,22 @@ public:
         const TextureViewCreation& texture_view,
         const TextureSampler& sampler) const noexcept;
 
-    /// Called from the GPU resource thread when a texture finishes creating.
-    void complete_texture(uint64_t key, Texture* texture);
-
 private:
+    static ShaderProgramKey make_graphics_program_key(
+        const std::string& vertex_shader_file,
+        const std::string& pixel_shader_file,
+        const std::set<std::string>& vertex_options,
+        const std::set<std::string>& pixel_options,
+        const std::string& entry_point);
+    static ShaderProgramKey make_compute_program_key(
+        const std::string& compute_shader_file,
+        const std::set<std::string>& options,
+        const std::string& entry_point);
+
     std::unordered_map<uint64_t, Material*> materials_;
     std::vector<Material*> unique_materials_;
+    std::unordered_map<ShaderProgramKey, ShaderProgram*, HashShaderProgramKeyFunction> shader_programs_;
+    Device* cached_device_ = nullptr;
     std::unordered_map<uint64_t, Mesh*> meshes_;
     std::vector<Mesh*> meshes_by_id_;
     std::unordered_map<Mesh*, uint32_t> mesh_to_id_;
@@ -108,17 +143,8 @@ TypedBuffer<T> ResourceManager::create_buffer(
     size_t element_count,
     GraphicBufferBindFlags bind_flags,
     const std::string& name) {
-    static_assert(is_valid_buffer_element_v<T>);
-    if (device == nullptr || element_count == 0) {
-        return {};
-    }
-
-    const size_t byte_count = element_count * sizeof(T);
-    const handle_ty handle = device->create_buffer(byte_count, bind_flags, name);
-    if (handle == 0) {
-        return {};
-    }
-
+    const size_t byte_size = element_count * sizeof(T);
+    handle_ty handle = device->create_buffer(byte_size, bind_flags, name);
     Buffer* buffer = reinterpret_cast<Buffer*>(handle);
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -127,4 +153,4 @@ TypedBuffer<T> ResourceManager::create_buffer(
     return TypedBuffer<T>(handle, element_count);
 }
 
-}// namespace ocarina
+} // namespace ocarina

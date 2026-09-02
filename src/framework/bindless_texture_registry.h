@@ -9,7 +9,7 @@ namespace ocarina {
 
 class Texture;
 
-/// Async-friendly texture reference: bindless slot may exist before the GPU Texture*.
+/// Texture reference: bindless slot and Texture* are both valid after create_texture().
 struct TextureHandle {
     uint32_t bindless_index_ = InvalidUI32;
     Texture* texture_ = nullptr;

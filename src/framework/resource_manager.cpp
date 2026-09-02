@@ -6,6 +6,7 @@
 #include "rhi/resources/texture.h"
 #include "rhi/resources/texture_sampler.h"
 #include "rhi/device.h"
+#include "rhi/shader_program.h"
 #include "core/image.h"
 
 namespace ocarina {
@@ -29,6 +30,14 @@ void ResourceManager::cleanup() {
         ocarina::delete_with_allocator<Material>(material);
     }
     unique_materials_.clear();
+    for (auto& [key, program] : shader_programs_) {
+        if (cached_device_ != nullptr) {
+            cached_device_->release_shader_program(program);
+        }
+        ocarina::delete_with_allocator<ShaderProgram>(program);
+    }
+    shader_programs_.clear();
+    cached_device_ = nullptr;
     for (auto& [key, mesh] : meshes_) {
         ocarina::delete_with_allocator<Mesh>(mesh);
     }
@@ -91,40 +100,190 @@ bool ResourceManager::release_buffer(handle_ty handle) {
     return false;
 }
 
-uint64_t ResourceManager::make_material_key(handle_ty vertex_shader, handle_ty pixel_shader) noexcept {
-    return hash64(vertex_shader, pixel_shader);
+uint64_t ResourceManager::make_material_key(ShaderProgram* shader_program) noexcept {
+    return hash64(reinterpret_cast<uint64_t>(shader_program));
 }
 
-uint64_t ResourceManager::make_texture_key(const std::string& name, const TextureViewCreation& texture_view, const TextureSampler& sampler) noexcept {
-    return hash64(name, texture_view.mip_level_count, texture_view.usage, sampler.filter(), sampler.u_address(), sampler.v_address(), sampler.w_address());
+uint64_t ResourceManager::make_texture_key(
+    const std::string& name,
+    const TextureViewCreation& texture_view,
+    const TextureSampler& sampler) noexcept {
+    return hash64(
+        name,
+        texture_view.mip_level_count,
+        texture_view.usage,
+        sampler.filter(),
+        sampler.u_address(),
+        sampler.v_address(),
+        sampler.w_address());
 }
 
-Material* ResourceManager::create_material(Device* device, handle_ty vertex_shader, handle_ty pixel_shader) {
-    uint64_t key = make_material_key(vertex_shader, pixel_shader);
+ShaderProgramKey ResourceManager::make_graphics_program_key(
+    const std::string& vertex_shader_file,
+    const std::string& pixel_shader_file,
+    const std::set<std::string>& vertex_options,
+    const std::set<std::string>& pixel_options,
+    const std::string& entry_point) {
+    ShaderProgramKey key;
+    key.vertex_shader_file = vertex_shader_file;
+    key.pixel_shader_file = pixel_shader_file;
+    key.vertex_options = vertex_options;
+    key.pixel_options = pixel_options;
+    key.entry_point = entry_point;
+    return key;
+}
+
+ShaderProgramKey ResourceManager::make_compute_program_key(
+    const std::string& compute_shader_file,
+    const std::set<std::string>& options,
+    const std::string& entry_point) {
+    ShaderProgramKey key;
+    key.compute_shader_file = compute_shader_file;
+    key.compute_options = options;
+    key.entry_point = entry_point;
+    return key;
+}
+
+ShaderProgram* ResourceManager::create_shader_program(
+    Device* device,
+    const std::string& vertex_shader_file,
+    const std::string& pixel_shader_file,
+    const std::set<std::string>& vertex_options,
+    const std::set<std::string>& pixel_options,
+    const std::string& entry_point) {
+    const ShaderProgramKey key = make_graphics_program_key(
+        vertex_shader_file,
+        pixel_shader_file,
+        vertex_options,
+        pixel_options,
+        entry_point);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto it = shader_programs_.find(key);
+        if (it != shader_programs_.end()) {
+            return it->second;
+        }
+    }
+
+    ShaderProgram* program = ShaderProgram::compile_graphics_from_HLSL(
+        vertex_shader_file,
+        pixel_shader_file,
+        vertex_options,
+        pixel_options,
+        entry_point);
+    if (program == nullptr) {
+        return nullptr;
+    }
+
+    program->create_descriptor_set_layouts(device);
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (cached_device_ == nullptr) {
+        cached_device_ = device;
+    }
+    const auto [it, inserted] = shader_programs_.emplace(key, program);
+    if (!inserted) {
+        if (cached_device_ != nullptr) {
+            cached_device_->release_shader_program(program);
+        }
+        ocarina::delete_with_allocator<ShaderProgram>(program);
+        return it->second;
+    }
+    return program;
+}
+
+ShaderProgram* ResourceManager::get_shader_program(
+    const std::string& vertex_shader_file,
+    const std::string& pixel_shader_file,
+    const std::set<std::string>& vertex_options,
+    const std::set<std::string>& pixel_options,
+    const std::string& entry_point) const noexcept {
+    const ShaderProgramKey key = make_graphics_program_key(
+        vertex_shader_file,
+        pixel_shader_file,
+        vertex_options,
+        pixel_options,
+        entry_point);
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto it = shader_programs_.find(key);
+    return it != shader_programs_.end() ? it->second : nullptr;
+}
+
+ShaderProgram* ResourceManager::create_compute_shader_program(
+    Device* device,
+    const std::string& compute_shader_file,
+    const std::set<std::string>& options,
+    const std::string& entry_point) {
+    const ShaderProgramKey key = make_compute_program_key(compute_shader_file, options, entry_point);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto it = shader_programs_.find(key);
+        if (it != shader_programs_.end()) {
+            return it->second;
+        }
+    }
+
+    ShaderProgram* program = ShaderProgram::compile_compute_from_HLSL(
+        compute_shader_file,
+        options,
+        entry_point);
+    if (program == nullptr) {
+        return nullptr;
+    }
+
+    program->create_descriptor_set_layouts(device);
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (cached_device_ == nullptr) {
+        cached_device_ = device;
+    }
+    const auto [it, inserted] = shader_programs_.emplace(key, program);
+    if (!inserted) {
+        if (cached_device_ != nullptr) {
+            cached_device_->release_shader_program(program);
+        }
+        ocarina::delete_with_allocator<ShaderProgram>(program);
+        return it->second;
+    }
+    return program;
+}
+
+ShaderProgram* ResourceManager::get_compute_shader_program(
+    const std::string& compute_shader_file,
+    const std::set<std::string>& options,
+    const std::string& entry_point) const noexcept {
+    const ShaderProgramKey key = make_compute_program_key(compute_shader_file, options, entry_point);
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto it = shader_programs_.find(key);
+    return it != shader_programs_.end() ? it->second : nullptr;
+}
+
+Material* ResourceManager::create_material(Device* device, ShaderProgram* shader_program) {
+    uint64_t key = make_material_key(shader_program);
     auto it = materials_.find(key);
     if (it != materials_.end()) {
         return it->second;
     }
 
-    Material* material = ocarina::new_with_allocator<Material>(device, vertex_shader, pixel_shader);
+    Material* material = ocarina::new_with_allocator<Material>(device, shader_program);
     materials_.emplace(key, material);
     return material;
 }
 
-Material* ResourceManager::create_unique_material(Device* device, handle_ty vertex_shader, handle_ty pixel_shader) {
-    Material* material = ocarina::new_with_allocator<Material>(device, vertex_shader, pixel_shader);
+Material* ResourceManager::create_unique_material(Device* device, ShaderProgram* shader_program) {
+    Material* material = ocarina::new_with_allocator<Material>(device, shader_program);
     unique_materials_.push_back(material);
     return material;
 }
 
-Material* ResourceManager::get_material(handle_ty vertex_shader, handle_ty pixel_shader) const noexcept {
-    uint64_t key = make_material_key(vertex_shader, pixel_shader);
+Material* ResourceManager::get_material(ShaderProgram* shader_program) const noexcept {
+    uint64_t key = make_material_key(shader_program);
     auto it = materials_.find(key);
     return it != materials_.end() ? it->second : nullptr;
 }
 
-bool ResourceManager::release_material(handle_ty vertex_shader, handle_ty pixel_shader) {
-    uint64_t key = make_material_key(vertex_shader, pixel_shader);
+bool ResourceManager::release_material(ShaderProgram* shader_program) {
+    uint64_t key = make_material_key(shader_program);
     auto it = materials_.find(key);
     if (it == materials_.end()) {
         return false;
@@ -230,21 +389,27 @@ TextureHandle ResourceManager::get_texture_handle(
     if (it == textures_.end()) {
         return TextureHandle{};
     }
-    TextureHandle handle = it->second;
-    if (handle.texture_ == nullptr && handle.bindless_index_ != InvalidUI32) {
-        handle.texture_ = BindlessTextureRegistry::instance().get_texture(handle.bindless_index_);
-    }
-    return handle;
+    return it->second;
 }
 
-void ResourceManager::complete_texture(uint64_t key, Texture* texture) {
-    std::lock_guard<std::mutex> l{mutex_};
-    auto it = textures_.find(key);
-    if (it == textures_.end()) {
+namespace {
+
+void destroy_texture(Texture* texture) {
+    if (texture == nullptr) {
         return;
     }
-    it->second.texture_ = texture;
+    texture->destroy();
+    ocarina::delete_with_allocator<Texture>(texture);
 }
+
+void rollback_texture_creation(uint32_t bindless_index, Texture* texture) {
+    if (bindless_index != InvalidUI32) {
+        BindlessTextureRegistry::instance().release_index(bindless_index);
+    }
+    destroy_texture(texture);
+}
+
+} // namespace
 
 TextureHandle ResourceManager::create_texture(
     Device* device,
@@ -262,28 +427,35 @@ TextureHandle ResourceManager::create_texture(
     }
 
     const uint32_t bindless_index = BindlessTextureRegistry::instance().allocate_slot();
-    TextureHandle handle{bindless_index, nullptr};
+    Texture* texture = ocarina::new_with_allocator<Texture>(
+        device->impl(),
+        image.width(),
+        image.height(),
+        1u,
+        image.pixel_storage(),
+        texture_view,
+        sampler,
+        uint4(0, 0, 0, 255),
+        nullptr);
+    if (texture == nullptr) {
+        rollback_texture_creation(bindless_index, nullptr);
+        return {};
+    }
+
+    TextureHandle handle{bindless_index, texture};
     {
         std::lock_guard<std::mutex> l{mutex_};
         auto [it, inserted] = textures_.emplace(key, handle);
         if (!inserted) {
+            rollback_texture_creation(bindless_index, texture);
             return it->second;
         }
     }
 
-    auto request = std::make_shared<TextureGPUResourceRequest>();
+    auto request = std::make_shared<TextureGPUResourceRequest>(device, texture);
     request->kind = GPUResourceRequestType::TextureFromData;
-    request->device = device;
     request->name = std::move(image_name);
-    request->width = image.width();
-    request->height = image.height();
-    request->depth = 1;
-    request->pixel_storage = image.pixel_storage();
-    request->texture_view = texture_view;
-    request->sampler = sampler;
     request->bindless_index = bindless_index;
-    request->cache_key = key;
-    request->has_cache_key = true;
     const size_t byte_count = image.size_in_bytes();
     const uint8_t* src = image.pixel_ptr<uint8_t>();
     if (src != nullptr && byte_count > 0) {
@@ -313,28 +485,35 @@ TextureHandle ResourceManager::create_texture(
     }
 
     const uint32_t bindless_index = BindlessTextureRegistry::instance().allocate_slot();
-    TextureHandle handle{bindless_index, nullptr};
+    Texture* texture = ocarina::new_with_allocator<Texture>(
+        device->impl(),
+        width,
+        height,
+        1u,
+        pixel_storage,
+        texture_view,
+        sampler,
+        uint4(0, 0, 0, 255),
+        nullptr);
+    if (texture == nullptr) {
+        rollback_texture_creation(bindless_index, nullptr);
+        return {};
+    }
+
+    TextureHandle handle{bindless_index, texture};
     {
         std::lock_guard<std::mutex> l{mutex_};
         auto [it, inserted] = textures_.emplace(key, handle);
         if (!inserted) {
+            rollback_texture_creation(bindless_index, texture);
             return it->second;
         }
     }
 
-    auto request = std::make_shared<TextureGPUResourceRequest>();
+    auto request = std::make_shared<TextureGPUResourceRequest>(device, texture);
     request->kind = GPUResourceRequestType::TextureFromData;
-    request->device = device;
     request->name = name;
-    request->width = width;
-    request->height = height;
-    request->depth = 1;
-    request->pixel_storage = pixel_storage;
-    request->texture_view = texture_view;
-    request->sampler = sampler;
     request->bindless_index = bindless_index;
-    request->cache_key = key;
-    request->has_cache_key = true;
     if (data != nullptr) {
         const size_t byte_count = static_cast<size_t>(width) * height * pixel_size(pixel_storage);
         const auto* src = static_cast<const uint8_t*>(data);
@@ -361,30 +540,28 @@ Texture* ResourceManager::create_render_target_texture(
         }
     }
 
-    // Render targets must exist immediately for framebuffer / attachment setup.
-    auto request = std::make_shared<TextureGPUResourceRequest>();
-    request->kind = GPUResourceRequestType::RenderTarget;
-    request->device = device;
-    request->name = name;
-    request->width = width;
-    request->height = height;
-    request->pixel_storage = pixel_storage;
-    request->usage = usage;
+    Texture* texture = ocarina::new_with_allocator<Texture>(
+        device->impl(),
+        width,
+        height,
+        pixel_storage,
+        usage);
+    if (texture == nullptr) {
+        return nullptr;
+    }
 
     const bool bindless =
         (static_cast<uint32_t>(usage) & static_cast<uint32_t>(TextureUsageFlags::ShaderReadOnly)) != 0;
     uint32_t bindless_index = InvalidUI32;
     if (bindless) {
         bindless_index = BindlessTextureRegistry::instance().allocate_slot();
-        request->bindless_index = bindless_index;
     }
 
-    Texture* texture = nullptr;
-    request->out_texture = &texture;
+    auto request = std::make_shared<TextureGPUResourceRequest>(device, texture);
+    request->kind = GPUResourceRequestType::RenderTarget;
+    request->name = name;
+    request->bindless_index = bindless_index;
     request->process();
-    if (texture == nullptr) {
-        return nullptr;
-    }
 
     std::lock_guard<std::mutex> l{mutex_};
     auto it = textures_.find(key);
@@ -392,8 +569,7 @@ Texture* ResourceManager::create_render_target_texture(
         if (bindless_index != InvalidUI32) {
             BindlessTextureRegistry::instance().release_index(bindless_index);
         }
-        texture->destroy();
-        ocarina::delete_with_allocator<Texture>(texture);
+        destroy_texture(texture);
         return it->second.texture_;
     }
     textures_[key] = TextureHandle{bindless_index, texture};

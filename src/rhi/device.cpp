@@ -6,8 +6,16 @@
 #include "resources/texture.h"
 #include "context.h"
 #include "core/dynamic_module.h"
+#include "shader_program.h"
 
 namespace ocarina {
+
+handle_ty Device::create_shader_from_program(ShaderProgram* program, ShaderType stage) {
+    if (program != nullptr && !program->has_descriptor_set_layouts()) {
+        program->create_descriptor_set_layouts(this);
+    }
+    return impl_->create_shader_from_program(program, stage);
+}
 
 Texture Device::create_texture(uint3 res, PixelStorage storage, const string &desc) const noexcept {
     return create<Texture>(res, storage, 1, desc);

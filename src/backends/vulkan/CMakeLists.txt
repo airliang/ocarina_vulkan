@@ -46,11 +46,7 @@ if(AUTO_LOCATE_VULKAN)
 		endif()
 	endforeach()
 
-    # Shader compilation + reflection moved to `ocarina-shader-compiler`.
-    list(REMOVE_ITEM SOURCE_FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/dxc_compiler.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/shader_reflection.cpp"
-    )
+    # Shader compilation + reflection live in `ocarina-shader-compiler`.
 
     ocarina_add_backend(vulkan SOURCES ${HEADER_FILES} ${SOURCE_FILES})
     target_link_libraries(ocarina-backend-vulkan PRIVATE Vulkan::Vulkan ocarina-imgui ocarina-shader-compiler)
