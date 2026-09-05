@@ -1,6 +1,5 @@
 #include "pipeline_manager.h"
 
-#include "frame_resources.h"
 #include "loading_progress_listener.h"
 #include "resource_manager.h"
 #include "rhi/device.h"
@@ -208,7 +207,6 @@ RHIPipelineLayout* PipelineManager::create_and_cache_pipeline_layout(
         }
     }
 
-    FrameResources::instance().ensure_global_descriptor_sets(cached_layout);
     return cached_layout;
 }
 

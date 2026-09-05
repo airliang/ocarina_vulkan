@@ -238,8 +238,6 @@ void VulkanCommandBuffer::bind_descriptor_sets(DescriptorSet** descriptor_sets, 
     VkPipelineLayout pipeline_layout = reinterpret_cast<VkPipelineLayout>(pipeline_layout_handle);
     std::array<VkDescriptorSet, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_handles = { VK_NULL_HANDLE };
     for (uint32_t i = 0; i < descriptor_set_count; ++i) {
-        // Flush deferred default writes on the render thread before binding.
-        descriptor_sets[i]->commit_updates();
         descriptor_set_handles[i] = static_cast<VulkanDescriptorSet*>(descriptor_sets[i])->descriptor_set();
     }
 

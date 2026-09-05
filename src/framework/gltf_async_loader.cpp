@@ -632,8 +632,11 @@ void GltfAsyncLoader::load_material(Primitive& prim, const tinygltf::Material& m
         pbr.baseColorTexture.index < static_cast<int>(model.textures.size())) {
         const int image_index = model.textures[pbr.baseColorTexture.index].source;
         const TextureHandle albedo_handle = load_gltf_image(image_index, model);
-        if (albedo_handle.bindless_index_ != InvalidUI32 || albedo_handle.texture_ != nullptr) {
-            prim_material->set_property("albedoIndex", albedo_handle);
+        if (albedo_handle.bindless_index_ != InvalidUI32) {
+            prim_material->set_property(
+                "albedoIndex",
+                &albedo_handle.bindless_index_,
+                sizeof(albedo_handle.bindless_index_));
             prim_material->set_property("albedoSamplerIndex", linear_repeat_sampler);
         }
     }
@@ -642,8 +645,11 @@ void GltfAsyncLoader::load_material(Primitive& prim, const tinygltf::Material& m
         pbr.metallicRoughnessTexture.index < static_cast<int>(model.textures.size())) {
         const int image_index = model.textures[pbr.metallicRoughnessTexture.index].source;
         const TextureHandle mr_handle = load_gltf_image(image_index, model);
-        if (mr_handle.bindless_index_ != InvalidUI32 || mr_handle.texture_ != nullptr) {
-            prim_material->set_property("metallicRoughnessIndex", mr_handle);
+        if (mr_handle.bindless_index_ != InvalidUI32) {
+            prim_material->set_property(
+                "metallicRoughnessIndex",
+                &mr_handle.bindless_index_,
+                sizeof(mr_handle.bindless_index_));
             prim_material->set_property("metallicRoughnessSamplerIndex", linear_repeat_sampler);
         }
     }

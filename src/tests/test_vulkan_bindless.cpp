@@ -93,7 +93,10 @@ int main(int argc, char *argv[]) {
     auto setup_quad = [&](Primitive& quad) {
         quad.set_mesh(quad_mesh);
         quad.set_material(material);
-        material->set_property("albedoIndex", texture_handle);
+        material->set_property(
+            "albedoIndex",
+            &texture_handle.bindless_index_,
+            sizeof(texture_handle.bindless_index_));
         material->set_property(
             "albedoSamplerIndex",
             get_bindless_sampler_index(

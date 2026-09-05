@@ -14,16 +14,6 @@
 
 namespace ocarina {
 
-void Primitive::sync_render_component_material_buffer(RenderComponent& render_component) {
-    if (material_ == nullptr || !material_->has_material_buffer()) {
-        render_component.material_buffer_offset = InvalidUI32;
-        render_component.material_buffer_size = 0;
-        return;
-    }
-    render_component.material_buffer_offset = material_->material_buffer_offset();
-    render_component.material_buffer_size = material_->material_buffer_size();
-}
-
 RenderComponent* Primitive::current_render_component() noexcept {
     if (entity_index_ == InvalidUI32) {
         return nullptr;
@@ -59,7 +49,6 @@ void Primitive::set_material(Material* material) {
         RenderComponent& render_component =
             EntityComponentSystem::instance().render_component(entity_index_);
         render_component.push_constants.clear();
-        sync_render_component_material_buffer(render_component);
     }
 }
 
@@ -81,20 +70,15 @@ void Primitive::initialize_render_component(
 
     render_component.mesh_id = InvalidUI32;
     render_component.push_constants.clear();
-    render_component.material_buffer_offset = InvalidUI32;
-    render_component.material_buffer_size = 0;
 
     if (material_ == nullptr) {
         return;
     }
 
-    sync_render_component_material_buffer(render_component);
-
     if (mesh_ != nullptr) {
         render_component.mesh_id = mesh_->mesh_id();
     }
 
-    // Push-constant ranges come from shader reflection — no RHIPipelineLayout required.
     ensure_push_constants_from_shaders(render_component);
     update_push_constants(transform);
 
@@ -107,16 +91,6 @@ void Primitive::write_ssbo_index_push_constants() {
             hash64("transform_index"),
             reinterpret_cast<const std::byte*>(&entity_index_),
             sizeof(entity_index_));
-    }
-
-    if (material_ != nullptr && material_->has_material_buffer()) {
-        const uint32_t material_index = material_->material_slot_index();
-        if (material_index != InvalidUI32) {
-            set_push_constant_variable(
-                hash64("material_index"),
-                reinterpret_cast<const std::byte*>(&material_index),
-                sizeof(material_index));
-        }
     }
 }
 

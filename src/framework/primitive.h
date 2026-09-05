@@ -57,7 +57,6 @@ public:
     Material* get_material() const noexcept { return material_; }
 
 private:
-    void sync_render_component_material_buffer(RenderComponent& render_component);
     void ensure_push_constants_from_shaders(RenderComponent& render_component);
     void write_ssbo_index_push_constants();
     [[nodiscard]] RenderComponent* current_render_component() noexcept;

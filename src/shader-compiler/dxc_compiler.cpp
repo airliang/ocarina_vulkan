@@ -437,7 +437,7 @@ void DXCCompiler::run_spriv_reflection(const std::vector<uint32_t> &spriv, Shade
                     add_named_struct(
                         element_type_id,
                         *element_type,
-                        shader_resource.name == "g_materials" ? "MaterialParams" : nullptr);
+                        nullptr);
                 }
             }
         } else {

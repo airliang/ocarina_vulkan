@@ -13,7 +13,6 @@
 #include "global_uniform_buffer.h"
 #include "entity_component_system.h"
 #include "bindless_texture_registry.h"
-#include <mutex>
 
 namespace ocarina {
 class DescriptorSetLayout;
@@ -77,54 +76,28 @@ public:
 
     void initialize(Device* device);
 
-    /// Hard-coded FRAME set (set 0): `global_ubo` at binding 0 for VS and PS.
+    /// Hard-coded FRAME set (set 0): global_ubo / g_textures / g_samplers / g_transforms.
     [[nodiscard]] DescriptorSetLayout* frame_descriptor_set_layout() const noexcept {
         return frame_descriptor_set_layout_;
     }
 
-    void add_global_descriptor_set(uint64_t name_id, DescriptorSet* descriptor_set);
-
-    void add_global_descriptor_set(const std::string& name, DescriptorSet* descriptor_set) {
-        add_global_descriptor_set(hash64(name), descriptor_set);
+    [[nodiscard]] DescriptorSet* global_descriptor_set() const noexcept {
+        return global_descriptor_set_;
     }
 
     DescriptorSet* get_global_descriptor_set(uint64_t name_id) const;
     DescriptorSet* get_global_descriptor_set(const std::string& name) const;
 
-    /// Create-or-return a process-wide descriptor set at @p descriptor_set_index.
-    DescriptorSet* get_or_create_descriptor_set(
-        uint32_t descriptor_set_index,
-        const std::vector<uint64_t>& binding_name_ids,
-        ocarina::function<DescriptorSet* ()> create_descriptor_set);
-
-    DescriptorSet* get_descriptor_set(uint32_t descriptor_set_index) const;
-
-    const std::vector<DescriptorSet*>& global_descriptor_sets() const {
-        return global_descriptor_sets_;
-    }
-
-    std::vector<DescriptorSet*>& global_descriptor_sets() {
-        return global_descriptor_sets_;
-    }
-
-    bool has_descriptor_set(uint32_t descriptor_set_index) const;
-
-    /// True when this layout requests a process-wide singleton (by binding name / bindless).
-    /// Known roles: `global_ubo` (FRAME), `transforms` (SCENE),
-    /// `g_textures` / `samplers` / `g_materials` / bindless (MATERIAL).
-    [[nodiscard]] static bool is_global_singleton_layout(const DescriptorSetLayout* layout) noexcept;
-
-    /// Create FRAME/SCENE/shared-bindless sets and record their set indices on @p pipeline_layout.
+    /// Record that pipeline layout uses FRAME set 0 (already created in initialize()).
     void ensure_global_descriptor_sets(RHIPipelineLayout* pipeline_layout);
 
-    /// Bind globals listed in @p pipeline_layout->global_descriptor_set_indices_.
-    void bind_global_descriptor_sets(CommandBuffer& cmd, const RHIPipelineLayout* pipeline_layout);
+    /// Bind the FRAME global descriptor set at set 0.
+    void bind_global_descriptor_sets(CommandBuffer& cmd, RHIPipelineLayout* pipeline_layout);
 
     /// Queue a bindless descriptor write (safe from loader / GPU-resource threads).
     /// Flushed on the render thread in update_per_frame().
     void queue_bindless_texture_update(uint32_t index, Texture* texture);
 
-    /// Legacy name: queues the update (does not write descriptors immediately).
     void update_bindless_texture_at_index(uint32_t index, Texture* texture) {
         queue_bindless_texture_update(index, texture);
     }
@@ -132,7 +105,10 @@ public:
     /// Queue a material texture / sampler / uniform-buffer update (safe from any thread).
     void queue_material_update(MaterialUpdateRequest request);
 
-    bool is_global_descriptor_set_index(uint32_t set_index) const;
+    [[nodiscard]] bool is_global_descriptor_set_index(uint32_t set_index) const noexcept {
+        return set_index == static_cast<uint32_t>(DescriptorSetIndex::FRAME_SET)
+            && global_descriptor_set_ != nullptr;
+    }
 
     [[nodiscard]] GlobalUniformBuffer& global_uniform_buffer() noexcept { return global_ubo_; }
     [[nodiscard]] const GlobalUniformBuffer& global_uniform_buffer() const noexcept { return global_ubo_; }
@@ -142,9 +118,6 @@ public:
 
     [[nodiscard]] TypedBuffer<GPUTransform>& transform_buffer() noexcept { return transform_buffer_; }
     [[nodiscard]] const TypedBuffer<GPUTransform>& transform_buffer() const noexcept { return transform_buffer_; }
-
-    [[nodiscard]] TypedBuffer<MaterialParams>& material_buffer() noexcept { return material_buffer_; }
-    [[nodiscard]] const TypedBuffer<MaterialParams>& material_buffer() const noexcept { return material_buffer_; }
 
     void set_sun_direction(const float3& direction) noexcept;
     void set_sun_color(const float3& color) noexcept;
@@ -170,19 +143,15 @@ private:
     void create_global_descriptor_set();
     void create_default_gpu_buffers();
     void grow_transform_gpu_buffer(size_t element_count);
-    void grow_material_gpu_buffer(size_t byte_count);
     void bind_global_ubo_if_needed();
     void bind_transform_storage_buffer_if_needed();
-    void bind_material_storage_buffer();
-    DescriptorSet* find_bindless_descriptor_set_locked() const;
 
     Device* device_ = nullptr;
     DescriptorSetLayout* frame_descriptor_set_layout_ = nullptr;
 
-    mutable std::mutex global_descriptor_sets_mutex_;
-    /// Indexed by Vulkan descriptor set index; contiguous from 0 (nullptr = unused hole).
-    std::vector<DescriptorSet*> global_descriptor_sets_;
-    /// Binding-name aliases for uploads (e.g. "global_ubo", "g_textures", "transforms").
+    /// Single engine-owned FRAME descriptor set (set 0).
+    DescriptorSet* global_descriptor_set_ = nullptr;
+    /// Binding-name aliases that all resolve to `global_descriptor_set_`.
     std::unordered_map<uint64_t, DescriptorSet*> global_descriptor_sets_by_name_;
 
     struct PendingBindlessUpdate {
@@ -198,11 +167,6 @@ private:
     bool global_ubo_descriptor_bound_ = false;
     TypedBuffer<GPUTransform> transform_buffer_{};
     bool transform_storage_descriptor_bound_ = false;
-    TypedBuffer<MaterialParams> material_buffer_{};
-    bool material_storage_descriptor_bound_ = false;
-    /// True when `material_buffer_` must be written into the global `g_materials` set.
-    /// Cleared only after a successful bind (retries across frames until the set exists).
-    bool material_storage_descriptor_dirty_ = false;
     UpdateCallback update_ = nullptr;
 };
 

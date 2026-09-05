@@ -181,7 +181,6 @@ public:
     void update_texture(uint64_t name_id, Texture *texture) override;
     void update_sampler(uint64_t name_id, const TextureSampler& sampler) override;
     void update_bindless_texture_at_index(uint32_t index, Texture *texture) override;
-    void commit_updates() override;
     VulkanDescriptorSetLayout *get_layout() const {
         return layout_;
     }

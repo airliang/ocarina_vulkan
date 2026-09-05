@@ -86,12 +86,6 @@ void VulkanDescriptorSet::update_bindless_texture_at_index(uint32_t index, Textu
     }
 }
 
-void VulkanDescriptorSet::commit_updates() {
-    if (writer_) {
-        writer_->commit_updates();
-    }
-}
-
 VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VulkanDevice *device, uint8_t descriptor_set_index) : device_(device), descriptor_set_index_(descriptor_set_index) {
 
 }

@@ -1,14 +1,5 @@
 #include "descriptor_bindings.hlsl"
+#include "frame.hlsl"
 
-struct Transform
-{
-    float4x4 modelMatrix;
-    float4x4 modelMatrixInverse;
-};
-
-[[vk::binding(0, SCENE_SET)]] StructuredBuffer<Transform> transforms : register(t0);
-
-Transform LoadTransform(uint transformIndex)
-{
-    return transforms[transformIndex];
-}
+// transform.hlsl is kept for callers that include it directly;
+// Transform + LoadTransform live in frame.hlsl on FRAME_SET.

@@ -55,7 +55,10 @@ static void apply_mesh_bindless_indices(Material* material, const TextureHandle&
     if (material == nullptr) {
         return;
     }
-    material->set_property("albedoIndex", albedo_handle);
+    material->set_property(
+        "albedoIndex",
+        &albedo_handle.bindless_index_,
+        sizeof(albedo_handle.bindless_index_));
     material->set_property(
         "albedoSamplerIndex",
         get_bindless_sampler_index(

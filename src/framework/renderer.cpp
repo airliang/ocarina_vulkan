@@ -284,8 +284,7 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
             }
 
             if (material != nullptr) {
-                if (material->has_material_descriptor_set() &&
-                    !material->uses_shared_bindless_descriptor_set()) {
+                if (material->has_material_descriptor_set()) {
                     DescriptorSet* material_descriptor_set = material->get_material_descriptor_set();
                     cmd.bind_descriptor_sets(
                         &material_descriptor_set,

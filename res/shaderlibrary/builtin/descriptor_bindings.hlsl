@@ -1,24 +1,15 @@
 #pragma once
 
 #define FRAME_SET 0
+#define MATERIAL_SET 1
 
-#if !defined(CUSTOM_DESCRIPTOR_SET)
+// FRAME_SET bindings (engine-owned singleton)
+#define BIND_GLOBAL_UBO 0
+#define BIND_TEXTURES 1
+#define BIND_SAMPLERS 2
+#define BIND_TRANSFORM 3
+#define BIND_LIGHTS 4
+#define BIND_PARTICLES 5
 
-#define SCENE_SET 1
-#define MATERIAL_SET 2
-
-#if defined(SCENE_SET)   //binding indices for scene set
-#define BIND_TRANSFORM 0
-#define BIND_LIGHTS 1
-#define BIND_PARTICLES 2
-#endif
-
-#if defined(MATERIAL_SET)   //binding indices for material set
-// Shared across all material shaders (bindless).
-#define BIND_TEXTURES 0
-#define BIND_SAMPLERS 1
-// StructuredBuffer<MaterialParams> g_materials
-#define BIND_MATERIAL 2
-#endif
-
-#endif
+// MATERIAL_SET bindings (per-material descriptor set)
+#define BIND_MATERIAL_UBO 0

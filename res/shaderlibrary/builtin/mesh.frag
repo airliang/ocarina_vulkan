@@ -43,8 +43,8 @@ PushConstants pushConstants;
 
 float4 main(VSOutput input) : SV_TARGET
 {
-    MaterialParams material = LoadMaterial(pushConstants.material_index);
-    float4 sampled = g_textures[material.albedoIndex].Sample(samplers[material.albedoSamplerIndex], input.UV);
+    float4 sampled = g_textures[material.albedoIndex].Sample(
+        g_samplers[material.albedoSamplerIndex], input.UV);
     float3 albedo = sampled.rgb * material.baseColorFactor.rgb * input.Color;
 
     // Factors multiply texture samples (glTF). Without a MR map, factors alone are used —
@@ -54,7 +54,7 @@ float4 main(VSOutput input) : SV_TARGET
     float ao = material.ao;
     if (material.metallicRoughnessIndex != 0xffffffff) {
         float3 mr = g_textures[material.metallicRoughnessIndex].Sample(
-            samplers[material.metallicRoughnessSamplerIndex], input.UV).rgb;
+            g_samplers[material.metallicRoughnessSamplerIndex], input.UV).rgb;
         ao *= mr.r;
         roughness *= mr.g;
         metallic *= mr.b;

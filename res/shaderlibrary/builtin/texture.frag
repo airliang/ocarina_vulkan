@@ -1,7 +1,9 @@
 // Copyright 2020 Google LLC
 
-[[vk::binding(0, 1)]]Texture2D albedo : register(t1);
-[[vk::binding(1, 1)]]SamplerState sampler_albedo : register(s1);
+#include "descriptor_bindings.hlsl"
+
+[[vk::binding(0, MATERIAL_SET)]] Texture2D albedo : register(t1);
+[[vk::binding(1, MATERIAL_SET)]] SamplerState sampler_albedo : register(s1);
 
 struct VSOutput
 {

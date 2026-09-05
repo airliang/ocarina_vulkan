@@ -1,7 +1,6 @@
 // Copyright 2020 Google LLC
 
 #include "frame.hlsl"
-#include "transform.hlsl"
 #include "push_constant.hlsl"
 
 struct VSInput

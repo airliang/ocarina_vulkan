@@ -77,8 +77,10 @@ VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, Vulka
         // Add other types of descriptors as needed
     }
 
-    // Defer vkUpdateDescriptorSets until commit_updates() on the render thread.
-    pending_commit_ = !writes_.empty();
+    // Descriptor sets are allocated on the render thread; flush defaults immediately.
+    if (!writes_.empty()) {
+        build(device);
+    }
 }
 
 VulkanDescriptorSetWriter::~VulkanDescriptorSetWriter()
@@ -223,14 +225,6 @@ void VulkanDescriptorSetWriter::build(VulkanDevice *device) {
 
     vkUpdateDescriptorSets(device->logicalDevice(), writes.size(), writes.data(), 0, nullptr);
     writes_.clear();
-    pending_commit_ = false;
-}
-
-void VulkanDescriptorSetWriter::commit_updates() {
-    if (!pending_commit_ || device_ == nullptr) {
-        return;
-    }
-    build(device_);
 }
 
 void VulkanDescriptorSetWriter::update_buffer(
