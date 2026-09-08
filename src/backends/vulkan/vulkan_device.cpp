@@ -24,6 +24,10 @@
 #include "vulkan_fence.h"
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
+#include "vulkan_semaphore.h"
+
+#include <limits>
+#include <memory>
 
 namespace ocarina {
 
@@ -325,10 +329,11 @@ void VulkanDevice::init_vulkan()
 
     uint32_t graphicsFlags = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT;
     uint32_t computeFlags = VK_QUEUE_COMPUTE_BIT;
-    uint32_t copyFlags = VK_QUEUE_TRANSFER_BIT;
 
     queueFamilyIndices_[queueGraphicsIndex] = getQueueFamilyIndex(graphicsFlags);
-    queueFamilyIndices_[queueCopyIndex] = getQueueFamilyIndex(copyFlags);
+    // Staging uploads submit from a worker thread; keep Copy on the graphics family
+    // (separate queue index) to avoid cross-family ownership / concurrent sharing.
+    queueFamilyIndices_[queueCopyIndex] = queueFamilyIndices_[queueGraphicsIndex];
     queueFamilyIndices_[queueComputeIndex] = getQueueFamilyIndex(computeFlags);
 
     get_enable_features();
@@ -397,15 +402,43 @@ void enable_bindless_indexing_features(
 
 void VulkanDevice::create_logical_device()
 {
-    VkDeviceQueueCreateInfo queues[uint32_t(QueueType::NumQueueType)];
-    memset(queues, 0, sizeof(VkDeviceQueueCreateInfo) * uint32_t(QueueType::NumQueueType));
-    const float defaultQueuePriority(0.0f);
-    for (int i = 0; i < uint32_t(QueueType::NumQueueType); ++i)
-    {
-        queues[i].queueFamilyIndex = queueFamilyIndices_[i];
-        queues[i].queueCount = 1;
-        queues[i].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        queues[i].pQueuePriorities = &defaultQueuePriority;
+    // Deduplicate families and assign distinct queue indices when multiple QueueTypes share one.
+    constexpr uint32_t kQueueTypeCount = uint32_t(QueueType::NumQueueType);
+    uint32_t family_queue_counts[kQueueTypeCount] = {};
+    uint32_t unique_families[kQueueTypeCount] = {};
+    uint32_t unique_family_count = 0;
+
+    for (uint32_t i = 0; i < kQueueTypeCount; ++i) {
+        queueIndicesInFamily_[i] = 0;
+    }
+
+    for (uint32_t type = 0; type < kQueueTypeCount; ++type) {
+        const uint32_t family = queueFamilyIndices_[type];
+        uint32_t unique_slot = InvalidUI32;
+        for (uint32_t u = 0; u < unique_family_count; ++u) {
+            if (unique_families[u] == family) {
+                unique_slot = u;
+                break;
+            }
+        }
+        if (unique_slot == InvalidUI32) {
+            unique_slot = unique_family_count;
+            unique_families[unique_family_count++] = family;
+        }
+        queueIndicesInFamily_[type] = family_queue_counts[unique_slot];
+        ++family_queue_counts[unique_slot];
+    }
+
+    std::vector<VkDeviceQueueCreateInfo> queues(unique_family_count);
+    std::vector<std::vector<float>> priorities(unique_family_count);
+    for (uint32_t u = 0; u < unique_family_count; ++u) {
+        const uint32_t queue_count = family_queue_counts[u];
+        priorities[u].assign(queue_count, 0.0f);
+        queues[u] = {};
+        queues[u].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queues[u].queueFamilyIndex = unique_families[u];
+        queues[u].queueCount = queue_count;
+        queues[u].pQueuePriorities = priorities[u].data();
     }
 
     void* next = nullptr;
@@ -424,17 +457,17 @@ void VulkanDevice::create_logical_device()
 
     VkDeviceCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    info.queueCreateInfoCount = uint32_t(QueueType::NumQueueType);
-    info.pQueueCreateInfos = queues;
+    info.queueCreateInfoCount = unique_family_count;
+    info.pQueueCreateInfos = queues.data();
     info.enabledLayerCount = 0;
     info.ppEnabledLayerNames = nullptr;
-    info.enabledExtensionCount = m_enableExtensions.size();
+    info.enabledExtensionCount = static_cast<uint32_t>(m_enableExtensions.size());
     info.ppEnabledExtensionNames = m_enableExtensions.data();
     info.pEnabledFeatures = &m_enabledFeatures;
     info.pNext = next;//support_bindless_ ? &indexing_features_ : nullptr;
 
     VkResult result = vkCreateDevice(physicalDevice_, &info, nullptr, &logicalDevice_);
-    
+    (void)result;
 }
 
 void VulkanDevice::get_enable_features() {
@@ -855,12 +888,22 @@ void VulkanDevice::execute_command_buffers(CommandBuffer* command_buffers, uint3
 
 Semaphore VulkanDevice::get_present_complete_semaphore() noexcept
 {
-    return Semaphore{ reinterpret_cast<handle_ty>(VulkanDriver::instance().get_present_complete_semaphore()) };
+    auto impl = std::make_shared<VulkanSemaphore>(
+        this,
+        VulkanDriver::instance().get_present_complete_semaphore(),
+        false,
+        false);
+    return Semaphore(nullptr, std::move(impl));
 }
 
 Semaphore VulkanDevice::get_render_complete_semaphore() noexcept
 {
-    return Semaphore{ reinterpret_cast<handle_ty>(VulkanDriver::instance().get_render_complete_semaphore()) };
+    auto impl = std::make_shared<VulkanSemaphore>(
+        this,
+        VulkanDriver::instance().get_render_complete_semaphore(),
+        false,
+        false);
+    return Semaphore(nullptr, std::move(impl));
 }
 
 void VulkanDevice::attach_swapchain_semaphores(CommandBuffer& cmd) noexcept
@@ -875,51 +918,10 @@ Fence VulkanDevice::create_fence() noexcept
     return Fence(std::move(impl));
 }
 
-Semaphore VulkanDevice::create_timeline_semaphore(uint64_t initial_value) noexcept
+std::shared_ptr<Semaphore::Impl> VulkanDevice::create_timeline_semaphore_impl(
+    uint64_t initial_value) noexcept
 {
-    Semaphore semaphore{};
-    semaphore.is_timeline = true;
-    semaphore.timeline_value = initial_value;
-
-    VkSemaphoreTypeCreateInfo timeline_info{};
-    timeline_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
-    timeline_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
-    timeline_info.initialValue = initial_value;
-
-    VkSemaphoreCreateInfo sem_info{};
-    sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    sem_info.pNext = &timeline_info;
-
-    VkSemaphore vk_semaphore = VK_NULL_HANDLE;
-    VK_CHECK_RESULT(vkCreateSemaphore(logicalDevice_, &sem_info, nullptr, &vk_semaphore));
-    semaphore.semaphore = reinterpret_cast<handle_ty>(vk_semaphore);
-    return semaphore;
-}
-
-uint64_t VulkanDevice::query_timeline_semaphore_value(const Semaphore& semaphore) const noexcept
-{
-    if (!semaphore.is_timeline ||
-        semaphore.semaphore == 0 ||
-        semaphore.semaphore == InvalidUI64) {
-        return 0;
-    }
-    uint64_t value = 0;
-    VK_CHECK_RESULT(vkGetSemaphoreCounterValue(
-        logicalDevice_,
-        reinterpret_cast<VkSemaphore>(semaphore.semaphore),
-        &value));
-    return value;
-}
-
-void VulkanDevice::destroy_semaphore(Semaphore& semaphore) noexcept
-{
-    if (semaphore.semaphore == 0 || semaphore.semaphore == InvalidUI64) {
-        return;
-    }
-    vkDestroySemaphore(logicalDevice_, reinterpret_cast<VkSemaphore>(semaphore.semaphore), nullptr);
-    semaphore.semaphore = InvalidUI64;
-    semaphore.timeline_value = 0;
-    semaphore.is_timeline = false;
+    return std::make_shared<VulkanSemaphore>(this, initial_value);
 }
 
 double VulkanDevice::gpu_frame_time_ms() const noexcept {

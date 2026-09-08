@@ -13,6 +13,9 @@
 #include "pipeline_state.h"
 #include "command_buffer.h"
 #include "fence.h"
+#include "semaphore.h"
+
+#include <memory>
 
 namespace ocarina {
 
@@ -145,9 +148,10 @@ public:
             cmd.add_wait_semaphore(get_present_complete_semaphore());
         }
         virtual Fence create_fence() noexcept = 0;
-        virtual Semaphore create_timeline_semaphore(uint64_t initial_value = 0) noexcept = 0;
-        [[nodiscard]] virtual uint64_t query_timeline_semaphore_value(const Semaphore& semaphore) const noexcept = 0;
-        virtual void destroy_semaphore(Semaphore& semaphore) noexcept = 0;
+        /// Create an owned timeline semaphore Impl (wrapped by Device::create_timeline_semaphore).
+        [[nodiscard]] virtual std::shared_ptr<Semaphore::Impl> create_timeline_semaphore_impl(
+            uint64_t initial_value = 0) noexcept = 0;
+
         // Returns last completed frame GPU time in milliseconds (0 if unsupported).
         [[nodiscard]] virtual double gpu_frame_time_ms() const noexcept { return 0.0; }
         /// True when the device was created with Vulkan 1.3 dynamicRendering enabled.
@@ -339,15 +343,7 @@ public:
     }
 
     Semaphore create_timeline_semaphore(uint64_t initial_value = 0) noexcept {
-        return impl_->create_timeline_semaphore(initial_value);
-    }
-
-    [[nodiscard]] uint64_t query_timeline_semaphore_value(const Semaphore& semaphore) const noexcept {
-        return impl_->query_timeline_semaphore_value(semaphore);
-    }
-
-    void destroy_semaphore(Semaphore& semaphore) noexcept {
-        impl_->destroy_semaphore(semaphore);
+        return Semaphore(this, impl_->create_timeline_semaphore_impl(initial_value));
     }
 
     [[nodiscard]] double gpu_frame_time_ms() const noexcept {

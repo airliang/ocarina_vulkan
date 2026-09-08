@@ -84,6 +84,13 @@ public:
         set_property(hash64(name), texture);
     }
 
+    /// Track a bindless texture dependency for is_renderable() (does not write UBO or local descriptors).
+    /// Pair with set_property(name_id, &texture.bindless_index_, ...) for the shader index.
+    void set_bindless_texture(uint64_t name_id, const TextureHandle& texture);
+    void set_bindless_texture(const char* name, const TextureHandle& texture) {
+        set_bindless_texture(hash64(name), texture);
+    }
+
     [[nodiscard]] bool is_renderable();
     [[nodiscard]] bool is_GPU_ready();
 

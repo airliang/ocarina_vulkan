@@ -14,7 +14,7 @@ using handle_ty = uint64_t;
 
 enum class GPUResourceState : uint8_t {
     CPU_Loaded = 0,///< Default: CPU-side data ready (or object constructed).
-    GPU_Ready,     ///< Uploaded to GPU.
+    GPU_Ready,     ///< Upload submitted to GPU (see upload_complete_value for timeline sync).
     GPU_Visible,   ///< Bound in a descriptor / bindless slot with a valid index.
 };
 
@@ -32,6 +32,7 @@ protected:
     handle_ty handle_{};
     Device::Impl *device_{nullptr};
     GPUResourceState gpu_resource_state_{GPUResourceState::CPU_Loaded};
+    uint64_t upload_complete_value_{0};
 
 protected:
     RHIResource(Device::Impl *device, Tag tag, handle_ty handle)
@@ -48,9 +49,11 @@ public:
         device_ = other.device_;
         handle_ = other.handle_;
         gpu_resource_state_ = other.gpu_resource_state_;
+        upload_complete_value_ = other.upload_complete_value_;
         other.device_ = nullptr;
         other.handle_ = 0;
         other.gpu_resource_state_ = GPUResourceState::CPU_Loaded;
+        other.upload_complete_value_ = 0;
     }
 
     RHIResource &operator=(RHIResource &&other) noexcept {
@@ -59,9 +62,11 @@ public:
         device_ = other.device_;
         handle_ = other.handle_;
         gpu_resource_state_ = other.gpu_resource_state_;
+        upload_complete_value_ = other.upload_complete_value_;
         other.device_ = nullptr;
         other.handle_ = 0;
         other.gpu_resource_state_ = GPUResourceState::CPU_Loaded;
+        other.upload_complete_value_ = 0;
         return *this;
     }
     [[nodiscard]] Tag tag() const noexcept { return tag_; }
@@ -70,6 +75,12 @@ public:
     OC_MAKE_MEMBER_GETTER(device, )
     [[nodiscard]] GPUResourceState gpu_resource_state() const noexcept { return gpu_resource_state_; }
     void set_gpu_resource_state(GPUResourceState state) noexcept { gpu_resource_state_ = state; }
+
+    /// Timeline value signaled by the copy/upload queue when this resource's upload completes.
+    /// 0 means no GPU upload dependency.
+    [[nodiscard]] uint64_t upload_complete_value() const noexcept { return upload_complete_value_; }
+    void set_upload_complete_value(uint64_t value) noexcept { upload_complete_value_ = value; }
+
     [[nodiscard]] virtual const void *handle_ptr() const noexcept { return &handle_; }
     [[nodiscard]] virtual void *handle_ptr() noexcept { return &handle_; }
     [[nodiscard]] virtual size_t data_size() const noexcept { return sizeof(handle_ty); }

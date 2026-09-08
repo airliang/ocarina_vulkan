@@ -120,6 +120,12 @@ public:
         return queueFamilyIndices_[(uint)queue_type];
     }
 
+    /// Queue index within the family (0 when a QueueType has a dedicated family).
+    uint32_t get_queue_index_in_family(QueueType queue_type) const
+    {
+        return queueIndicesInFamily_[(uint)queue_type];
+    }
+
     VkInstance get_instance() const { return m_instance.instance(); }
     void get_imgui_creation(ImguiCreation& imgui_creation) noexcept override;
     void imgui_rhi_initialize(const ImguiCreation& imgui_creation) noexcept override;
@@ -134,9 +140,9 @@ public:
     Semaphore get_render_complete_semaphore() noexcept override;
     void attach_swapchain_semaphores(CommandBuffer& cmd) noexcept override;
     Fence create_fence() noexcept override;
-    Semaphore create_timeline_semaphore(uint64_t initial_value = 0) noexcept override;
-    [[nodiscard]] uint64_t query_timeline_semaphore_value(const Semaphore& semaphore) const noexcept override;
-    void destroy_semaphore(Semaphore& semaphore) noexcept override;
+    [[nodiscard]] std::shared_ptr<Semaphore::Impl> create_timeline_semaphore_impl(
+        uint64_t initial_value = 0) noexcept override;
+
     [[nodiscard]] double gpu_frame_time_ms() const noexcept override;
     [[nodiscard]] bool supports_dynamic_rendering() const noexcept override {
         return supports_dynamic_rendering_;
@@ -155,6 +161,8 @@ public:
     uint32_t m_windowHeight = 0;
 
     uint32_t queueFamilyIndices_[(uint32_t)QueueType::NumQueueType];
+    uint32_t queueIndicesInFamily_[(uint32_t)QueueType::NumQueueType] = {};
+
     //uint32_t queueFamilyIndexPerQueue_[(uint32_t)QueueType::NumQueueType];
     std::vector<VkQueueFamilyProperties> queueFamilyProperties_;
     uint32_t queueFamilyCount_ = 0;

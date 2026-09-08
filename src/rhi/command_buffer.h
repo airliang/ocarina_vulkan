@@ -4,6 +4,7 @@
 
 #pragma once
 #include "graphics_descriptions.h"
+#include "semaphore.h"
 #include "core/small_vector.h"
 
 namespace ocarina {

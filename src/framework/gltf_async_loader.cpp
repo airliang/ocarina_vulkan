@@ -319,6 +319,25 @@ void GltfAsyncLoader::load_gltf_node(
         for (size_t gltf_primitive_index = 0; gltf_primitive_index < mesh.primitives.size(); ++gltf_primitive_index) {
             const tinygltf::Primitive& gltf_primitive = mesh.primitives[gltf_primitive_index];
 
+            // CPU mesh first (GPU upload may still be in flight).
+            Mesh* mesh_obj = get_or_create_mesh(gltf_primitive, model);
+            if (mesh_obj == nullptr) {
+                if (progress_listener_ != nullptr) {
+                    progress_listener_->advance();
+                }
+                continue;
+            }
+
+            // CPU material with params + texture handles (GPU bindless flush may still be pending).
+            Material* material = nullptr;
+            if (gltf_primitive.material >= 0
+                && gltf_primitive.material < static_cast<int>(model.materials.size())) {
+                material = create_material(model.materials[gltf_primitive.material], model);
+            } else {
+                material = create_default_material();
+            }
+
+            // Enter the scene only after CPU mesh + material are fully prepared.
             Primitive& prim = scene_.emplace_primitive();
 
             float3 translation;
@@ -330,44 +349,9 @@ void GltfAsyncLoader::load_gltf_node(
             scene_.transform_component(scene_primitive_index).set_rotation(rotation);
             scene_.transform_component(scene_primitive_index).set_scale(scale);
 
-            Mesh* mesh_obj = nullptr;
-            const uint64_t geometry_key = make_geometry_key(gltf_primitive);
-            const auto cached_mesh = geometry_meshes_.find(geometry_key);
-            if (cached_mesh != geometry_meshes_.end()) {
-                mesh_obj = cached_mesh->second;
-                OC_INFO_FORMAT(
-                    "GltfAsyncLoader: reused mesh geometry key={:#x} (skipped vertex/index load)",
-                    geometry_key);
-            } else {
-                mesh_obj = ocarina::new_with_allocator<Mesh>();
-                mesh_storage_.push_back(mesh_obj);
-
-                const BoundingBox local_bounds = append_primitive_geometry(
-                    gltf_primitive, model, mesh_obj);
-                if (local_bounds.valid) {
-                    mesh_obj->set_local_bounds(local_bounds.min, local_bounds.max);
-                }
-
-                geometry_meshes_.emplace(geometry_key, mesh_obj);
-            }
-
             prim.set_mesh(mesh_obj);
-
-            if (gltf_primitive.material >= 0 && gltf_primitive.material < static_cast<int>(model.materials.size())) {
-                load_material(prim, model.materials[gltf_primitive.material], model);
-            } else if (shader_program_ != nullptr) {
-                Material* prim_material = ResourceManager::instance().create_unique_material(
-                    device_,
-                    shader_program_);
-                prim.set_material(prim_material);
-                prim_material->set_property("baseColorFactor", make_float4(1.f, 1.f, 1.f, 1.f));
-                prim_material->set_property("roughness", 1.f);
-                prim_material->set_property("metallic", 0.f);
-                prim_material->set_property("ao", 1.f);
-                prim_material->set_property("normalIndex", 0u);
-                prim_material->set_property("normalSamplerIndex", 0u);
-                prim_material->set_property("metallicRoughnessIndex", InvalidUI32);
-                prim_material->set_property("metallicRoughnessSamplerIndex", 0u);
+            if (material != nullptr) {
+                prim.set_material(material);
             }
 
             if (progress_listener_ != nullptr) {
@@ -382,6 +366,30 @@ void GltfAsyncLoader::load_gltf_node(
         }
         load_gltf_node(model.nodes[child_index], model, world_transform);
     }
+}
+
+Mesh* GltfAsyncLoader::get_or_create_mesh(
+    const tinygltf::Primitive& gltf_primitive,
+    const tinygltf::Model& model) {
+    const uint64_t geometry_key = make_geometry_key(gltf_primitive);
+    const auto cached_mesh = geometry_meshes_.find(geometry_key);
+    if (cached_mesh != geometry_meshes_.end()) {
+        OC_INFO_FORMAT(
+            "GltfAsyncLoader: reused mesh geometry key={:#x} (skipped vertex/index load)",
+            geometry_key);
+        return cached_mesh->second;
+    }
+
+    Mesh* mesh_obj = ocarina::new_with_allocator<Mesh>();
+    mesh_storage_.push_back(mesh_obj);
+
+    const BoundingBox local_bounds = append_primitive_geometry(gltf_primitive, model, mesh_obj);
+    if (local_bounds.valid) {
+        mesh_obj->set_local_bounds(local_bounds.min, local_bounds.max);
+    }
+
+    geometry_meshes_.emplace(geometry_key, mesh_obj);
+    return mesh_obj;
 }
 
 BoundingBox GltfAsyncLoader::append_primitive_geometry(
@@ -591,12 +599,41 @@ TextureHandle GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::
     return handle;
 }
 
-void GltfAsyncLoader::load_material(Primitive& prim, const tinygltf::Material& material, const tinygltf::Model& model) {
-    if (shader_program_ != nullptr) {
-        Material* prim_material = ResourceManager::instance().create_unique_material(
-            device_,
-            shader_program_);
-        prim.set_material(prim_material);
+Material* GltfAsyncLoader::create_default_material() {
+    if (shader_program_ == nullptr) {
+        return nullptr;
+    }
+
+    Material* prim_material = ResourceManager::instance().create_unique_material(
+        device_,
+        shader_program_);
+    if (prim_material == nullptr) {
+        return nullptr;
+    }
+
+    prim_material->set_property("baseColorFactor", make_float4(1.f, 1.f, 1.f, 1.f));
+    prim_material->set_property("roughness", 1.f);
+    prim_material->set_property("metallic", 0.f);
+    prim_material->set_property("ao", 1.f);
+    prim_material->set_property("normalIndex", 0u);
+    prim_material->set_property("normalSamplerIndex", 0u);
+    prim_material->set_property("metallicRoughnessIndex", InvalidUI32);
+    prim_material->set_property("metallicRoughnessSamplerIndex", 0u);
+    return prim_material;
+}
+
+Material* GltfAsyncLoader::create_material(
+    const tinygltf::Material& material,
+    const tinygltf::Model& model) {
+    if (shader_program_ == nullptr) {
+        return nullptr;
+    }
+
+    Material* prim_material = ResourceManager::instance().create_unique_material(
+        device_,
+        shader_program_);
+    if (prim_material == nullptr) {
+        return nullptr;
     }
 
     const auto& pbr = material.pbrMetallicRoughness;
@@ -610,11 +647,6 @@ void GltfAsyncLoader::load_material(Primitive& prim, const tinygltf::Material& m
     const float roughness = static_cast<float>(pbr.roughnessFactor);
     const float metallic = static_cast<float>(pbr.metallicFactor);
     const float ao = 1.f;
-
-    Material* prim_material = prim.get_material();
-    if (prim_material == nullptr) {
-        return;
-    }
 
     prim_material->set_property("baseColorFactor", base_color_factor);
     prim_material->set_property("roughness", roughness);
@@ -633,6 +665,7 @@ void GltfAsyncLoader::load_material(Primitive& prim, const tinygltf::Material& m
         const int image_index = model.textures[pbr.baseColorTexture.index].source;
         const TextureHandle albedo_handle = load_gltf_image(image_index, model);
         if (albedo_handle.bindless_index_ != InvalidUI32) {
+            prim_material->set_bindless_texture("albedoIndex", albedo_handle);
             prim_material->set_property(
                 "albedoIndex",
                 &albedo_handle.bindless_index_,
@@ -646,6 +679,7 @@ void GltfAsyncLoader::load_material(Primitive& prim, const tinygltf::Material& m
         const int image_index = model.textures[pbr.metallicRoughnessTexture.index].source;
         const TextureHandle mr_handle = load_gltf_image(image_index, model);
         if (mr_handle.bindless_index_ != InvalidUI32) {
+            prim_material->set_bindless_texture("metallicRoughnessIndex", mr_handle);
             prim_material->set_property(
                 "metallicRoughnessIndex",
                 &mr_handle.bindless_index_,
@@ -653,6 +687,8 @@ void GltfAsyncLoader::load_material(Primitive& prim, const tinygltf::Material& m
             prim_material->set_property("metallicRoughnessSamplerIndex", linear_repeat_sampler);
         }
     }
+
+    return prim_material;
 }
 
 }// namespace ocarina

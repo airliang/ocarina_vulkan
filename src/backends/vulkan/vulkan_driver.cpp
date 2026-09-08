@@ -16,7 +16,9 @@
 #include "rhi/resources/buffer.h"
 #include "rhi/command_buffer.h"
 #include "rhi/fence.h"
+#include "rhi/semaphore.h"
 #include "vulkan_command_buffer.h"
+#include "vulkan_semaphore.h"
 
 namespace ocarina {
 
@@ -339,10 +341,22 @@ void VulkanDriver::initialize()
     vulkan_shader_manager = std::make_unique<VulkanShaderManager>();
     vulkan_descriptor_manager = std::make_unique<VulkanDescriptorManager>(vulkan_device_);
     setup_frame_buffer();
-    //get the graphics queue
-    vkGetDeviceQueue(device(), vulkan_device_->get_queue_family_index(QueueType::Graphics), 0, &graphics_queue);
-    vkGetDeviceQueue(device(), vulkan_device_->get_queue_family_index(QueueType::Compute), 0, &compute_queue);
-    vkGetDeviceQueue(device(), vulkan_device_->get_queue_family_index(QueueType::Copy), 0, &copy_queue);
+    //get the graphics / compute / copy queues (copy shares the graphics family, separate index)
+    vkGetDeviceQueue(
+        device(),
+        vulkan_device_->get_queue_family_index(QueueType::Graphics),
+        vulkan_device_->get_queue_index_in_family(QueueType::Graphics),
+        &graphics_queue);
+    vkGetDeviceQueue(
+        device(),
+        vulkan_device_->get_queue_family_index(QueueType::Compute),
+        vulkan_device_->get_queue_index_in_family(QueueType::Compute),
+        &compute_queue);
+    vkGetDeviceQueue(
+        device(),
+        vulkan_device_->get_queue_family_index(QueueType::Copy),
+        vulkan_device_->get_queue_index_in_family(QueueType::Copy),
+        &copy_queue);
     create_command_pool();
     create_command_buffers();
 
@@ -938,17 +952,19 @@ void VulkanDriver::execute_command_buffers(CommandBuffer* cmd_buffers, uint32_t 
         for (uint32_t j = 0; j < wait_count; ++j) {
             Semaphore* semaphore = cmd_buffers[i].get_wait_semaphore(j);
             waits[j].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-            waits[j].semaphore = reinterpret_cast<VkSemaphore>(semaphore->semaphore);
+            waits[j].semaphore = reinterpret_cast<VkSemaphore>(semaphore->native_handle());
             // Swapchain acquire semaphores are binary; timeline value must be 0.
             waits[j].value = semaphore->timeline_value;
-            waits[j].stageMask = vulkan_cmd_buffer->pipeline_stage_flags();
+            waits[j].stageMask = semaphore->stage_mask != 0
+                ? semaphore->stage_mask
+                : vulkan_cmd_buffer->pipeline_stage_flags();
         }
 
         const uint32_t cmd_signal_count = cmd_buffers[i].signal_semaphore_count();
         for (uint32_t j = 0; j < cmd_signal_count; ++j) {
             Semaphore* semaphore = cmd_buffers[i].get_signal_semaphore(j);
             signals[j].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-            signals[j].semaphore = reinterpret_cast<VkSemaphore>(semaphore->semaphore);
+            signals[j].semaphore = reinterpret_cast<VkSemaphore>(semaphore->native_handle());
             signals[j].value = semaphore->timeline_value;
             signals[j].stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
         }
@@ -991,27 +1007,25 @@ void VulkanDriver::execute_command_buffers(CommandBuffer* cmd_buffers, uint32_t 
 
 Semaphore VulkanDriver::request_semaphore(VkSemaphoreType type, uint64_t timeline_value)
 {
-    Semaphore semaphore{};
+    VulkanDevice *vk_device = get_device();
     if (type == VK_SEMAPHORE_TYPE_BINARY) {
-        VkSemaphore vk_semaphore;
+        VkSemaphore vk_semaphore = VK_NULL_HANDLE;
         if (binary_semaphore_pool_.empty()) {
             VkSemaphoreCreateInfo semaphore_info{};
             semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
             vkCreateSemaphore(device(), &semaphore_info, nullptr, &vk_semaphore);
-        }
-        else
-        {
+        } else {
             vk_semaphore = binary_semaphore_pool_.front();
             binary_semaphore_pool_.erase(binary_semaphore_pool_.begin());
         }
-        semaphore.semaphore = reinterpret_cast<handle_ty>(vk_semaphore);
+        auto impl = std::make_shared<VulkanSemaphore>(vk_device, vk_semaphore, false, false);
+        Semaphore semaphore(nullptr, std::move(impl));
         semaphore.timeline_value = 0;
         return semaphore;
     }
-    else if (type == VK_SEMAPHORE_TYPE_TIMELINE) {
-        
-        VkSemaphore vk_semaphore;
-        semaphore.is_timeline = true;
+
+    if (type == VK_SEMAPHORE_TYPE_TIMELINE) {
+        VkSemaphore vk_semaphore = VK_NULL_HANDLE;
         if (timeline_semaphore_pool_.empty()) {
             VkSemaphoreTypeCreateInfo timeline_info{};
             timeline_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
@@ -1021,26 +1035,30 @@ Semaphore VulkanDriver::request_semaphore(VkSemaphoreType type, uint64_t timelin
             VkSemaphoreCreateInfo sem_info{};
             sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
             sem_info.pNext = &timeline_info;
-
             vkCreateSemaphore(device(), &sem_info, nullptr, &vk_semaphore);
-        }
-        else
-        {
+        } else {
             vk_semaphore = timeline_semaphore_pool_.front();
             timeline_semaphore_pool_.erase(timeline_semaphore_pool_.begin());
         }
-        semaphore.semaphore = reinterpret_cast<handle_ty>(vk_semaphore);
+        auto impl = std::make_shared<VulkanSemaphore>(vk_device, vk_semaphore, true, false);
+        Semaphore semaphore(nullptr, std::move(impl));
+        semaphore.timeline_value = timeline_value;
+        return semaphore;
     }
-    return semaphore;
+
+    return {};
 }
 
 void VulkanDriver::recycle_semaphore(const Semaphore& semaphore)
 {
-    if (semaphore.is_timeline) {
-        timeline_semaphore_pool_.push_back(reinterpret_cast<VkSemaphore>(semaphore.semaphore));
+    if (!semaphore.valid()) {
+        return;
     }
-    else {
-        binary_semaphore_pool_.push_back(reinterpret_cast<VkSemaphore>(semaphore.semaphore));
+    VkSemaphore vk_semaphore = reinterpret_cast<VkSemaphore>(semaphore.native_handle());
+    if (semaphore.is_timeline()) {
+        timeline_semaphore_pool_.push_back(vk_semaphore);
+    } else {
+        binary_semaphore_pool_.push_back(vk_semaphore);
     }
 }
 

@@ -105,16 +105,26 @@ CpuMipChain build_cpu_mip_chain(
 
 }// namespace
 
-StagingUploader::StagingUploader(Device::Impl *device)
+StagingUploader::StagingUploader(Device *device)
     : device_(device) {
     OC_ASSERT(device_ != nullptr);
+    upload_timeline_ = device_->create_timeline_semaphore(0);
 }
 
 StagingUploader::~StagingUploader() {
     destroy_staging();
+    upload_timeline_ = {};
+}
+
+void StagingUploader::wait_for_staging_reuse() noexcept {
+    if (!upload_timeline_.valid() || last_texture_timeline_value_ == 0) {
+        return;
+    }
+    upload_timeline_.wait(last_texture_timeline_value_);
 }
 
 void StagingUploader::destroy_staging() noexcept {
+    wait_for_staging_reuse();
     if (device_ == nullptr || staging_ == 0) {
         staging_ = 0;
         capacity_ = 0;
@@ -168,6 +178,26 @@ void StagingUploader::write_staging(const void *data, size_t size_in_byte) {
     }
 }
 
+uint64_t StagingUploader::submit_texture_copy(CommandBuffer &cmd) {
+    const uint64_t timeline_value = ++next_timeline_value_;
+    Semaphore signal = upload_timeline_;
+    signal.timeline_value = timeline_value;
+    cmd.add_signal_semaphore(signal);
+    cmd.submit_to_queue(QueueType::Copy, nullptr);
+    device_->release_command_buffer(cmd);
+    last_texture_timeline_value_ = timeline_value;
+    return timeline_value;
+}
+
+void StagingUploader::submit_buffer_copy(CommandBuffer &cmd) {
+    // Buffer uploads are not timeline-tracked; fence-wait so staging can be reused safely
+    // even when interleaved with async texture uploads.
+    Fence fence = device_->create_fence();
+    cmd.submit_to_queue(QueueType::Copy, &fence);
+    fence.wait();
+    device_->release_command_buffer(cmd);
+}
+
 void StagingUploader::upload_to_buffer(
     handle_ty dst_buffer,
     const void *data,
@@ -182,20 +212,17 @@ void StagingUploader::upload_to_buffer(
         return;
     }
 
+    wait_for_staging_reuse();
     write_staging(data, size_in_byte);
 
     CommandBuffer cmd = device_->get_command_buffer(QueueType::Copy);
     cmd.begin();
     cmd.copy_buffer(staging_, dst_buffer, 0, dst_offset, size_in_byte);
     cmd.end();
-
-    Fence fence = device_->create_fence();
-    cmd.submit_to_queue(QueueType::Copy, &fence);
-    fence.wait();
-    device_->release_command_buffer(cmd);
+    submit_buffer_copy(cmd);
 }
 
-void StagingUploader::upload_to_texture(
+uint64_t StagingUploader::upload_to_texture(
     handle_ty dst_texture,
     const void *data,
     size_t size_in_byte,
@@ -203,14 +230,15 @@ void StagingUploader::upload_to_texture(
     uint32_t region_count) {
     if (device_ == nullptr || dst_texture == 0 || data == nullptr || size_in_byte == 0
         || regions == nullptr || region_count == 0) {
-        return;
+        return 0;
     }
 
     ensure_capacity(size_in_byte);
-    if (staging_ == 0) {
-        return;
+    if (staging_ == 0 || !upload_timeline_.valid()) {
+        return 0;
     }
 
+    wait_for_staging_reuse();
     write_staging(data, size_in_byte);
 
     CommandBuffer cmd = device_->get_command_buffer(QueueType::Copy);
@@ -225,11 +253,7 @@ void StagingUploader::upload_to_texture(
         TextureLayout::TransferDst,
         TextureLayout::ShaderReadOnly);
     cmd.end();
-
-    Fence fence = device_->create_fence();
-    cmd.submit_to_queue(QueueType::Copy, &fence);
-    fence.wait();
-    device_->release_command_buffer(cmd);
+    return submit_texture_copy(cmd);
 }
 
 void StagingUploader::upload_index_buffer_range(
@@ -277,13 +301,13 @@ void StagingUploader::upload_vertex_attribute_range(
         dst_offset);
 }
 
-void StagingUploader::upload_texture_cpu_pixels(
+uint64_t StagingUploader::upload_texture_cpu_pixels(
     Texture *texture,
     const void *data,
     size_t base_level_bytes) {
     PROFILE_SCOPE();
     if (texture == nullptr || texture->impl() == nullptr || data == nullptr || base_level_bytes == 0) {
-        return;
+        return 0;
     }
 
     Texture::Impl *impl = texture->impl();
@@ -299,13 +323,12 @@ void StagingUploader::upload_texture_cpu_pixels(
         region.height = res.y;
         region.depth = std::max(res.z, 1u);
         region.layer_count = 1;
-        upload_to_texture(
+        return upload_to_texture(
             reinterpret_cast<handle_ty>(impl),
             data,
             base_level_bytes,
             &region,
             1);
-        return;
     }
 
     if (!is_8bit(format)) {
@@ -324,7 +347,7 @@ void StagingUploader::upload_texture_cpu_pixels(
         region.depth = 1;
         region.layer_count = 1;
     }
-    upload_to_texture(
+    return upload_to_texture(
         reinterpret_cast<handle_ty>(impl),
         chain.pixels.data(),
         chain.pixels.size(),

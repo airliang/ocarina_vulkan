@@ -391,6 +391,13 @@ void Material::set_property(uint64_t name_id, const TextureHandle& texture) {
         MaterialUpdateRequest::make_texture(this, name_id, texture));
 }
 
+void Material::set_bindless_texture(uint64_t name_id, const TextureHandle& texture) {
+    if (name_id == 0 || texture.texture_ == nullptr) {
+        return;
+    }
+    texture_handles_[name_id] = texture;
+}
+
 bool Material::is_renderable() {
     if (!is_GPU_ready()) {
         return false;

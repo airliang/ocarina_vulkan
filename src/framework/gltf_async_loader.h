@@ -54,7 +54,10 @@ private:
         const tinygltf::Primitive& primitive,
         const tinygltf::Model& model,
         Mesh* mesh);
-    void load_material(Primitive& prim, const tinygltf::Material& material, const tinygltf::Model& model);
+    /// Build a fully CPU-initialized material (params + texture handles). Does not wait on GPU.
+    [[nodiscard]] Material* create_material(const tinygltf::Material& material, const tinygltf::Model& model);
+    [[nodiscard]] Material* create_default_material();
+    [[nodiscard]] Mesh* get_or_create_mesh(const tinygltf::Primitive& gltf_primitive, const tinygltf::Model& model);
     [[nodiscard]] TextureHandle load_gltf_image(int image_index, const tinygltf::Model& model);
     [[nodiscard]] static uint64_t make_geometry_key(const tinygltf::Primitive& primitive);
 

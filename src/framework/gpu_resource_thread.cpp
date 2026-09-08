@@ -30,8 +30,9 @@ void TextureGPUResourceRequest::process() {
     switch (kind) {
     case GPUResourceRequestType::TextureFromData: {
         StagingUploader& uploader = GPUResourceThread::instance().staging_uploader();
+        uint64_t upload_value = 0;
         if (!pixel_data.empty()) {
-            uploader.upload_texture_cpu_pixels(
+            upload_value = uploader.upload_texture_cpu_pixels(
                 texture,
                 pixel_data.data(),
                 pixel_data.size());
@@ -40,11 +41,12 @@ void TextureGPUResourceRequest::process() {
             std::vector<uint4> white(
                 static_cast<size_t>(res.x) * res.y * res.z,
                 uint4(0, 0, 0, 255));
-            uploader.upload_texture_cpu_pixels(
+            upload_value = uploader.upload_texture_cpu_pixels(
                 texture,
                 white.data(),
                 white.size() * sizeof(uint4));
         }
+        texture->set_upload_complete_value(upload_value);
         break;
     }
     case GPUResourceRequestType::RenderTarget:
@@ -102,7 +104,7 @@ void GPUResourceThread::ensure_staging_uploader() {
     if (staging_uploader_ != nullptr || device_ == nullptr) {
         return;
     }
-    staging_uploader_ = ocarina::new_with_allocator<StagingUploader>(device_->impl());
+    staging_uploader_ = ocarina::new_with_allocator<StagingUploader>(device_);
 }
 
 StagingUploader& GPUResourceThread::staging_uploader() {

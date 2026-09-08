@@ -72,7 +72,8 @@ public:
 
     explicit Texture(Device::Impl *device, uint32_t width, uint32_t height, PixelStorage pixel_storage, TextureUsageFlags usage);
 
-    /// True when the GPU upload has finished (GPU_Ready).
+    /// True when the GPU upload has been submitted (GPU_Ready).
+    /// Bindless flush waits on StagingUploader::upload_timeline() for upload_complete_value().
     [[nodiscard]] bool is_gpu_ready() const noexcept {
         return gpu_resource_state_ >= GPUResourceState::GPU_Ready;
     }

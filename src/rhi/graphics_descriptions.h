@@ -469,15 +469,5 @@ enum class DescriptorSetIndex : uint8_t {
     MAX_DESCRIPTOR_SET = MAX_DESCRIPTOR_SETS_PER_SHADER
 };
 
-struct Semaphore {
-    handle_ty semaphore = InvalidUI64;
-    uint64_t timeline_value = 0;
-    //uint64_t stage_mask = 0;
-    bool is_timeline = false;
-    //QueueType wait_queue = QueueType::Graphics;
-    //QueueType signal_queue = QueueType::Graphics;
-};
-
-
 
 }// namespace ocarina

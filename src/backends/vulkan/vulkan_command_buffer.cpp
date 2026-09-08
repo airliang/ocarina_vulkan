@@ -358,13 +358,15 @@ void VulkanCommandBuffer::submit_to_queue(QueueType queue_type, Fence* fence) {
 
     for (uint32_t i = 0; i < wait_count; ++i) {
         waits[i].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-        waits[i].semaphore = reinterpret_cast<VkSemaphore>(wait_semaphores[i].semaphore);
+        waits[i].semaphore = reinterpret_cast<VkSemaphore>(wait_semaphores[i].native_handle());
         waits[i].value = wait_semaphores[i].timeline_value;
-        waits[i].stageMask = pipeline_stage_flags_;
+        waits[i].stageMask = wait_semaphores[i].stage_mask != 0
+            ? wait_semaphores[i].stage_mask
+            : pipeline_stage_flags_;
     }
     for (uint32_t i = 0; i < signal_count; ++i) {
         signals[i].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-        signals[i].semaphore = reinterpret_cast<VkSemaphore>(signal_semaphores[i].semaphore);
+        signals[i].semaphore = reinterpret_cast<VkSemaphore>(signal_semaphores[i].native_handle());
         signals[i].value = signal_semaphores[i].timeline_value;
         signals[i].stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
     }
