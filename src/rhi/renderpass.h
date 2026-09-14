@@ -6,6 +6,7 @@
 
 #include "core/stl.h"
 #include "graphics_descriptions.h"
+#include "rendertarget.h"
 #include "pipeline_state.h"
 
 namespace ocarina {
@@ -43,28 +44,24 @@ struct GlobalUBO
 
 class OC_RHI_API RHIRenderPass {
 public:
-    RHIRenderPass(const RenderPassCreation &render_pass_creation) {}
+    RHIRenderPass(const RenderPassCreation &render_pass_creation);
     virtual ~RHIRenderPass();
 
     void clear_draw_call_items();
 
     void add_draw_call(uint32_t render_component_index, const PipelineState& pipeline_state);
 
-    void add_color_attachment(Texture* texture) {
-        OC_ASSERT(color_attachment_count_ < kMaxColorAttachments);
-        color_attachments_[color_attachment_count_++] = texture;
+    [[nodiscard]] RenderTarget* render_target() noexcept { return render_target_; }
+    [[nodiscard]] const RenderTarget* render_target() const noexcept { return render_target_; }
+
+    /// Swapchain path: target is the swapchain backbuffer.
+    [[nodiscard]] bool is_swapchain_renderpass() const {
+        return render_target_ != nullptr && render_target_->is_swapchain();
     }
 
-    /// Swapchain path: no explicit color/depth attachments (backbuffer + swapchain depth).
-    bool is_swapchain_renderpass() const
-    {
-        return color_attachment_count_ == 0 && depth_attachment_ == nullptr;
-    }
-
-    /// Offscreen path: explicit color and/or depth attachments.
-    bool is_offscreen_renderpass() const
-    {
-        return color_attachment_count_ > 0 || depth_attachment_ != nullptr;
+    /// Offscreen path: target is one or more textures.
+    [[nodiscard]] bool is_offscreen_renderpass() const {
+        return render_target_ != nullptr && render_target_->is_texture();
     }
 
     void set_viewport(const float4& viewport) noexcept {
@@ -83,24 +80,27 @@ public:
     OC_MAKE_MEMBER_GETTER(size, )
     OC_MAKE_MEMBER_GETTER(scissor, )
     OC_MAKE_MEMBER_GETTER(viewport, )
-    OC_MAKE_MEMBER_GETTER(color_attachment_count, )
     OC_MAKE_MEMBER_GETTER(clear_color, )
     OC_MAKE_MEMBER_GETTER(clear_depth, )
     OC_MAKE_MEMBER_GETTER(clear_stencil, )
-    OC_MAKE_MEMBER_GETTER(swapchain_clear_color, )
-    OC_MAKE_MEMBER_GETTER(swapchain_clear_depth, )
-    OC_MAKE_MEMBER_GETTER(swapchain_clear_stencil, )
+    OC_MAKE_MEMBER_GETTER(clear_color_attachment, )
+    OC_MAKE_MEMBER_GETTER(clear_depth_attachment, )
+    OC_MAKE_MEMBER_GETTER(present_swapchain, )
 
-    Texture* color_attachment(uint32_t index) const {
-        return index < color_attachment_count_ ? color_attachments_[index] : nullptr;
+    [[nodiscard]] uint32_t color_attachment_count() const noexcept {
+        return render_target_ != nullptr ? render_target_->color_attachment_count() : 0;
     }
 
-    Texture* depth_attachment() const {
-        return depth_attachment_;
+    [[nodiscard]] Texture* color_attachment(uint32_t index) const {
+        return render_target_ != nullptr ? render_target_->color_attachment(index) : nullptr;
     }
 
-    bool is_use_swapchain_framebuffer() const {
-        return color_attachment_count_ == 0;
+    [[nodiscard]] Texture* depth_attachment() const {
+        return render_target_ != nullptr ? render_target_->depth_attachment() : nullptr;
+    }
+
+    [[nodiscard]] bool is_use_swapchain_framebuffer() const {
+        return is_swapchain_renderpass();
     }
 
     void update_swapchain_extent(uint2 extent) {
@@ -117,6 +117,7 @@ public:
     }
 
 protected:
+    RenderTarget* render_target_ = nullptr;
 
     float4 viewport_ = {0, 0, 0, 0};
     int4 scissor_ = {0, 0, 0, 0};
@@ -124,17 +125,12 @@ protected:
 
     std::string name_ = "RHIRenderPass";
 
-    uint32_t color_attachment_count_ = 0;
-    constexpr static const int kMaxColorAttachments = RenderPassCreation::MAX_COLOR_ATTACHMENTS;
-    Texture* color_attachments_[kMaxColorAttachments] = {};
-    Texture* depth_attachment_ = nullptr;
-
     float4 clear_color_ = {0.025f, 0.025f, 0.025f, 1.0f};
     float clear_depth_ = 1.0f;
     uint32_t clear_stencil_ = 0;
-    float4 swapchain_clear_color_ = {0.025f, 0.025f, 0.025f, 1.0f};
-    float swapchain_clear_depth_ = 1.0f;
-    uint32_t swapchain_clear_stencil_ = 0;
+    bool clear_color_attachment_ = true;
+    bool clear_depth_attachment_ = true;
+    bool present_swapchain_ = true;
 
     std::unordered_map<PipelineState, PipelineRenderQueue*, PipelineStateHash> pipeline_render_queues_;
     GlobalUBO global_ubo_data_ = {};

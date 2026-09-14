@@ -36,6 +36,7 @@ class DescriptorSetLayout;
 struct RHIPipeline;
 struct RHIPipelineLayout;
 class Image;
+class Cubemap;
 class TextureSampler;
 struct ImguiCreation;
 
@@ -85,6 +86,13 @@ public:
         [[nodiscard]] virtual handle_ty create_render_target_texture(uint32_t width, uint32_t height, PixelStorage pixel_storage,
                                                                      TextureUsageFlags usage) noexcept = 0;
         virtual void destroy_texture(handle_ty handle) noexcept = 0;
+        /// Allocate a cube image (6 layers). Pixel upload is a framework concern.
+        [[nodiscard]] virtual handle_ty create_cubemap(
+            uint32_t width,
+            uint32_t height,
+            PixelStorage pixel_storage,
+            const TextureSampler &sampler) noexcept = 0;
+        virtual void destroy_cubemap(handle_ty handle) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_shader_from_program(ShaderProgram* program, ShaderType stage) noexcept = 0;
         /// Create descriptor set layouts from ShaderProgram merged reflection (no shader module required).
@@ -111,7 +119,7 @@ public:
         virtual void wait_idle() noexcept {}
         virtual RHIRenderPass *create_render_pass(const RenderPassCreation &render_pass_creation) noexcept = 0;
         virtual void destroy_render_pass(RHIRenderPass *render_pass) noexcept = 0;
-        virtual bool build_pipeline_layout_desc(const handle_ty shaders[PipelineState::MAX_SHADER_STAGE], PipelineLayoutDesc& out_desc) noexcept = 0;
+        virtual bool build_pipeline_layout_desc(ShaderProgram* shader_program, PipelineLayoutDesc& out_desc) noexcept = 0;
         virtual RHIPipelineLayout* create_pipeline_layout(const PipelineLayoutDesc& desc) noexcept = 0;
         virtual void destroy_pipeline_layout(RHIPipelineLayout* layout) noexcept = 0;
         virtual void bind_pipeline(const CommandBuffer& cmd_buffer, const handle_ty pipeline) noexcept = 0;
@@ -266,8 +274,8 @@ public:
         impl_->destroy_render_pass(render_pass);
     }
 
-    [[nodiscard]] bool build_pipeline_layout_desc(const handle_ty shaders[PipelineState::MAX_SHADER_STAGE], PipelineLayoutDesc& out_desc) noexcept {
-        return impl_->build_pipeline_layout_desc(shaders, out_desc);
+    [[nodiscard]] bool build_pipeline_layout_desc(ShaderProgram* shader_program, PipelineLayoutDesc& out_desc) noexcept {
+        return impl_->build_pipeline_layout_desc(shader_program, out_desc);
     }
 
     RHIPipelineLayout* create_pipeline_layout(const PipelineLayoutDesc& desc) noexcept {

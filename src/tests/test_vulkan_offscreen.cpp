@@ -22,6 +22,7 @@
 #include "framework/entity_component_system.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/renderpass.h"
+#include "rhi/rendertarget.h"
 #include "framework/camera.h"
 #include "framework/mesh.h"
 #include "framework/resource_manager.h"
@@ -142,16 +143,18 @@ int main(int argc, char *argv[]) {
     const uint64_t model_matrix_name_id = hash64("modelMatrix");
     const uint64_t model_matrix_inverse_name_id = hash64("modelMatrixInverse");
 
+    RenderTarget offscreen_target = RenderTarget::texture(offscreen_color);
     RenderPassCreation offscreen_pass_creation;
-    offscreen_pass_creation.color_attachment_count = 1;
-    offscreen_pass_creation.color_attachments[0] = offscreen_color;
+    offscreen_pass_creation.render_target = &offscreen_target;
     offscreen_pass_creation.clear_color = make_float4(1.0f, 1.0f, 1.0f, 1.0f);
     RHIRenderPass* offscreen_pass = device.create_render_pass(offscreen_pass_creation);
 
+    RenderTarget swapchain_target = RenderTarget::swapchain();
     RenderPassCreation swapchain_pass_creation;
-    swapchain_pass_creation.swapchain_clear_color = make_float4(0.1f, 0.1f, 0.1f, 1.0f);
-    swapchain_pass_creation.swapchain_clear_depth = 1.0f;
-    swapchain_pass_creation.swapchain_clear_stencil = 0;
+    swapchain_pass_creation.render_target = &swapchain_target;
+    swapchain_pass_creation.clear_color = make_float4(0.1f, 0.1f, 0.1f, 1.0f);
+    swapchain_pass_creation.clear_depth = 1.0f;
+    swapchain_pass_creation.clear_stencil = 0;
     RHIRenderPass* swapchain_pass = device.create_render_pass(swapchain_pass_creation);
 
     renderer.set_scene(&scene);

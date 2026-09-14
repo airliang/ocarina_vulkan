@@ -18,6 +18,7 @@
 #include "framework/scene.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/renderpass.h"
+#include "rhi/rendertarget.h"
 #include "framework/camera.h"
 #include "rhi/imgui_creation.h"
 #include "framework/mesh.h"
@@ -108,10 +109,12 @@ int main(int argc, char *argv[]) {
 
     triangle.set_update_push_constant_function(update_push_constant);
 
+    RenderTarget swapchain_target = RenderTarget::swapchain();
     RenderPassCreation render_pass_creation;
-    render_pass_creation.swapchain_clear_color = make_float4(0.1f, 0.1f, 0.1f, 1.0f);
-    render_pass_creation.swapchain_clear_depth = 1.0f;
-    render_pass_creation.swapchain_clear_stencil = 0;
+    render_pass_creation.render_target = &swapchain_target;
+    render_pass_creation.clear_color = make_float4(0.1f, 0.1f, 0.1f, 1.0f);
+    render_pass_creation.clear_depth = 1.0f;
+    render_pass_creation.clear_stencil = 0;
     RHIRenderPass* render_pass = device.create_render_pass(render_pass_creation);
 
     async_loader.set_pso_requests({

@@ -68,8 +68,6 @@ private:
     bool gltf_model_parsed_ = false;
     bool gltf_parse_success_ = false;
     std::string gltf_parse_error_;
-    handle_ty vertex_shader_ = InvalidUI64;
-    handle_ty pixel_shader_ = InvalidUI64;
     ShaderProgram* shader_program_ = nullptr;
     std::vector<Mesh*> mesh_storage_;
     std::unordered_map<int, TextureHandle> image_textures_;

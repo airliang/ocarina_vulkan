@@ -19,6 +19,7 @@ namespace ocarina {
 class Device;
 class LoadingProgressListener;
 class RHIRenderPass;
+class ShaderProgram;
 struct RHIPipeline;
 struct RHIPipelineLayout;
 
@@ -35,7 +36,7 @@ public:
         PSORequest request,
         LoadingProgressListener* progress_listener = nullptr);
 
-    /// Runtime path: material already has resolved shader handles.
+    /// Runtime path: material already has a resolved ShaderProgram.
     PipelineCompileTask* enqueue(
         const PipelineState& pipeline_state,
         RHIRenderPass* render_pass);
@@ -46,15 +47,12 @@ public:
     [[nodiscard]] bool has_pipeline(const PipelineState& pipeline_state, RHIRenderPass* render_pass) const noexcept;
     [[nodiscard]] bool has_pipeline(const PipelineCacheKey& key) const noexcept;
 
-    RHIPipelineLayout* create_and_cache_pipeline_layout(
-        const handle_ty shaders[PipelineState::MAX_SHADER_STAGE]);
+    RHIPipelineLayout* create_and_cache_pipeline_layout(ShaderProgram* shader_program);
 
-    [[nodiscard]] RHIPipelineLayout* get_pipeline_layout(
-        const handle_ty shaders[PipelineState::MAX_SHADER_STAGE]) const noexcept;
+    [[nodiscard]] RHIPipelineLayout* get_pipeline_layout(ShaderProgram* shader_program) const noexcept;
 
-    [[nodiscard]] RHIPipelineLayout* get_or_create_pipeline_layout(
-        const handle_ty shaders[PipelineState::MAX_SHADER_STAGE]) const noexcept {
-        return get_pipeline_layout(shaders);
+    [[nodiscard]] RHIPipelineLayout* get_or_create_pipeline_layout(ShaderProgram* shader_program) const noexcept {
+        return get_pipeline_layout(shader_program);
     }
 
     void insert_pipeline_cache(const PipelineCacheKey& key, RHIPipeline* pipeline) noexcept;

@@ -37,6 +37,7 @@ public:
     void update_buffer(uint64_t name_id, handle_ty buffer, uint32_t offset, uint32_t size) override;
     void update_storage_buffer(uint64_t name_id, handle_ty buffer, uint64_t offset, uint64_t size);
     void update_texture(uint64_t name_id, Texture *texture) override;
+    void update_cubemap(uint64_t name_id, Cubemap *cubemap);
     void update_sampler(uint64_t name_id, VkSampler sampler);
     void update_bindless_texture_at_index(uint32_t index, Texture *texture);
 

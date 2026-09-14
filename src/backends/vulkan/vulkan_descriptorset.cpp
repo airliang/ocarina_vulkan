@@ -60,6 +60,13 @@ void VulkanDescriptorSet::update_texture(uint64_t name_id, Texture *texture) {
     }
 }
 
+void VulkanDescriptorSet::update_cubemap(uint64_t name_id, Cubemap *cubemap) {
+    ShaderVariableBinding* binding = layout_->get_binding_by_nameid(name_id);
+    if (binding && writer_) {
+        writer_->update_cubemap(name_id, cubemap);
+    }
+}
+
 void VulkanDescriptorSet::update_sampler(uint64_t name_id, const TextureSampler& sampler) {
     ShaderVariableBinding* binding = layout_->get_binding_by_nameid(name_id);
     if (binding)

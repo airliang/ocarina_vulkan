@@ -11,6 +11,9 @@ namespace ocarina {
 struct alignas(16) GlobalUniformBuffer {
     math3d::Matrix4 projection_matrix{};
     math3d::Matrix4 view_matrix{};
+    math3d::Matrix4 inv_projection_matrix{};
+    math3d::Matrix4 inv_view_matrix{};
+    math3d::Matrix4 inv_view_proj_matrix{};
     float4 camera_pos = make_float4(0.0f, 0.0f, 0.0f, 1.0f);
     float4 light_pos = make_float4(5.0f, 10.0f, 5.0f, 1.0f);
     float4 sun_direction = make_float4(-0.4f, -1.0f, -0.3f, 0.0f);

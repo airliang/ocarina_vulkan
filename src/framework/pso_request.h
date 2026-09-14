@@ -9,8 +9,9 @@
 namespace ocarina {
 
 class RHIRenderPass;
+class ShaderProgram;
 
-/// File- or handle-based request to compile / cache a graphics PSO.
+/// File- or program-based request to compile / cache a graphics PSO.
 /// Vertex inputs are defined by the vertex shader (and its options), not stored here.
 struct PSORequest {
     std::string vertex_shader_path;
@@ -18,8 +19,7 @@ struct PSORequest {
     std::set<string> vertex_options;
     std::set<string> pixel_options;
 
-    handle_ty vertex_shader = InvalidUI64;
-    handle_ty pixel_shader = InvalidUI64;
+    ShaderProgram* shader_program = nullptr;
 
     RHIRenderPass* render_pass = nullptr;
 
@@ -48,8 +48,7 @@ struct PSORequest {
         const PipelineState& pipeline_state,
         RHIRenderPass* render_pass) noexcept {
         PSORequest request;
-        request.vertex_shader = pipeline_state.shaders[0];
-        request.pixel_shader = pipeline_state.shaders[1];
+        request.shader_program = pipeline_state.shader_program;
         request.render_pass = render_pass;
         request.raster_state = pipeline_state.raster_state;
         request.blend_state = pipeline_state.blend_state;
@@ -63,13 +62,12 @@ struct PSORequest {
         return !vertex_shader_path.empty() && !pixel_shader_path.empty();
     }
 
-    [[nodiscard]] bool has_shader_handles() const noexcept {
-        return vertex_shader != 0 && vertex_shader != InvalidUI64
-            && pixel_shader != 0 && pixel_shader != InvalidUI64;
+    [[nodiscard]] bool has_shader_program() const noexcept {
+        return shader_program != nullptr;
     }
 
     [[nodiscard]] PipelineState make_pipeline_state() const noexcept {
-        PipelineState state = PipelineState::MakeGraphicsDefault(vertex_shader, pixel_shader);
+        PipelineState state = PipelineState::MakeGraphicsDefault(shader_program);
         state.raster_state = raster_state;
         state.blend_state = blend_state;
         state.depth_stencil_state = depth_stencil_state;
@@ -82,7 +80,7 @@ struct PSORequest {
         return MakePipelineCacheKey(make_pipeline_state(), render_pass);
     }
 
-    /// Identity for the pending request queue (ignore resolved handles).
+    /// Identity for the pending request queue (ignore resolved program when paths match).
     [[nodiscard]] bool identity_equals(const PSORequest& other) const noexcept {
         if (render_pass != other.render_pass
             || primitive_type != other.primitive_type
@@ -97,8 +95,7 @@ struct PSORequest {
                 && vertex_options == other.vertex_options
                 && pixel_options == other.pixel_options;
         }
-        return vertex_shader == other.vertex_shader
-            && pixel_shader == other.pixel_shader;
+        return shader_program == other.shader_program;
     }
 };
 
@@ -117,8 +114,7 @@ struct PSORequestHash {
                 hash_combine(hash, std::hash<std::string>{}(option));
             }
         } else {
-            hash_combine(hash, request.vertex_shader);
-            hash_combine(hash, request.pixel_shader);
+            hash_combine(hash, reinterpret_cast<uintptr_t>(request.shader_program));
         }
         return hash;
     }

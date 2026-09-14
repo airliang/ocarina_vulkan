@@ -1,5 +1,6 @@
 #include "pipeline_manager.h"
 
+#include "frame_resources.h"
 #include "loading_progress_listener.h"
 #include "resource_manager.h"
 #include "rhi/device.h"
@@ -88,8 +89,8 @@ PipelineCompileTask* PipelineManager::enqueue(
         return nullptr;
     }
 
-    // Resolve shader modules from cache when paths are provided.
-    if (request.has_shader_paths() && !request.has_shader_handles()) {
+    // Resolve shader program from cache when paths are provided.
+    if (request.has_shader_paths() && !request.has_shader_program()) {
         ShaderProgram* program = ResourceManager::instance().get_shader_program(
             request.vertex_shader_path,
             request.pixel_shader_path,
@@ -97,12 +98,11 @@ PipelineCompileTask* PipelineManager::enqueue(
             request.pixel_options);
         if (program != nullptr) {
             program->ensure_gpu_shaders(device_);
-            request.vertex_shader = program->shader_handle(ShaderType::VertexShader);
-            request.pixel_shader = program->shader_handle(ShaderType::PixelShader);
+            request.shader_program = program;
         }
     }
 
-    if (request.has_shader_handles()) {
+    if (request.has_shader_program()) {
         const PipelineCacheKey key = request.make_cache_key();
         if (has_pipeline(key)) {
             clear_pending_request(request);
@@ -158,26 +158,26 @@ bool PipelineManager::has_pipeline(
 }
 
 RHIPipelineLayout* PipelineManager::get_pipeline_layout(
-    const handle_ty shaders[PipelineState::MAX_SHADER_STAGE]) const noexcept {
-    if (shaders[0] == InvalidUI64 || shaders[1] == InvalidUI64) {
+    ShaderProgram* shader_program) const noexcept {
+    if (shader_program == nullptr) {
         return nullptr;
     }
 
-    const PipelineLayoutCacheKey key{shaders[0], shaders[1]};
+    const PipelineLayoutCacheKey key{shader_program};
     std::lock_guard<std::mutex> cache_lock(cache_mutex_);
     const auto it = pipeline_layouts_.find(key);
     return it != pipeline_layouts_.end() ? it->second : nullptr;
 }
 
 RHIPipelineLayout* PipelineManager::create_and_cache_pipeline_layout(
-    const handle_ty shaders[PipelineState::MAX_SHADER_STAGE]) {
-    if (device_ == nullptr || shaders[0] == InvalidUI64 || shaders[1] == InvalidUI64) {
+    ShaderProgram* shader_program) {
+    if (device_ == nullptr || shader_program == nullptr) {
         return nullptr;
     }
 
     {
         std::lock_guard<std::mutex> cache_lock(cache_mutex_);
-        const PipelineLayoutCacheKey key{shaders[0], shaders[1]};
+        const PipelineLayoutCacheKey key{shader_program};
         const auto it = pipeline_layouts_.find(key);
         if (it != pipeline_layouts_.end()) {
             return it->second;
@@ -185,7 +185,7 @@ RHIPipelineLayout* PipelineManager::create_and_cache_pipeline_layout(
     }
 
     PipelineLayoutDesc desc{};
-    if (!device_->build_pipeline_layout_desc(shaders, desc)) {
+    if (!device_->build_pipeline_layout_desc(shader_program, desc)) {
         return nullptr;
     }
 
@@ -193,11 +193,12 @@ RHIPipelineLayout* PipelineManager::create_and_cache_pipeline_layout(
     if (pipeline_layout == nullptr) {
         return nullptr;
     }
+    FrameResources::instance().ensure_global_descriptor_sets(pipeline_layout);
 
     RHIPipelineLayout* cached_layout = nullptr;
     {
         std::lock_guard<std::mutex> cache_lock(cache_mutex_);
-        const PipelineLayoutCacheKey key{shaders[0], shaders[1]};
+        const PipelineLayoutCacheKey key{shader_program};
         const auto [it, inserted] = pipeline_layouts_.emplace(key, pipeline_layout);
         if (!inserted) {
             device_->destroy_pipeline_layout(pipeline_layout);

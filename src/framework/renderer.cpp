@@ -8,6 +8,7 @@
 #include "entity_component_system.h"
 #include "primitive.h"
 #include "material.h"
+#include "fullscreen_triangle.h"
 #include "camera.h"
 #include "mesh.h"
 #include "resource_manager.h"
@@ -121,6 +122,7 @@ RHIRenderPass* Renderer::find_default_target_render_pass() const noexcept {
     static constexpr PassGroupId kPreference[] = {
         PassGroupId::Opaque,
         PassGroupId::UI,
+        PassGroupId::Skybox,
         PassGroupId::GBuffer,
         PassGroupId::Offscreen,
         PassGroupId::Lighting,
@@ -230,6 +232,7 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
         }
 
         cmd.bind_pipeline(pipeline);
+        FrameResources::instance().bind_global_descriptor_sets(cmd, pipeline);
 
         uint32_t bound_vertex_page = InvalidUI32;
         uint32_t bound_index_page = InvalidUI32;
@@ -302,6 +305,36 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
                 0);
         }
     }
+}
+
+void Renderer::draw_fullscreen(CommandBuffer& cmd, Material* material, RHIRenderPass* render_pass) {
+    OC_PROFILE_FUNCTION;
+    if (material == nullptr || render_pass == nullptr || !material->is_renderable()) {
+        return;
+    }
+
+    const PipelineState& pipeline_state = material->get_pipeline_state();
+    // Material pipeline state is the source of truth (cull / depth / blend). Enqueue so the
+    // cache key matches get_pipeline — do not rely on a separately authored PSORequest.
+    PipelineManager::instance().enqueue(pipeline_state, render_pass);
+    RHIPipeline* pipeline = PipelineManager::instance().get_pipeline(pipeline_state, render_pass);
+    if (pipeline == nullptr) {
+        return;
+    }
+
+    cmd.bind_pipeline(pipeline);
+    FrameResources::instance().bind_global_descriptor_sets(cmd, pipeline);
+
+    if (material->has_material_descriptor_set()) {
+        DescriptorSet* material_descriptor_set = material->get_material_descriptor_set();
+        cmd.bind_descriptor_sets(
+            &material_descriptor_set,
+            material->material_descriptor_set_index(),
+            1,
+            pipeline->pipeline_layout);
+    }
+
+    FullscreenTriangle::draw(cmd);
 }
 
 void Renderer::cull_visible_primitives_parallel(Scene& scene, const Frustum& frustum) {

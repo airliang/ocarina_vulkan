@@ -16,6 +16,7 @@
 namespace ocarina {
 class Mesh;
 class Texture;
+class Cubemap;
 class Image;
 class Device;
 
@@ -113,6 +114,12 @@ public:
         const TextureViewCreation& texture_view,
         const TextureSampler& sampler) const noexcept;
 
+    /// Create a cubemap from six faces (+X,-X,+Y,-Y,+Z,-Z) and enqueue GPU upload.
+    [[nodiscard]] Cubemap* create_cubemap(
+        Device* device,
+        const Image (&faces)[6],
+        const TextureSampler& sampler);
+
 private:
     static ShaderProgramKey make_graphics_program_key(
         const std::string& vertex_shader_file,
@@ -133,6 +140,7 @@ private:
     std::vector<Mesh*> meshes_by_id_;
     std::unordered_map<Mesh*, uint32_t> mesh_to_id_;
     std::unordered_map<uint64_t, TextureHandle> textures_;
+    std::vector<Cubemap*> cubemaps_;
     std::unordered_map<handle_ty, Buffer*> buffers_;
     mutable std::mutex mutex_;
 };

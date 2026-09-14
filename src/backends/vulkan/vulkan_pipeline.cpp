@@ -5,29 +5,21 @@
 #include "vulkan_shader.h"
 #include "vulkan_driver.h"
 #include "vulkan_descriptorset.h"
+#include "rhi/shader_program.h"
 
 #include <algorithm>
 
 namespace ocarina {
 
 bool build_vulkan_pipeline_layout_desc(
-    const handle_ty shaders[PipelineState::MAX_SHADER_STAGE],
+    ShaderProgram* shader_program,
     PipelineLayoutDesc& out_desc) noexcept
 {
-    VulkanShader* vertex_shader = reinterpret_cast<VulkanShader*>(shaders[0]);
-    VulkanShader* pixel_shader = reinterpret_cast<VulkanShader*>(shaders[1]);
-    if (vertex_shader == nullptr || pixel_shader == nullptr) {
+    if (shader_program == nullptr) {
         return false;
     }
 
-    ShaderProgram* program = vertex_shader->program();
-    if (program == nullptr || program != pixel_shader->program()) {
-        return false;
-    }
-
-    out_desc.shaders[0] = shaders[0];
-    out_desc.shaders[1] = shaders[1];
-    out_desc.descriptor_set_layouts = program->descriptor_set_layouts();
+    out_desc.descriptor_set_layouts = shader_program->descriptor_set_layouts();
 
     if (DescriptorSetLayout* frame_layout = VulkanDriver::instance().get_frame_descriptor_set_layout()) {
         out_desc.descriptor_set_layouts[static_cast<size_t>(DescriptorSetIndex::FRAME_SET)] = frame_layout;
@@ -44,7 +36,7 @@ bool build_vulkan_pipeline_layout_desc(
     out_desc.descriptor_set_count = has_any_layout ? static_cast<uint8_t>(max_set_index + 1) : 0;
 
     out_desc.push_constant_count = 0;
-    for (const ShaderPushConstant& push_constant : program->push_constants()) {
+    for (const ShaderPushConstant& push_constant : shader_program->push_constants()) {
         if (push_constant.size == 0
             || out_desc.push_constant_count >= PipelineLayoutDesc::MAX_PUSH_CONSTANT_RANGES) {
             continue;
@@ -138,8 +130,13 @@ VulkanPipeline* create_vulkan_graphics_pipeline(
     RHIPipelineLayout* pipeline_layout,
     const DynamicRenderingFormats* dynamic_formats)
 {
-    VulkanShader* vertex_shader = reinterpret_cast<VulkanShader*>(pipeline_state.shaders[0]);
-    VulkanShader* pixel_shader = reinterpret_cast<VulkanShader*>(pipeline_state.shaders[1]);
+    ShaderProgram* program = pipeline_state.shader_program;
+    if (program == nullptr || pipeline_layout == nullptr) {
+        return nullptr;
+    }
+
+    auto* vertex_shader = static_cast<VulkanShader*>(program->vertex_shader());
+    auto* pixel_shader = static_cast<VulkanShader*>(program->pixel_shader());
     auto* vulkan_pipeline_layout = static_cast<VulkanPipelineLayout*>(pipeline_layout);
     if (vertex_shader == nullptr || pixel_shader == nullptr || vulkan_pipeline_layout == nullptr) {
         return nullptr;

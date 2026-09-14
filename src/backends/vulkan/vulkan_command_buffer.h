@@ -26,6 +26,7 @@ public:
     void bind_pipeline(const RHIPipeline* pipeline) override;
     void bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t first_set, uint32_t descriptor_set_count, handle_ty pipeline_layout) override;
     void draw_indexed(uint32_t index_count, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance) override;
+    void draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance) override;
     void push_constants(
         const void* data,
         uint32_t offset,
@@ -45,9 +46,18 @@ public:
         handle_ty texture,
         TextureLayout old_layout,
         TextureLayout new_layout) override;
+    void transition_cubemap_layout(
+        handle_ty cubemap,
+        TextureLayout old_layout,
+        TextureLayout new_layout) override;
     void copy_buffer_to_texture(
         handle_ty src_buffer,
         handle_ty dst_texture,
+        const BufferTextureCopy* regions,
+        uint32_t region_count) override;
+    void copy_buffer_to_cubemap(
+        handle_ty src_buffer,
+        handle_ty dst_cubemap,
         const BufferTextureCopy* regions,
         uint32_t region_count) override;
     void submit_to_queue(QueueType queue_type, Fence* fence) override;
@@ -66,10 +76,11 @@ public:
                      VkDeviceSize src_offset, VkDeviceSize dst_offset, VkDeviceSize size);
     void copy_image(VulkanBuffer* src, VulkanTexture* dst);
     void copy_image(VulkanBuffer* src, VulkanTexture* dst, const VkBufferImageCopy* regions, uint32_t region_count);
+    void copy_image(VulkanBuffer* src, VkImage dst_image, const VkBufferImageCopy* regions, uint32_t region_count);
     /// Records vkCmdPipelineBarrier for image layout transitions used by texture upload and rendering.
     void image_layout_barrier(VulkanTexture* texture, VkImageLayout old_layout, VkImageLayout new_layout);
     void image_layout_barrier(VkImage image, VkImageAspectFlags aspect_mask, uint32_t mip_levels,
-                              VkImageLayout old_layout, VkImageLayout new_layout);
+                              VkImageLayout old_layout, VkImageLayout new_layout, uint32_t layer_count = 1);
     QueueType queue_type() const noexcept { return queue_type_; }
     [[nodiscard]] VkCommandPool vulkan_command_pool() const noexcept { return command_pool_; }
 private:

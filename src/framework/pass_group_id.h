@@ -11,6 +11,7 @@ enum class PassGroupId : uint32_t {
     Offscreen = 0,
     GBuffer,
     Lighting,
+    Skybox,
     Opaque,
     Transparent,
     PostProcess,
@@ -23,6 +24,7 @@ enum class PassGroupId : uint32_t {
         case PassGroupId::Offscreen: return "Offscreen";
         case PassGroupId::GBuffer: return "GBuffer";
         case PassGroupId::Lighting: return "Lighting";
+        case PassGroupId::Skybox: return "Skybox";
         case PassGroupId::Opaque: return "Opaque";
         case PassGroupId::Transparent: return "Transparent";
         case PassGroupId::PostProcess: return "PostProcess";

@@ -4,21 +4,27 @@
 
 #include "render_pass_task.h"
 #include "enki_task_debug.h"
-#include "frame_resources.h"
-#include "pipeline_manager.h"
 #include "renderer.h"
 #include "rhi/device.h"
 #include "rhi/command_buffer.h"
-#include "rhi/pipeline_state.h"
 #include "rhi/renderpass.h"
+#include "material.h"
 #include "core/profiler.h"
 
 namespace ocarina {
 
 namespace {
 
-void attach_swapchain_semaphores(Device* device, CommandBuffer& cmd) noexcept {
-    device->attach_swapchain_semaphores(cmd);
+void attach_swapchain_semaphores(
+    Device* device,
+    CommandBuffer& cmd,
+    RHIRenderPass* render_pass) noexcept {
+    if (render_pass->clear_color_attachment()) {
+        cmd.add_wait_semaphore(device->get_present_complete_semaphore());
+    }
+    if (render_pass->present_swapchain()) {
+        cmd.add_signal_semaphore(device->get_render_complete_semaphore());
+    }
 }
 
 void record_render_pass(
@@ -26,14 +32,22 @@ void record_render_pass(
     Device* device,
     CommandBuffer& cmd,
     RHIRenderPass* render_pass,
+    PassGroupId group_id,
     const RenderPassGUICallback& render_gui) noexcept
 {
     if (render_pass->is_swapchain_renderpass()) {
-        attach_swapchain_semaphores(device, cmd);
+        attach_swapchain_semaphores(device, cmd, render_pass);
     }
 
     cmd.begin_render_pass(render_pass);
-    renderer.draw_render_queues(cmd, render_pass);
+
+    if (group_id == PassGroupId::Skybox) {
+        if (Material* skybox = renderer.skybox_material()) {
+            renderer.draw_fullscreen(cmd, skybox, render_pass);
+        }
+    } else {
+        renderer.draw_render_queues(cmd, render_pass);
+    }
 
     if (render_gui) {
         render_gui(cmd);
@@ -42,46 +56,25 @@ void record_render_pass(
     cmd.end_render_pass();
 }
 
-void bind_global_descriptor_sets_for_pass(
-    CommandBuffer& cmd,
-    RHIRenderPass* render_pass) noexcept
-{
-    if (render_pass == nullptr) {
-        return;
-    }
-
-    FrameResources& frame_resources = FrameResources::instance();
-    for (const auto& queue : render_pass->pipeline_render_queues()) {
-        RHIPipeline* pipeline =
-            PipelineManager::instance().get_pipeline(queue.first, render_pass);
-        if (pipeline == nullptr) {
-            continue;
-        }
-        frame_resources.bind_global_descriptor_sets(
-            cmd,
-            PipelineManager::instance().get_pipeline_layout(queue.first.shaders));
-    }
-}
-
-void record_frame_command_buffer(
+/// Records all passes for this group into an already-begun command buffer.
+/// FRAME set 0 is bound per pipeline via FrameResources::bind_global_descriptor_sets.
+void record_pass_group(
     Renderer& renderer,
     Device* device,
     CommandBuffer& cmd,
+    PassGroupId group_id,
     const std::list<RHIRenderPass*>& render_passes,
     const RenderPassGUICallback& render_gui) noexcept
 {
-    cmd.begin();
-
     for (RHIRenderPass* render_pass : render_passes) {
-        renderer.populate_render_pass_queues(render_pass);
-        bind_global_descriptor_sets_for_pass(cmd, render_pass);
+        if (group_id != PassGroupId::Skybox) {
+            renderer.populate_render_pass_queues(render_pass);
+        }
 
         const RenderPassGUICallback& pass_render_gui =
             render_pass->is_swapchain_renderpass() ? render_gui : RenderPassGUICallback{};
-        record_render_pass(renderer, device, cmd, render_pass, pass_render_gui);
+        record_render_pass(renderer, device, cmd, render_pass, group_id, pass_render_gui);
     }
-
-    cmd.end();
 }
 
 }// namespace
@@ -131,10 +124,11 @@ void RenderPassTask::ExecuteRange(enki::TaskSetPartition range, uint32_t threadn
         return;
     }
 
-    record_frame_command_buffer(
+    record_pass_group(
         *renderer_,
         device_,
         command_buffer_,
+        group_id_,
         render_passes_,
         render_gui_);
 }

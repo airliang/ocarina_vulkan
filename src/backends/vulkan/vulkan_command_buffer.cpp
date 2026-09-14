@@ -8,6 +8,7 @@
 #include "vulkan_fence.h"
 #include "vulkan_buffer.h"
 #include "vulkan_texture.h"
+#include "vulkan_cubemap.h"
 #include "vulkan_swapchain.h"
 #include "rhi/vertex_buffer.h"
 #include "rhi/index_buffer.h"
@@ -66,29 +67,88 @@ void VulkanCommandBuffer::begin_swapchain_render_pass(RHIRenderPass* render_pass
         const SwapChainBuffer buffer = swapchain->get_swapchain_buffer(static_cast<int>(image_index));
         const VulkanSwapchain::DepthStencil depth_stencil = swapchain->get_depth_stencil();
 
-        image_layout_barrier(
-            buffer.image_,
-            VK_IMAGE_ASPECT_COLOR_BIT,
-            1,
-            VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        if (render_pass->clear_color_attachment()) {
+            image_layout_barrier(
+                buffer.image_,
+                VK_IMAGE_ASPECT_COLOR_BIT,
+                1,
+                VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        } else {
+            // Preserve contents from a prior pass on the same swapchain image.
+            VkImageMemoryBarrier barrier{};
+            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.image = buffer.image_;
+            barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            barrier.subresourceRange.baseMipLevel = 0;
+            barrier.subresourceRange.levelCount = 1;
+            barrier.subresourceRange.baseArrayLayer = 0;
+            barrier.subresourceRange.layerCount = 1;
+            barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+            vkCmdPipelineBarrier(
+                vulkan_command_buffer_,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                0,
+                0,
+                nullptr,
+                0,
+                nullptr,
+                1,
+                &barrier);
+        }
 
         VkImageAspectFlags depth_aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
         if (swapchain->depth_format() >= VK_FORMAT_D16_UNORM_S8_UINT) {
             depth_aspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
         }
-        image_layout_barrier(
-            depth_stencil.image,
-            depth_aspect,
-            1,
-            VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        if (render_pass->clear_depth_attachment()) {
+            image_layout_barrier(
+                depth_stencil.image,
+                depth_aspect,
+                1,
+                VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        } else {
+            VkImageMemoryBarrier barrier{};
+            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            barrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            barrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.image = depth_stencil.image;
+            barrier.subresourceRange.aspectMask = depth_aspect;
+            barrier.subresourceRange.baseMipLevel = 0;
+            barrier.subresourceRange.levelCount = 1;
+            barrier.subresourceRange.baseArrayLayer = 0;
+            barrier.subresourceRange.layerCount = 1;
+            barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+            vkCmdPipelineBarrier(
+                vulkan_command_buffer_,
+                VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                0,
+                0,
+                nullptr,
+                0,
+                nullptr,
+                1,
+                &barrier);
+        }
 
         VkRenderingAttachmentInfo color_attachment{};
         color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         color_attachment.imageView = buffer.imageView_;
         color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        color_attachment.loadOp = render_pass->clear_color_attachment()
+            ? VK_ATTACHMENT_LOAD_OP_CLEAR
+            : VK_ATTACHMENT_LOAD_OP_LOAD;
         color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         color_attachment.clearValue = vulkan_render_pass->clear_values()[0];
 
@@ -96,7 +156,9 @@ void VulkanCommandBuffer::begin_swapchain_render_pass(RHIRenderPass* render_pass
         depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         depth_attachment.imageView = depth_stencil.view;
         depth_attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depth_attachment.loadOp = render_pass->clear_depth_attachment()
+            ? VK_ATTACHMENT_LOAD_OP_CLEAR
+            : VK_ATTACHMENT_LOAD_OP_LOAD;
         depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         depth_attachment.clearValue = vulkan_render_pass->clear_values()[1];
 
@@ -151,7 +213,9 @@ void VulkanCommandBuffer::begin_offscreen_render_pass(RHIRenderPass* render_pass
         depth_attachment_info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         depth_attachment_info.imageView = depth_texture->vk_image_view();
         depth_attachment_info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        depth_attachment_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depth_attachment_info.loadOp = render_pass->clear_depth_attachment()
+            ? VK_ATTACHMENT_LOAD_OP_CLEAR
+            : VK_ATTACHMENT_LOAD_OP_LOAD;
         depth_attachment_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         depth_attachment_info.clearValue.depthStencil = vulkan_render_pass->clear_values()[render_pass->color_attachment_count()].depthStencil;
         depth_attachment_ptr = &depth_attachment_info;
@@ -165,7 +229,9 @@ void VulkanCommandBuffer::begin_offscreen_render_pass(RHIRenderPass* render_pass
         color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         color_attachment.imageView = texture->vk_image_view();
         color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        color_attachment.loadOp = render_pass->clear_color_attachment()
+            ? VK_ATTACHMENT_LOAD_OP_CLEAR
+            : VK_ATTACHMENT_LOAD_OP_LOAD;
         color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         color_attachment.clearValue.color = vulkan_render_pass->clear_values()[i].color;
     }
@@ -189,15 +255,17 @@ void VulkanCommandBuffer::end_render_pass() {
         vkCmdEndRendering(vulkan_command_buffer_);
 
         if (render_pass->is_swapchain_renderpass()) {
-            VulkanSwapchain* swapchain = device_->get_swapchain();
-            const uint32_t image_index = VulkanDriver::instance().current_buffer();
-            const SwapChainBuffer buffer = swapchain->get_swapchain_buffer(static_cast<int>(image_index));
-            image_layout_barrier(
-                buffer.image_,
-                VK_IMAGE_ASPECT_COLOR_BIT,
-                1,
-                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+            if (render_pass->present_swapchain()) {
+                VulkanSwapchain* swapchain = device_->get_swapchain();
+                const uint32_t image_index = VulkanDriver::instance().current_buffer();
+                const SwapChainBuffer buffer = swapchain->get_swapchain_buffer(static_cast<int>(image_index));
+                image_layout_barrier(
+                    buffer.image_,
+                    VK_IMAGE_ASPECT_COLOR_BIT,
+                    1,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+            }
         } else {
             for (uint32_t i = 0; i < render_pass->color_attachment_count(); ++i) {
                 auto* texture = static_cast<VulkanTexture*>(render_pass->color_attachment(i)->impl());
@@ -291,6 +359,15 @@ void VulkanCommandBuffer::draw_indexed(uint32_t index_count, uint32_t instance_c
         instance_count,
         first_index,
         vertex_offset,
+        first_instance);
+}
+
+void VulkanCommandBuffer::draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance) {
+    vkCmdDraw(
+        vulkan_command_buffer_,
+        vertex_count,
+        instance_count,
+        first_vertex,
         first_instance);
 }
 
@@ -490,6 +567,27 @@ void VulkanCommandBuffer::transition_texture_layout(
     vulkan_texture->set_image_layout(new_vk);
 }
 
+void VulkanCommandBuffer::transition_cubemap_layout(
+    handle_ty cubemap,
+    TextureLayout old_layout,
+    TextureLayout new_layout)
+{
+    auto* vulkan_cubemap = reinterpret_cast<VulkanCubemap*>(cubemap);
+    if (vulkan_cubemap == nullptr) {
+        return;
+    }
+    const VkImageLayout old_vk = to_vulkan_texture_layout(old_layout);
+    const VkImageLayout new_vk = to_vulkan_texture_layout(new_layout);
+    image_layout_barrier(
+        vulkan_cubemap->vk_image(),
+        vulkan_cubemap->vk_aspect_mask(),
+        vulkan_cubemap->mip_levels(),
+        old_vk,
+        new_vk,
+        vulkan_cubemap->layer_count());
+    vulkan_cubemap->set_image_layout(new_vk);
+}
+
 void VulkanCommandBuffer::copy_buffer_to_texture(
     handle_ty src_buffer,
     handle_ty dst_texture,
@@ -522,6 +620,37 @@ void VulkanCommandBuffer::copy_buffer_to_texture(
     // layout at execute time (TRANSFER_DST / GENERAL / SHARED_PRESENT).
     // vkCmdCopyBufferToImage2 does not perform layout transitions.
     copy_image(src, dst, vk_regions.data(), region_count);
+}
+
+void VulkanCommandBuffer::copy_buffer_to_cubemap(
+    handle_ty src_buffer,
+    handle_ty dst_cubemap,
+    const BufferTextureCopy* regions,
+    uint32_t region_count)
+{
+    if (src_buffer == 0 || dst_cubemap == 0 || regions == nullptr || region_count == 0) {
+        return;
+    }
+
+    auto* src = reinterpret_cast<VulkanBuffer*>(src_buffer);
+    auto* dst = reinterpret_cast<VulkanCubemap*>(dst_cubemap);
+
+    std::vector<VkBufferImageCopy> vk_regions(region_count);
+    for (uint32_t i = 0; i < region_count; ++i) {
+        const BufferTextureCopy& region = regions[i];
+        VkBufferImageCopy& vk_region = vk_regions[i];
+        vk_region.bufferOffset = region.buffer_offset;
+        vk_region.bufferRowLength = region.buffer_row_length;
+        vk_region.bufferImageHeight = region.buffer_image_height;
+        vk_region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        vk_region.imageSubresource.mipLevel = region.mip_level;
+        vk_region.imageSubresource.baseArrayLayer = region.base_array_layer;
+        vk_region.imageSubresource.layerCount = region.layer_count;
+        vk_region.imageOffset = {0, 0, 0};
+        vk_region.imageExtent = {region.width, region.height, region.depth};
+    }
+
+    copy_image(src, dst->vk_image(), vk_regions.data(), region_count);
 }
 
 void VulkanCommandBuffer::copy_buffer(VulkanBuffer* src, VulkanBuffer* dst)
@@ -560,12 +689,15 @@ void VulkanCommandBuffer::copy_image(VulkanBuffer* src, VulkanTexture* dst)
 
 void VulkanCommandBuffer::copy_image(VulkanBuffer* src, VulkanTexture* dst, const VkBufferImageCopy* regions, uint32_t region_count)
 {
-    VkImage image = reinterpret_cast<VkImage>(dst->tex_handle());
+    copy_image(src, reinterpret_cast<VkImage>(dst->tex_handle()), regions, region_count);
+}
 
+void VulkanCommandBuffer::copy_image(VulkanBuffer* src, VkImage dst_image, const VkBufferImageCopy* regions, uint32_t region_count)
+{
     vkCmdCopyBufferToImage(
         vulkan_command_buffer_,
         src->buffer_handle(),
-        image,
+        dst_image,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         region_count,
         regions);
@@ -578,11 +710,12 @@ void VulkanCommandBuffer::image_layout_barrier(VulkanTexture* texture, VkImageLa
         texture->vk_aspect_mask(),
         texture->mip_levels(),
         old_layout,
-        new_layout);
+        new_layout,
+        1);
 }
 
 void VulkanCommandBuffer::image_layout_barrier(VkImage image, VkImageAspectFlags aspect_mask, uint32_t mip_levels,
-                                              VkImageLayout old_layout, VkImageLayout new_layout)
+                                              VkImageLayout old_layout, VkImageLayout new_layout, uint32_t layer_count)
 {
     if (old_layout == new_layout) {
         return;
@@ -599,7 +732,7 @@ void VulkanCommandBuffer::image_layout_barrier(VkImage image, VkImageAspectFlags
     barrier.subresourceRange.baseMipLevel = 0;
     barrier.subresourceRange.levelCount = mip_levels;
     barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
+    barrier.subresourceRange.layerCount = layer_count;
 
     VkPipelineStageFlags source_stage{};
     VkPipelineStageFlags destination_stage{};

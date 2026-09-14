@@ -7,4 +7,6 @@
 #include "device.h"
 #include "resources/buffer.h"
 #include "resources/texture.h"
+#include "resources/cubemap.h"
+#include "rendertarget.h"
 #include "core/dynamic_module.h"

@@ -10,6 +10,29 @@
 //
 // Connect with the Tracy desktop app while the game is running (Debug build recommended).
 
+namespace ocarina {
+
+    class Timer {
+    public:
+        explicit Timer(const char* output_text) : output_text_(output_text) {
+            start_time_ = std::chrono::steady_clock::now();
+        }
+
+        ~Timer() {
+            const auto end = std::chrono::steady_clock::now();
+            const auto ms = std::chrono::duration<double, std::milli>(end - start_time_).count();
+            OC_INFO_FORMAT("{} cost: {:.3f} ms", output_text_, ms);
+        }
+
+    private:
+        std::chrono::steady_clock::time_point start_time_;
+        const char* output_text_;
+    };
+
+} // namespace ocarina
+
+#define OC_PROFILE_SCOPE() ocarina::Timer timer(__FUNCTION__)
+
 #if defined(OCARINA_ENABLE_TRACY) && OCARINA_ENABLE_TRACY
 #include <tracy/Tracy.hpp>
 
@@ -30,26 +53,7 @@
 #include <chrono>
 #include "logging.h"
 
-namespace ocarina {
 
-class Timer {
-public:
-    explicit Timer(const char* output_text) : output_text_(output_text) {
-        start_time_ = std::chrono::steady_clock::now();
-    }
-
-    ~Timer() {
-        const auto end = std::chrono::steady_clock::now();
-        const auto ms = std::chrono::duration<double, std::milli>(end - start_time_).count();
-        OC_INFO_FORMAT("{} cost: {:.3f} ms", output_text_, ms);
-    }
-
-private:
-    std::chrono::steady_clock::time_point start_time_;
-    const char* output_text_;
-};
-
-} // namespace ocarina
 
 #define OC_PROFILE_FUNCTION ((void)0)
 #define OC_PROFILE_SCOPE_N(name) ((void)0)
@@ -64,3 +68,5 @@ private:
 #define PROFILE_SCOPE() ocarina::Timer timer(__FUNCTION__)
 
 #endif
+
+

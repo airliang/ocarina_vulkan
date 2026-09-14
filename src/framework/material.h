@@ -8,6 +8,7 @@
 #include "rhi/shader_base.h"
 #include "rhi/shader_program.h"
 #include "rhi/resources/texture.h"
+#include "rhi/resources/cubemap.h"
 #include "rhi/resources/buffer.h"
 #include "bindless_texture_registry.h"
 
@@ -58,8 +59,16 @@ public:
 
     [[nodiscard]] ShaderProgram* get_shader_program() const noexcept { return shader_program_; }
 
-    handle_ty get_vertex_shader() const { return pipeline_state_.shaders[0]; }
-    handle_ty get_pixel_shader() const { return pipeline_state_.shaders[1]; }
+    handle_ty get_vertex_shader() const {
+        return shader_program_ != nullptr
+            ? shader_program_->shader_handle(ShaderType::VertexShader)
+            : InvalidUI64;
+    }
+    handle_ty get_pixel_shader() const {
+        return shader_program_ != nullptr
+            ? shader_program_->shader_handle(ShaderType::PixelShader)
+            : InvalidUI64;
+    }
 
     void set_property(uint64_t name_id, const void* data, size_t size);
     void set_property(const char* name, const void* data, size_t size) {
@@ -82,6 +91,12 @@ public:
     void set_property(uint64_t name_id, const TextureHandle& texture);
     void set_property(const char* name, const TextureHandle& texture) {
         set_property(hash64(name), texture);
+    }
+
+    /// Bind a cubemap to a material-set TextureCube property and queue a descriptor update.
+    void set_cubemap(uint64_t name_id, Cubemap* cubemap);
+    void set_cubemap(const char* name, Cubemap* cubemap) {
+        set_cubemap(hash64(name), cubemap);
     }
 
     /// Track a bindless texture dependency for is_renderable() (does not write UBO or local descriptors).
@@ -251,6 +266,7 @@ private:
     uint32_t material_descriptor_set_index_ = InvalidUI32;
 
     std::unordered_map<uint64_t, TextureHandle> texture_handles_;
+    std::unordered_map<uint64_t, Cubemap*> cubemap_handles_;
 
     bool in_update_queue_ = false;
 

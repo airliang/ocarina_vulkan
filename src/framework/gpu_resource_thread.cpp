@@ -8,8 +8,10 @@
 #include "enki_task_debug.h"
 #include "rhi/device.h"
 #include "rhi/resources/texture.h"
+#include "rhi/resources/cubemap.h"
 #include "rhi/resources/resource.h"
 #include "core/logging.h"
+#include "core/profiler.h"
 
 namespace ocarina {
 
@@ -90,6 +92,32 @@ void MeshGPUResourceRequest::process() {
     const MeshGeometrySlice slice = GlobalGPUStorage::instance().upload_geometry(input);
     mesh->set_geometry_slice(slice);
     mesh->set_gpu_resource_state(GPUResourceState::GPU_Ready);
+}
+
+CubemapGPUResourceRequest::CubemapGPUResourceRequest(Device* device, Cubemap* cubemap)
+    : cubemap_(cubemap) {
+    this->device = device;
+    OC_ASSERT(cubemap_ != nullptr);
+}
+
+void CubemapGPUResourceRequest::process() {
+    PROFILE_SCOPE();
+    OC_ASSERT(cubemap_ != nullptr);
+    if (device == nullptr) {
+        OC_ERROR("CubemapGPUResourceRequest missing device");
+        return;
+    }
+
+    StagingUploader& uploader = GPUResourceThread::instance().staging_uploader();
+    uint64_t upload_value = 0;
+    if (!pixel_data.empty()) {
+        upload_value = uploader.upload_cubemap_faces(
+            cubemap_,
+            pixel_data.data(),
+            pixel_data.size());
+    }
+    cubemap_->set_upload_complete_value(upload_value);
+    cubemap_->set_gpu_resource_state(GPUResourceState::GPU_Ready);
 }
 
 GPUResourceThread& GPUResourceThread::instance() {

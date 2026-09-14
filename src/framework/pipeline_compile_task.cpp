@@ -38,7 +38,8 @@ void PipelineCompileTask::resolve_shaders() noexcept {
         return;
     }
 
-    if (request_.has_shader_handles()) {
+    if (request_.has_shader_program()) {
+        request_.shader_program->ensure_gpu_shaders(device_);
         return;
     }
 
@@ -46,24 +47,20 @@ void PipelineCompileTask::resolve_shaders() noexcept {
         return;
     }
 
-    if (request_.vertex_shader == 0 || request_.vertex_shader == InvalidUI64
-        || request_.pixel_shader == 0 || request_.pixel_shader == InvalidUI64) {
-        ShaderProgram* program = ResourceManager::instance().create_shader_program(
-            device_,
-            request_.vertex_shader_path,
-            request_.pixel_shader_path,
-            request_.vertex_options,
-            request_.pixel_options);
-        if (program == nullptr) {
-            return;
-        }
-        program->ensure_gpu_shaders(device_);
-        request_.vertex_shader = program->shader_handle(ShaderType::VertexShader);
-        request_.pixel_shader = program->shader_handle(ShaderType::PixelShader);
-        if (progress_listener_ != nullptr) {
-            progress_listener_->advance();
-            progress_listener_->advance();
-        }
+    ShaderProgram* program = ResourceManager::instance().create_shader_program(
+        device_,
+        request_.vertex_shader_path,
+        request_.pixel_shader_path,
+        request_.vertex_options,
+        request_.pixel_options);
+    if (program == nullptr) {
+        return;
+    }
+    program->ensure_gpu_shaders(device_);
+    request_.shader_program = program;
+    if (progress_listener_ != nullptr) {
+        progress_listener_->advance();
+        progress_listener_->advance();
     }
 }
 
@@ -71,7 +68,7 @@ void PipelineCompileTask::create_layouts_and_pipeline() noexcept {
     if (manager_ == nullptr || device_ == nullptr || request_.render_pass == nullptr) {
         return;
     }
-    if (!request_.has_shader_handles()) {
+    if (!request_.has_shader_program()) {
         return;
     }
 
@@ -82,7 +79,7 @@ void PipelineCompileTask::create_layouts_and_pipeline() noexcept {
 
     const PipelineState pipeline_state = request_.make_pipeline_state();
     RHIPipelineLayout* pipeline_layout =
-        manager_->create_and_cache_pipeline_layout(pipeline_state.shaders);
+        manager_->create_and_cache_pipeline_layout(pipeline_state.shader_program);
     if (pipeline_layout == nullptr) {
         return;
     }

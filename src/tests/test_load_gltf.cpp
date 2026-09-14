@@ -19,6 +19,7 @@
 #include "framework/transform.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/renderpass.h"
+#include "rhi/rendertarget.h"
 
 using namespace ocarina;
 
@@ -55,10 +56,12 @@ int main(int argc, char* argv[]) {
     renderer.set_camera(&camera);
     renderer.set_loading_progress_listener(&loading_progress);
 
+    RenderTarget swapchain_target = RenderTarget::swapchain();
     RenderPassCreation render_pass_creation;
-    render_pass_creation.swapchain_clear_color = make_float4(0.15f, 0.15f, 0.18f, 1.0f);
-    render_pass_creation.swapchain_clear_depth = 1.0f;
-    render_pass_creation.swapchain_clear_stencil = 0;
+    render_pass_creation.render_target = &swapchain_target;
+    render_pass_creation.clear_color = make_float4(0.15f, 0.15f, 0.18f, 1.0f);
+    render_pass_creation.clear_depth = 1.0f;
+    render_pass_creation.clear_stencil = 0;
     RHIRenderPass* render_pass = device.create_render_pass(render_pass_creation);
 
     const std::string shader_vert_abs = fs::absolute(shader_vert).string();

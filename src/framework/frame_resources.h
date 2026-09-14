@@ -9,6 +9,7 @@
 #include "rhi/pipeline_state.h"
 #include "rhi/resources/buffer.h"
 #include "rhi/resources/texture.h"
+#include "rhi/resources/cubemap.h"
 #include "rhi/resources/texture_sampler.h"
 #include "global_uniform_buffer.h"
 #include "entity_component_system.h"
@@ -21,11 +22,14 @@ class Camera;
 class CommandBuffer;
 class Device;
 class Material;
+struct RHIPipeline;
+struct RHIPipelineLayout;
 
 enum class MaterialUpdateKind : uint8_t {
     Texture = 0,
     Sampler,
     UniformBuffer,
+    Cubemap,
 };
 
 /// Queued material descriptor / parameter update (processed on the render thread).
@@ -35,6 +39,7 @@ struct MaterialUpdateRequest {
     uint64_t name_id = 0;
     TextureHandle texture_handle{};
     TextureSampler sampler{};
+    Cubemap* cubemap = nullptr;
 
     static MaterialUpdateRequest make_texture(
         Material* material,
@@ -45,6 +50,18 @@ struct MaterialUpdateRequest {
         request.kind = MaterialUpdateKind::Texture;
         request.name_id = name_id;
         request.texture_handle = texture_handle;
+        return request;
+    }
+
+    static MaterialUpdateRequest make_cubemap(
+        Material* material,
+        uint64_t name_id,
+        Cubemap* cubemap) {
+        MaterialUpdateRequest request;
+        request.material = material;
+        request.kind = MaterialUpdateKind::Cubemap;
+        request.name_id = name_id;
+        request.cubemap = cubemap;
         return request;
     }
 
@@ -88,11 +105,12 @@ public:
     DescriptorSet* get_global_descriptor_set(uint64_t name_id) const;
     DescriptorSet* get_global_descriptor_set(const std::string& name) const;
 
-    /// Record that pipeline layout uses FRAME set 0 (already created in initialize()).
+    /// Record that a program pipeline layout uses FRAME set 0.
     void ensure_global_descriptor_sets(RHIPipelineLayout* pipeline_layout);
 
-    /// Bind the FRAME global descriptor set at set 0.
-    void bind_global_descriptor_sets(CommandBuffer& cmd, RHIPipelineLayout* pipeline_layout);
+    /// Bind the shared FRAME global descriptor set at set 0 using the given pipeline's layout.
+    /// Call once per distinct pipeline (layout) used in the frame.
+    void bind_global_descriptor_sets(CommandBuffer& cmd, const RHIPipeline* pipeline);
 
     /// Queue a bindless descriptor write (safe from loader / GPU-resource threads).
     /// Flushed on the render thread in update_per_frame().

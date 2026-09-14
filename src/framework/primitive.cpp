@@ -9,6 +9,7 @@
 #include "mesh.h"
 #include "transform_component.h"
 #include "rhi/shader_base.h"
+#include "rhi/shader_program.h"
 #include <algorithm>
 #include <cstring>
 
@@ -26,9 +27,12 @@ void Primitive::ensure_push_constants_from_shaders(RenderComponent& render_compo
         return;
     }
 
-    const PipelineState& pipeline_state = material_->get_pipeline_state();
-    const RHIShader* vertex = reinterpret_cast<const RHIShader*>(pipeline_state.shaders[0]);
-    const RHIShader* pixel = reinterpret_cast<const RHIShader*>(pipeline_state.shaders[1]);
+    ShaderProgram* program = material_->get_shader_program();
+    if (program == nullptr) {
+        return;
+    }
+    const RHIShader* vertex = program->vertex_shader();
+    const RHIShader* pixel = program->pixel_shader();
     if (vertex != nullptr) {
         vertex->collect_push_constant_ranges(render_component.push_constants);
     }

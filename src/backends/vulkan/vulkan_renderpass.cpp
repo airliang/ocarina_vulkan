@@ -7,34 +7,22 @@
 #include "util.h"
 #include "vulkan_driver.h"
 #include "vulkan_texture.h"
+#include "rhi/rendertarget.h"
 
 namespace ocarina {
 
 VulkanRenderPass::VulkanRenderPass(VulkanDevice *device, const RenderPassCreation &render_pass_creation)
     : RHIRenderPass(render_pass_creation), device_(device) {
-    clear_color_ = render_pass_creation.clear_color;
-    clear_depth_ = render_pass_creation.clear_depth;
-    clear_stencil_ = render_pass_creation.clear_stencil;
-    swapchain_clear_color_ = render_pass_creation.swapchain_clear_color;
-    swapchain_clear_depth_ = render_pass_creation.swapchain_clear_depth;
-    swapchain_clear_stencil_ = render_pass_creation.swapchain_clear_stencil;
+    clear_values_[0].color = {{clear_color_.x, clear_color_.y, clear_color_.z, clear_color_.w}};
+    clear_values_[1].depthStencil = {clear_depth_, clear_stencil_};
 
-    color_attachment_count_ = render_pass_creation.color_attachment_count;
-    for (uint32_t i = 0; i < color_attachment_count_; ++i) {
-        color_attachments_[i] = render_pass_creation.color_attachments[i];
-    }
-    depth_attachment_ = render_pass_creation.depth_attachment;
-
-    if (is_use_swapchain_framebuffer()) {
-        clear_values_[0].color = {{swapchain_clear_color_.x, swapchain_clear_color_.y,
-                                   swapchain_clear_color_.z, swapchain_clear_color_.w}};
-        clear_values_[1].depthStencil = {swapchain_clear_depth_, swapchain_clear_stencil_};
-    } else {
-        for (uint32_t i = 0; i < color_attachment_count_; ++i) {
+    if (is_offscreen_renderpass()) {
+        const uint32_t color_count = color_attachment_count();
+        for (uint32_t i = 0; i < color_count; ++i) {
             clear_values_[i].color = {{clear_color_.x, clear_color_.y, clear_color_.z, clear_color_.w}};
         }
-        if (depth_attachment_ != nullptr) {
-            clear_values_[color_attachment_count_].depthStencil = {clear_depth_, clear_stencil_};
+        if (depth_attachment() != nullptr) {
+            clear_values_[color_count].depthStencil = {clear_depth_, clear_stencil_};
         }
     }
 
@@ -69,25 +57,25 @@ void VulkanRenderPass::setup_render_pass() {
         return;
     }
 
-    if (color_attachment_count_ > 0) {
-        auto *color0 = static_cast<VulkanTexture *>(color_attachments_[0]->impl());
+    if (color_attachment_count() > 0) {
+        auto *color0 = static_cast<VulkanTexture *>(color_attachment(0)->impl());
         size_ = {color0->width(), color0->height()};
     } else {
-        OC_ASSERT(depth_attachment_ != nullptr);
-        auto *depth0 = static_cast<VulkanTexture *>(depth_attachment_->impl());
+        OC_ASSERT(depth_attachment() != nullptr);
+        auto *depth0 = static_cast<VulkanTexture *>(depth_attachment()->impl());
         size_ = {depth0->width(), depth0->height()};
     }
     scissor_ = {0, 0, static_cast<int>(size_.x), static_cast<int>(size_.y)};
     viewport_ = {0, 0, static_cast<float>(size_.x), static_cast<float>(size_.y)};
 
-    color_attachment_format_count_ = color_attachment_count_;
-    for (uint32_t i = 0; i < color_attachment_count_; ++i) {
-        auto *texture = static_cast<VulkanTexture *>(color_attachments_[i]->impl());
+    color_attachment_format_count_ = color_attachment_count();
+    for (uint32_t i = 0; i < color_attachment_count(); ++i) {
+        auto *texture = static_cast<VulkanTexture *>(color_attachment(i)->impl());
         color_attachment_formats_[i] = texture->vk_format();
     }
 
-    if (depth_attachment_ != nullptr) {
-        auto *depth_texture = static_cast<VulkanTexture *>(depth_attachment_->impl());
+    if (depth_attachment() != nullptr) {
+        auto *depth_texture = static_cast<VulkanTexture *>(depth_attachment()->impl());
         depth_attachment_format_ = depth_texture->vk_format();
     }
 }

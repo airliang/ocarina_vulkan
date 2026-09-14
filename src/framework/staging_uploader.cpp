@@ -5,6 +5,7 @@
 #include "rhi/index_buffer.h"
 #include "rhi/vertex_buffer.h"
 #include "rhi/resources/texture.h"
+#include "rhi/resources/cubemap.h"
 #include "core/image_base.h"
 #include "core/logging.h"
 #include "core/profiler.h"
@@ -353,6 +354,60 @@ uint64_t StagingUploader::upload_texture_cpu_pixels(
         chain.pixels.size(),
         regions.data(),
         static_cast<uint32_t>(regions.size()));
+}
+
+uint64_t StagingUploader::upload_cubemap_faces(
+    Cubemap *cubemap,
+    const void *packed_face_pixels,
+    size_t total_bytes) {
+    PROFILE_SCOPE();
+    if (cubemap == nullptr || cubemap->impl() == nullptr
+        || packed_face_pixels == nullptr || total_bytes == 0) {
+        return 0;
+    }
+
+    const uint2 face_res = cubemap->face_resolution();
+    BufferTextureCopy regions[6]{};
+    const size_t face_bytes = total_bytes / 6;
+    for (uint32_t i = 0; i < 6; ++i) {
+        regions[i].buffer_offset = static_cast<uint64_t>(i) * face_bytes;
+        regions[i].mip_level = 0;
+        regions[i].base_array_layer = i;
+        regions[i].layer_count = 1;
+        regions[i].width = face_res.x;
+        regions[i].height = face_res.y;
+        regions[i].depth = 1;
+    }
+
+    if (device_ == nullptr || packed_face_pixels == nullptr || total_bytes == 0) {
+        return 0;
+    }
+
+    ensure_capacity(total_bytes);
+    if (staging_ == 0 || !upload_timeline_.valid()) {
+        return 0;
+    }
+
+    wait_for_staging_reuse();
+    write_staging(packed_face_pixels, total_bytes);
+
+    CommandBuffer cmd = device_->get_command_buffer(QueueType::Copy);
+    cmd.begin();
+    cmd.transition_cubemap_layout(
+        reinterpret_cast<handle_ty>(cubemap->impl()),
+        TextureLayout::Undefined,
+        TextureLayout::TransferDst);
+    cmd.copy_buffer_to_cubemap(
+        staging_,
+        reinterpret_cast<handle_ty>(cubemap->impl()),
+        regions,
+        6);
+    cmd.transition_cubemap_layout(
+        reinterpret_cast<handle_ty>(cubemap->impl()),
+        TextureLayout::TransferDst,
+        TextureLayout::ShaderReadOnly);
+    cmd.end();
+    return submit_texture_copy(cmd);
 }
 
 }// namespace ocarina

@@ -69,6 +69,12 @@ public:
     [[nodiscard]] handle_ty create_render_target_texture(uint32_t width, uint32_t height, PixelStorage pixel_storage,
                                                          TextureUsageFlags usage) noexcept override;
     void destroy_texture(handle_ty handle) noexcept override;
+    [[nodiscard]] handle_ty create_cubemap(
+        uint32_t width,
+        uint32_t height,
+        PixelStorage pixel_storage,
+        const TextureSampler &sampler) noexcept override;
+    void destroy_cubemap(handle_ty handle) noexcept override;
     [[nodiscard]] handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string>& options) noexcept override;
     [[nodiscard]] handle_ty create_shader_from_program(ShaderProgram* program, ShaderType stage) noexcept override;
     [[nodiscard]] std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>
@@ -89,7 +95,7 @@ public:
     void destroy_render_pass(RHIRenderPass *render_pass) noexcept override;
     //DescriptorSetWriter *create_descriptor_set_writer(DescriptorSet *descriptor_set, void** shaders, uint32_t shaders_count) noexcept override;
     void bind_pipeline(const CommandBuffer& cmd_buffer, const handle_ty pipeline) noexcept override;
-    bool build_pipeline_layout_desc(const handle_ty shaders[PipelineState::MAX_SHADER_STAGE], PipelineLayoutDesc& out_desc) noexcept override;
+    bool build_pipeline_layout_desc(ShaderProgram* shader_program, PipelineLayoutDesc& out_desc) noexcept override;
     RHIPipelineLayout* create_pipeline_layout(const PipelineLayoutDesc& desc) noexcept override;
     void destroy_pipeline_layout(RHIPipelineLayout* layout) noexcept override;
     RHIPipeline *create_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass, RHIPipelineLayout* pipeline_layout) noexcept override;

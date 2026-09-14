@@ -429,19 +429,23 @@ struct RenderTargetCreation {
     uint32_t clear_stencil = 0;        ///< clear stencil
 };
 
+class RenderTarget;
+
 struct RenderPassCreation
 {
     constexpr static uint32_t MAX_COLOR_ATTACHMENTS = 8;
-    /// When color_attachment_count == 0 the swapchain backbuffer is used.
-    Texture* color_attachments[MAX_COLOR_ATTACHMENTS] = {};
-    uint32_t color_attachment_count = 0;
-    Texture* depth_attachment = nullptr;
+    /// Required. Swapchain or offscreen texture target.
+    RenderTarget* render_target = nullptr;
     float4 clear_color = {0.025f, 0.025f, 0.025f, 1.0f};
     float clear_depth = 1.0f;
     uint32_t clear_stencil = 0;
-    float4 swapchain_clear_color = {0.025f, 0.025f, 0.025f, 1.0f};
-    float swapchain_clear_depth = 1.0f;
-    uint32_t swapchain_clear_stencil = 0;
+    /// When true, color/depth are cleared at begin. Use false for later passes
+    /// that share the same target (e.g. opaque after skybox on the swapchain).
+    bool clear_color_attachment = true;
+    bool clear_depth_attachment = true;
+    /// Swapchain only: transition the backbuffer to PRESENT at end of this pass.
+    /// Set false for intermediate swapchain passes in the same frame.
+    bool present_swapchain = true;
 };
 
 struct SamplerCreation {

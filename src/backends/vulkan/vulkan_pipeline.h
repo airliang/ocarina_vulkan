@@ -12,6 +12,7 @@ namespace ocarina {
 
 class VulkanShader;
 class VulkanDevice;
+class ShaderProgram;
 struct VulkanVertexStreamBinding;
 
 struct VulkanPipelineLayout : public RHIPipelineLayout {
@@ -37,7 +38,7 @@ struct VulkanPipeline : public RHIPipeline {
 
 VulkanPipelineLayout* create_vulkan_pipeline_layout(VulkanDevice* device, const PipelineLayoutDesc& desc);
 void destroy_vulkan_pipeline_layout(VulkanDevice* device, VulkanPipelineLayout* layout) noexcept;
-bool build_vulkan_pipeline_layout_desc(const handle_ty shaders[PipelineState::MAX_SHADER_STAGE], PipelineLayoutDesc& out_desc) noexcept;
+bool build_vulkan_pipeline_layout_desc(ShaderProgram* shader_program, PipelineLayoutDesc& out_desc) noexcept;
 
 struct DynamicRenderingFormats {
     uint32_t color_attachment_count = 0;

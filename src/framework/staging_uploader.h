@@ -13,6 +13,7 @@ namespace ocarina {
 class IndexBuffer;
 class VertexBuffer;
 class Texture;
+class Cubemap;
 
 /// Reusable host-visible staging buffer for CPU → GPU copies.
 /// Owned by GPUResourceThread (single-threaded upload path).
@@ -58,6 +59,12 @@ public:
         Texture *texture,
         const void *data,
         size_t base_level_bytes);
+
+    /// Upload six cube faces (Vulkan order +X,-X,+Y,-Y,+Z,-Z) packed contiguously.
+    [[nodiscard]] uint64_t upload_cubemap_faces(
+        Cubemap *cubemap,
+        const void *packed_face_pixels,
+        size_t total_bytes);
 
     [[nodiscard]] size_t capacity() const noexcept { return capacity_; }
 

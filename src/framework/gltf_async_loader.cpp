@@ -208,12 +208,13 @@ void GltfAsyncLoader::load(Device* device) {
             mesh_pso_request_.pixel_options);
         if (shader_program_ != nullptr) {
             shader_program_->ensure_gpu_shaders(device);
-            vertex_shader_ = shader_program_->shader_handle(ShaderType::VertexShader);
-            pixel_shader_ = shader_program_->shader_handle(ShaderType::PixelShader);
+            mesh_pso_request_.shader_program = shader_program_;
         }
-    } else if (mesh_pso_request_.has_shader_handles()) {
-        vertex_shader_ = mesh_pso_request_.vertex_shader;
-        pixel_shader_ = mesh_pso_request_.pixel_shader;
+    } else if (mesh_pso_request_.has_shader_program()) {
+        shader_program_ = mesh_pso_request_.shader_program;
+        if (shader_program_ != nullptr) {
+            shader_program_->ensure_gpu_shaders(device);
+        }
     }
 
     is_loaded_ = load_gltf_file();

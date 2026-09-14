@@ -6,6 +6,9 @@
 { 
 	float4x4 projectionMatrix;
 	float4x4 viewMatrix;
+	float4x4 invProjectionMarix;
+	float4x4 invViewMatrix;
+	float4x4 invViewProjMatrix;
 	float4 cameraPos;
 	float4 lightPos;
 	float4 sunDirection;   // xyz = world-space direction the sun light travels

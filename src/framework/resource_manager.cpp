@@ -4,6 +4,7 @@
 #include "core/logging.h"
 #include "mesh.h"
 #include "rhi/resources/texture.h"
+#include "rhi/resources/cubemap.h"
 #include "rhi/resources/texture_sampler.h"
 #include "rhi/device.h"
 #include "rhi/shader_program.h"
@@ -54,6 +55,14 @@ void ResourceManager::cleanup() {
         }
     }
     textures_.clear();
+
+    for (Cubemap* cubemap : cubemaps_) {
+        if (cubemap != nullptr) {
+            cubemap->destroy();
+            ocarina::delete_with_allocator<Cubemap>(cubemap);
+        }
+    }
+    cubemaps_.clear();
 
     // Any remaining registered buffers (e.g. FrameResources forgot to release).
     std::unordered_map<handle_ty, Buffer*> remaining_buffers;
@@ -574,6 +583,43 @@ Texture* ResourceManager::create_render_target_texture(
     }
     textures_[key] = TextureHandle{bindless_index, texture};
     return texture;
+}
+
+Cubemap* ResourceManager::create_cubemap(
+    Device* device,
+    const Image (&faces)[6],
+    const TextureSampler& sampler) {
+    Cubemap* cubemap = ocarina::new_with_allocator<Cubemap>(
+        device->impl(),
+        faces,
+        sampler);
+    if (cubemap == nullptr) {
+        return nullptr;
+    }
+
+    {
+        std::lock_guard<std::mutex> l{mutex_};
+        cubemaps_.push_back(cubemap);
+    }
+
+    auto request = std::make_shared<CubemapGPUResourceRequest>(device, cubemap);
+    size_t total_bytes = 0;
+    for (uint32_t i = 0; i < 6; ++i) {
+        total_bytes += faces[i].size_in_bytes();
+    }
+    request->pixel_data.resize(total_bytes);
+    size_t offset = 0;
+    for (uint32_t i = 0; i < 6; ++i) {
+        const size_t face_bytes = faces[i].size_in_bytes();
+        const uint8_t* src = faces[i].pixel_ptr<uint8_t>();
+        if (src != nullptr && face_bytes > 0) {
+            std::memcpy(request->pixel_data.data() + offset, src, face_bytes);
+        }
+        offset += face_bytes;
+    }
+
+    GPUResourceThread::instance().enqueue(std::move(request));
+    return cubemap;
 }
 
 }// namespace ocarina

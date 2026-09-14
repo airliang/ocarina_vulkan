@@ -16,6 +16,7 @@ namespace ocarina {
 
 class Device;
 class Texture;
+class Cubemap;
 class Mesh;
 class StagingUploader;
 
@@ -23,6 +24,7 @@ enum class GPUResourceRequestType : uint8_t {
     TextureFromData,
     RenderTarget,
     Mesh,
+    CubemapFromData,
 };
 
 /// Base GPU create/upload request (moved onto the GPU resource thread).
@@ -69,6 +71,19 @@ struct MeshGPUResourceRequest : GPUResourceRequest {
 
     [[nodiscard]] GPUResourceRequestType type() const noexcept override {
         return GPUResourceRequestType::Mesh;
+    }
+    void process() override;
+};
+
+/// Upload six cube faces for an existing Cubemap allocation.
+struct CubemapGPUResourceRequest : GPUResourceRequest {
+    explicit CubemapGPUResourceRequest(Device* device, Cubemap* cubemap);
+
+    std::vector<uint8_t> pixel_data;
+    Cubemap* cubemap_ = nullptr;
+
+    [[nodiscard]] GPUResourceRequestType type() const noexcept override {
+        return GPUResourceRequestType::CubemapFromData;
     }
     void process() override;
 };

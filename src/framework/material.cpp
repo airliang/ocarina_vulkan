@@ -81,7 +81,7 @@ std::vector<RHIShader::UniformBufferMember> to_rhi_uniform_members(
 }// namespace
 
 Material::Material(Device* device, ShaderProgram* shader_program) : device_(device), shader_program_(shader_program) {
-    pipeline_state_ = PipelineState::MakeGraphicsDefault(0, 0);
+    pipeline_state_ = PipelineState::MakeGraphicsDefault(shader_program);
 
     collect_non_global_descriptor_set_layouts(shader_program, descriptor_set_layouts_);
     // Resolve layout only. VkDescriptorSet allocation happens on the render thread.
@@ -201,12 +201,7 @@ void Material::ensure_gpu_shaders() {
     }
 
     shader_program_->ensure_gpu_shaders(device_);
-    if (pipeline_state_.shaders[0] == 0) {
-        pipeline_state_.shaders[0] = shader_program_->shader_handle(ShaderType::VertexShader);
-    }
-    if (pipeline_state_.shaders[1] == 0) {
-        pipeline_state_.shaders[1] = shader_program_->shader_handle(ShaderType::PixelShader);
-    }
+    pipeline_state_.shader_program = shader_program_;
 }
 
 void Material::init_material_properties(ShaderProgram* shader_program) {
@@ -391,6 +386,21 @@ void Material::set_property(uint64_t name_id, const TextureHandle& texture) {
         MaterialUpdateRequest::make_texture(this, name_id, texture));
 }
 
+void Material::set_cubemap(uint64_t name_id, Cubemap* cubemap) {
+    if (name_id == 0 || cubemap == nullptr) {
+        return;
+    }
+
+    const MaterialProperty* property = find_material_property(name_id);
+    if (property != nullptr && property->kind != PropertyKind::Texture) {
+        return;
+    }
+
+    cubemap_handles_[name_id] = cubemap;
+    FrameResources::instance().queue_material_update(
+        MaterialUpdateRequest::make_cubemap(this, name_id, cubemap));
+}
+
 void Material::set_bindless_texture(uint64_t name_id, const TextureHandle& texture) {
     if (name_id == 0 || texture.texture_ == nullptr) {
         return;
@@ -408,6 +418,13 @@ bool Material::is_renderable() {
         Texture* bound_texture = handle.texture_;
         if (bound_texture == nullptr ||
             bound_texture->gpu_resource_state() < GPUResourceState::GPU_Visible) {
+            return false;
+        }
+    }
+    for (const auto& [name_id, cubemap] : cubemap_handles_) {
+        (void)name_id;
+        if (cubemap == nullptr ||
+            cubemap->gpu_resource_state() < GPUResourceState::GPU_Visible) {
             return false;
         }
     }

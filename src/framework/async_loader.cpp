@@ -9,7 +9,7 @@ namespace ocarina {
 uint32_t AsyncLoader::count_pending_shader_steps() const noexcept {
     uint32_t shader_count = 0;
     for (const PSORequest& request : pso_requests_) {
-        if (!request.has_shader_handles()) {
+        if (!request.has_shader_program()) {
             if (!request.vertex_shader_path.empty()) {
                 ++shader_count;
             }

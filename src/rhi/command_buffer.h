@@ -29,6 +29,7 @@ public:
         virtual void bind_pipeline(const RHIPipeline* pipeline) = 0;
         virtual void bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t first_set, uint32_t descriptor_set_count, handle_ty pipeline_layout) = 0;
         virtual void draw_indexed(uint32_t index_count, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance) = 0;
+        virtual void draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance) = 0;
         virtual void push_constants(
             const void* data,
             uint32_t offset,
@@ -48,9 +49,18 @@ public:
             handle_ty texture,
             TextureLayout old_layout,
             TextureLayout new_layout) = 0;
+        virtual void transition_cubemap_layout(
+            handle_ty cubemap,
+            TextureLayout old_layout,
+            TextureLayout new_layout) = 0;
         virtual void copy_buffer_to_texture(
             handle_ty src_buffer,
             handle_ty dst_texture,
+            const BufferTextureCopy* regions,
+            uint32_t region_count) = 0;
+        virtual void copy_buffer_to_cubemap(
+            handle_ty src_buffer,
+            handle_ty dst_cubemap,
             const BufferTextureCopy* regions,
             uint32_t region_count) = 0;
         virtual void submit_to_queue(QueueType queue_type, Fence* fence) = 0;
@@ -133,6 +143,11 @@ public:
         impl_->draw_indexed(index_count, instance_count, first_index, vertex_offset, first_instance);
     }
 
+    void draw(uint32_t vertex_count, uint32_t instance_count = 1, uint32_t first_vertex = 0, uint32_t first_instance = 0)
+    {
+        impl_->draw(vertex_count, instance_count, first_vertex, first_instance);
+    }
+
     void draw_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride)
     {
         //impl_->draw_indirect(indirect_buffer, draw_count, stride);
@@ -165,6 +180,13 @@ public:
     {
         impl_->transition_texture_layout(texture, old_layout, new_layout);
     }
+    void transition_cubemap_layout(
+        handle_ty cubemap,
+        TextureLayout old_layout,
+        TextureLayout new_layout)
+    {
+        impl_->transition_cubemap_layout(cubemap, old_layout, new_layout);
+    }
     void copy_buffer_to_texture(
         handle_ty src_buffer,
         handle_ty dst_texture,
@@ -172,6 +194,14 @@ public:
         uint32_t region_count)
     {
         impl_->copy_buffer_to_texture(src_buffer, dst_texture, regions, region_count);
+    }
+    void copy_buffer_to_cubemap(
+        handle_ty src_buffer,
+        handle_ty dst_cubemap,
+        const BufferTextureCopy* regions,
+        uint32_t region_count)
+    {
+        impl_->copy_buffer_to_cubemap(src_buffer, dst_cubemap, regions, region_count);
     }
     void push_constants(
         const void* data,

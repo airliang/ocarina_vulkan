@@ -9,6 +9,7 @@
 #include "vulkan_device.h"
 #include "vulkan_driver.h"
 #include "vulkan_texture.h"
+#include "vulkan_cubemap.h"
 #include "util.h"
 
 namespace ocarina {
@@ -312,6 +313,36 @@ void VulkanDescriptorSetWriter::update_texture(uint64_t name_id, Texture *textur
         VulkanDevice *device = VulkanDriver::instance().get_device();
         build(device);
     }
+}
+
+void VulkanDescriptorSetWriter::update_cubemap(uint64_t name_id, Cubemap *cubemap) {
+    auto it = descriptors_.find(name_id);
+    if (it == descriptors_.end() || cubemap == nullptr) {
+        return;
+    }
+
+    VulkanCubemap *vulkan_cubemap = static_cast<VulkanCubemap *>(cubemap->impl());
+    VulkanDescriptorImage *descriptor_image = static_cast<VulkanDescriptorImage *>(it->second);
+    const VkDescriptorType descriptor_type = descriptor_image->descriptor_type_;
+
+    VkDescriptorImageInfo descriptor_info = descriptor_type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+        ? vulkan_cubemap->get_sampled_image_descriptor_info()
+        : vulkan_cubemap->get_descriptor_info();
+    bind_texture(descriptor_image->binding, &descriptor_info, 0, 1, descriptor_type);
+
+    VkDescriptorImageInfo sampler_info{};
+    uint64_t sampler_name_id = hash64(descriptor_image->default_sampler_name_);
+    auto sampler_it = descriptors_.find(sampler_name_id);
+    if (sampler_it != descriptors_.end()) {
+        sampler_info.sampler = vulkan_cubemap->get_descriptor_info().sampler;
+        if (sampler_info.sampler != VK_NULL_HANDLE) {
+            VulkanDescriptorSampler *descriptor_sampler = static_cast<VulkanDescriptorSampler *>(sampler_it->second);
+            bind_sampler(descriptor_sampler->binding, &sampler_info);
+        }
+    }
+
+    VulkanDevice *device = VulkanDriver::instance().get_device();
+    build(device);
 }
 
 void VulkanDescriptorSetWriter::update_sampler(uint64_t name_id, VkSampler sampler)

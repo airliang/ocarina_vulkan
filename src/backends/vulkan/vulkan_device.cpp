@@ -19,6 +19,7 @@
 #include "vulkan_descriptorset.h"
 #include "vulkan_descriptorset_writer.h"
 #include "vulkan_texture.h"
+#include "vulkan_cubemap.h"
 #include "rhi/command_buffer.h"
 #include "vulkan_command_buffer.h"
 #include "vulkan_fence.h"
@@ -239,6 +240,20 @@ void VulkanDevice::destroy_shader(handle_ty handle) noexcept {
 
 void VulkanDevice::destroy_texture(handle_ty handle) noexcept {
     ocarina::delete_with_allocator(reinterpret_cast<VulkanTexture *>(handle));
+}
+
+handle_ty VulkanDevice::create_cubemap(
+    uint32_t width,
+    uint32_t height,
+    PixelStorage pixel_storage,
+    const TextureSampler &sampler) noexcept {
+    auto cubemap = ocarina::new_with_allocator<VulkanCubemap>(
+        this, width, height, pixel_storage, sampler);
+    return reinterpret_cast<handle_ty>(cubemap);
+}
+
+void VulkanDevice::destroy_cubemap(handle_ty handle) noexcept {
+    ocarina::delete_with_allocator(reinterpret_cast<VulkanCubemap *>(handle));
 }
 
 void VulkanDevice::init_vulkan()
@@ -604,9 +619,9 @@ void VulkanDevice::bind_pipeline(const CommandBuffer& cmd_buffer, const handle_t
 }
 
 bool VulkanDevice::build_pipeline_layout_desc(
-    const handle_ty shaders[PipelineState::MAX_SHADER_STAGE],
+    ShaderProgram* shader_program,
     PipelineLayoutDesc& out_desc) noexcept {
-    return build_vulkan_pipeline_layout_desc(shaders, out_desc);
+    return build_vulkan_pipeline_layout_desc(shader_program, out_desc);
 }
 
 RHIPipelineLayout* VulkanDevice::create_pipeline_layout(const PipelineLayoutDesc& desc) noexcept {

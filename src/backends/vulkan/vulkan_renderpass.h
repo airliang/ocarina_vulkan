@@ -27,8 +27,8 @@ private:
     void setup_render_pass();
     VkRenderPass render_pass_ = VK_NULL_HANDLE;
     VulkanDevice *device_ = nullptr;
-    VkClearValue clear_values_[kMaxColorAttachments + 1];
-    VkFormat color_attachment_formats_[kMaxColorAttachments] = {};
+    VkClearValue clear_values_[RenderPassCreation::MAX_COLOR_ATTACHMENTS + 1];
+    VkFormat color_attachment_formats_[RenderPassCreation::MAX_COLOR_ATTACHMENTS] = {};
     uint32_t color_attachment_format_count_ = 0;
     VkFormat depth_attachment_format_ = VK_FORMAT_UNDEFINED;
 };

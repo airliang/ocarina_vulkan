@@ -25,6 +25,7 @@ public:
         TEXTURE,
         SHADER,
         MESH,
+        CUBEMAP,
     };
 
 protected:

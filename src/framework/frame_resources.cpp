@@ -132,24 +132,20 @@ void FrameResources::ensure_global_descriptor_sets(RHIPipelineLayout* pipeline_l
     pipeline_layout->global_descriptor_set_count_ = 1;
 }
 
-void FrameResources::bind_global_descriptor_sets(
-    CommandBuffer& cmd,
-    RHIPipelineLayout* pipeline_layout) {
-    if (pipeline_layout == nullptr
-        || pipeline_layout->handle == 0
-        || pipeline_layout->handle == InvalidUI64
+void FrameResources::bind_global_descriptor_sets(CommandBuffer& cmd, const RHIPipeline* pipeline) {
+    if (pipeline == nullptr
+        || pipeline->pipeline_layout == 0
+        || pipeline->pipeline_layout == InvalidUI64
         || global_descriptor_set_ == nullptr) {
         return;
     }
-
-    ensure_global_descriptor_sets(pipeline_layout);
 
     DescriptorSet* descriptor_set = global_descriptor_set_;
     cmd.bind_descriptor_sets(
         &descriptor_set,
         static_cast<uint32_t>(DescriptorSetIndex::FRAME_SET),
         1,
-        pipeline_layout->handle);
+        pipeline->pipeline_layout);
 }
 
 DescriptorSet* FrameResources::get_global_descriptor_set(uint64_t name_id) const {
@@ -193,6 +189,11 @@ void FrameResources::queue_material_update(MaterialUpdateRequest request) {
                 return;
             }
             break;
+        case MaterialUpdateKind::Cubemap:
+            if (request.name_id == 0 || request.cubemap == nullptr) {
+                return;
+            }
+            break;
         case MaterialUpdateKind::Sampler:
             if (request.name_id == 0) {
                 return;
@@ -233,6 +234,25 @@ void FrameResources::process_material_update() {
 
                 descriptor_set->update_texture(request.name_id, texture);
                 texture->set_gpu_resource_state(GPUResourceState::GPU_Visible);
+                return true;
+            }
+            case MaterialUpdateKind::Cubemap: {
+                Cubemap* cubemap = request.cubemap;
+                if (cubemap == nullptr || !cubemap->is_gpu_ready()) {
+                    return false;
+                }
+                if (!request.material->is_material_infrastructure_ready()) {
+                    return false;
+                }
+
+                DescriptorSet* descriptor_set = request.material->get_material_descriptor_set();
+                if (descriptor_set == nullptr) {
+                    OC_INFO("[material_update] Cubemap pending: descriptor set not ready");
+                    return false;
+                }
+
+                descriptor_set->update_cubemap(request.name_id, cubemap);
+                cubemap->set_gpu_resource_state(GPUResourceState::GPU_Visible);
                 return true;
             }
             case MaterialUpdateKind::Sampler: {
@@ -413,8 +433,17 @@ void FrameResources::upload_global_uniform_buffer(Camera* camera) {
     }
 
     if (camera != nullptr) {
-        global_ubo_.projection_matrix = camera->get_projection_matrix().transpose();
-        global_ubo_.view_matrix = camera->get_view_matrix().transpose();
+        const math3d::Matrix4& projection = camera->get_projection_matrix();
+        const math3d::Matrix4& view = camera->get_view_matrix();
+        // Matches shader mul(projectionMatrix, mul(viewMatrix, ...)) => viewProj = projection * view.
+        const math3d::Matrix4 view_proj = projection * view;
+
+        global_ubo_.projection_matrix = projection.transpose();
+        global_ubo_.view_matrix = view.transpose();
+        global_ubo_.inv_projection_matrix = projection.inverse().transpose();
+        global_ubo_.inv_view_matrix = view.inverse().transpose();
+        global_ubo_.inv_view_proj_matrix = view_proj.inverse().transpose();
+
         const math3d::Vector3D& cam_position = camera->get_position();
         global_ubo_.camera_pos = make_float4(cam_position[0], cam_position[1], cam_position[2], 1.0f);
     }

@@ -2,14 +2,24 @@
 // Created by Zero on 06/06/2022.
 //
 
-#pragma once
-
 #include "renderpass.h"
 #include "core/hash.h"
 #include "rhi/command_buffer.h"
 #include "rhi/pipeline_state.h"
+#include "core/logging.h"
 
 namespace ocarina {
+
+RHIRenderPass::RHIRenderPass(const RenderPassCreation &render_pass_creation)
+    : render_target_(render_pass_creation.render_target),
+      clear_color_(render_pass_creation.clear_color),
+      clear_depth_(render_pass_creation.clear_depth),
+      clear_stencil_(render_pass_creation.clear_stencil),
+      clear_color_attachment_(render_pass_creation.clear_color_attachment),
+      clear_depth_attachment_(render_pass_creation.clear_depth_attachment),
+      present_swapchain_(render_pass_creation.present_swapchain) {
+    OC_ASSERT(render_target_ != nullptr);
+}
 
 RHIRenderPass::~RHIRenderPass() {
     for (auto &queue : pipeline_render_queues_) {

@@ -9,7 +9,7 @@ namespace ocarina {
 
 class RHIRenderPass;
 
-/// Cache key for graphics PSOs. Vertex inputs are implied by the vertex shader handle.
+/// Cache key for graphics PSOs. Vertex inputs are implied by the ShaderProgram.
 struct PipelineCacheKey {
     PipelineState pipeline_state{};
     RHIRenderPass* render_pass = nullptr;

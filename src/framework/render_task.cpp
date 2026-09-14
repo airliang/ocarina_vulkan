@@ -75,24 +75,21 @@ void RenderTask::execute_default_render_path() {
         return;
     }
 
-    CommandBuffer recorded_cmds[MAX_COMMAND_BUFFERS_PER_SUBMIT];
-    uint32_t recorded_count = 0;
     const bool loading = renderer_.is_async_loading();
+
+    CommandBuffer cmd = device->get_command_buffer();
+    cmd.begin();
 
     // std::map iterates PassGroupId in numeric order (Offscreen → … → UI).
     for (auto& [group_id, record_task] : renderer_.render_pass_tasks_) {
         if (record_task.empty()) {
             continue;
         }
-        // During async load, only record the UI pass (loading progress / clear).
-        if (loading && group_id != PassGroupId::UI) {
+        // During async load, keep skybox (clear) + UI (loading progress).
+        if (loading && group_id != PassGroupId::UI && group_id != PassGroupId::Skybox) {
             continue;
         }
-        if (recorded_count >= MAX_COMMAND_BUFFERS_PER_SUBMIT) {
-            break;
-        }
 
-        CommandBuffer cmd = device->get_command_buffer();
         RenderPassGUICallback gui;
         if (group_id == PassGroupId::UI) {
             gui = loading ? renderer_.loading_gui_impl_ : renderer_.render_gui_impl_;
@@ -101,16 +98,11 @@ void RenderTask::execute_default_render_path() {
         record_task.configure(&renderer_, device, cmd, gui);
         renderer_.task_scheduler_.AddTaskSetToPipe(&record_task);
         renderer_.task_scheduler_.WaitforTask(&record_task);
-
-        recorded_cmds[recorded_count++] = cmd;
     }
 
-    if (recorded_count > 0) {
-        device->execute_command_buffers(recorded_cmds, recorded_count);
-        for (uint32_t i = 0; i < recorded_count; ++i) {
-            device->release_command_buffer(recorded_cmds[i]);
-        }
-    }
+    cmd.end();
+    device->execute_command_buffers(&cmd, 1);
+    device->release_command_buffer(cmd);
 
     device->end_frame();
     OC_PROFILE_FRAME_MARK;

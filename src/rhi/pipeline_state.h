@@ -14,6 +14,7 @@ template<typename T>
 class Shader;
 class VertexBuffer;
 class DescriptorSetLayout;
+class ShaderProgram;
 
 struct RasterState {
     CullingMode cull_mode : 2;
@@ -139,23 +140,15 @@ struct MultiSampleState {
 };
 
 struct PipelineState {
-static constexpr uint16_t MAX_SHADER_STAGE = 2;
-handle_ty shaders[MAX_SHADER_STAGE];
-    handle_ty descriptorset_layout = InvalidUI64;        
-    //VertexBuffer *vertex_buffer = nullptr;             
-    RasterState raster_state;//  4
+    ShaderProgram* shader_program = nullptr;
+    RasterState raster_state;
     BlendState blend_state;
-    DepthStencilState depth_stencil_state;  
+    DepthStencilState depth_stencil_state;
     MultiSampleState multiple_sample_state;
     PrimitiveType primitive_type = PrimitiveType::TRIANGLES;
 
-    
-
     bool operator!=(const PipelineState &other) const {
-        return shaders[0] != other.shaders[0] ||
-            shaders[1] != other.shaders[1] ||
-            descriptorset_layout != other.descriptorset_layout ||
-            //vertex_buffer != other.vertex_buffer ||
+        return shader_program != other.shader_program ||
             raster_state.cull_mode != other.raster_state.cull_mode ||
             raster_state.front_face != other.raster_state.front_face ||
             raster_state.depth_bias != other.raster_state.depth_bias ||
@@ -176,21 +169,17 @@ handle_ty shaders[MAX_SHADER_STAGE];
             multiple_sample_state.sample_count != other.multiple_sample_state.sample_count ||
             multiple_sample_state.alpha_to_coverage_enable != other.multiple_sample_state.alpha_to_coverage_enable ||
             multiple_sample_state.alpha_to_one_enable != other.multiple_sample_state.alpha_to_one_enable ||
-            multiple_sample_state.sample_shading_enable != other.multiple_sample_state.sample_shading_enable;
-
+            multiple_sample_state.sample_shading_enable != other.multiple_sample_state.sample_shading_enable ||
+            primitive_type != other.primitive_type;
     }
 
     bool operator==(const PipelineState &other) const {
         return !(*this != other);
     }
 
-    [[nodiscard]] static PipelineState MakeGraphicsDefault(
-        handle_ty vertex_shader,
-        handle_ty pixel_shader) noexcept {
+    [[nodiscard]] static PipelineState MakeGraphicsDefault(ShaderProgram* shader_program) noexcept {
         PipelineState state{};
-        state.shaders[0] = vertex_shader;
-        state.shaders[1] = pixel_shader;
-        state.descriptorset_layout = InvalidUI64;
+        state.shader_program = shader_program;
         state.raster_state = RasterState::Default();
         state.blend_state = BlendState::Opaque();
         state.depth_stencil_state = DepthStencilState::Default();
@@ -201,9 +190,7 @@ handle_ty shaders[MAX_SHADER_STAGE];
     // Canonical key for PSO caches: copies only compared fields into a zero-initialized state.
     [[nodiscard]] PipelineState ForCacheKey() const noexcept {
         PipelineState key{};
-        key.shaders[0] = shaders[0];
-        key.shaders[1] = shaders[1];
-        key.descriptorset_layout = descriptorset_layout;
+        key.shader_program = shader_program;
         key.raster_state.cull_mode = raster_state.cull_mode;
         key.raster_state.front_face = raster_state.front_face;
         key.raster_state.depth_bias = raster_state.depth_bias;
@@ -234,9 +221,7 @@ struct PipelineStateHash {
     size_t operator()(const PipelineState& state) const noexcept {
         const PipelineState key = state.ForCacheKey();
         size_t hash = 0;
-        hash_combine(hash, key.shaders[0]);
-        hash_combine(hash, key.shaders[1]);
-        hash_combine(hash, key.descriptorset_layout);
+        hash_combine(hash, reinterpret_cast<uintptr_t>(key.shader_program));
         hash_combine(hash, static_cast<uint32_t>(key.raster_state.cull_mode));
         hash_combine(hash, static_cast<uint32_t>(key.raster_state.front_face));
         hash_combine(hash, static_cast<uint32_t>(key.raster_state.depth_bias));
@@ -290,7 +275,6 @@ struct PipelineLayoutPushConstantRange {
 struct PipelineLayoutDesc {
     static constexpr uint8_t MAX_PUSH_CONSTANT_RANGES = 8;
 
-    handle_ty shaders[PipelineState::MAX_SHADER_STAGE] = {};
     std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_layouts = {};
     uint8_t descriptor_set_count = 0;
     std::array<PipelineLayoutPushConstantRange, MAX_PUSH_CONSTANT_RANGES> push_constant_ranges = {};

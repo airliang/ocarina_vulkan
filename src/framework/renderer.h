@@ -28,6 +28,7 @@ class RHIRenderPass;
 class Device;
 class Scene;
 class Camera;
+class Material;
 
 
 class Renderer : public concepts::Noncopyable {
@@ -113,6 +114,13 @@ public:
     }
 
     void draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass);
+    /// Bind material pipeline + descriptors and draw a fullscreen triangle (no mesh).
+    void draw_fullscreen(CommandBuffer& cmd, Material* material, RHIRenderPass* render_pass);
+
+    /// Optional skybox material drawn by PassGroupId::Skybox via draw_fullscreen.
+    void set_skybox_material(Material* material) noexcept { skybox_material_ = material; }
+    [[nodiscard]] Material* skybox_material() const noexcept { return skybox_material_; }
+
     void update_visible_render_components();
     void populate_render_pass_queues(RHIRenderPass* render_pass);
 
@@ -156,6 +164,7 @@ protected:
 
     Scene* scene_ = nullptr;
     Camera* camera_ = nullptr;
+    Material* skybox_material_ = nullptr;
     RendererPrimitiveCullTask primitive_cull_task_;
     bool frustum_culling_enabled_ = true;
     RenderPassPrimitiveFilter render_pass_primitive_filter_;
