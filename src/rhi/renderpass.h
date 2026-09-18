@@ -44,6 +44,11 @@ struct GlobalUBO
 
 class OC_RHI_API RHIRenderPass {
 public:
+    /// Optional per-pass recording body. When set, RenderPassTask invokes this
+    /// instead of the default queue / skybox / post-process drawing.
+    /// Compute passes (no render target) run the callback without begin/end render pass.
+    using ExecuteCallback = ocarina::function<void(CommandBuffer& cmd)>;
+
     RHIRenderPass(const RenderPassCreation &render_pass_creation);
     virtual ~RHIRenderPass();
 
@@ -51,8 +56,25 @@ public:
 
     void add_draw_call(uint32_t render_component_index, const PipelineState& pipeline_state);
 
+    void set_execute_callback(ExecuteCallback callback) noexcept {
+        execute_callback_ = std::move(callback);
+    }
+    [[nodiscard]] bool has_execute_callback() const noexcept {
+        return static_cast<bool>(execute_callback_);
+    }
+    void execute(CommandBuffer& cmd) {
+        if (execute_callback_) {
+            execute_callback_(cmd);
+        }
+    }
+
     [[nodiscard]] RenderTarget* render_target() noexcept { return render_target_; }
     [[nodiscard]] const RenderTarget* render_target() const noexcept { return render_target_; }
+
+    /// True when this pass has no color/depth target (compute-only recording).
+    [[nodiscard]] bool is_compute_pass() const noexcept {
+        return render_target_ == nullptr;
+    }
 
     /// Swapchain path: target is the swapchain backbuffer.
     [[nodiscard]] bool is_swapchain_renderpass() const {
@@ -135,6 +157,7 @@ protected:
     std::unordered_map<PipelineState, PipelineRenderQueue*, PipelineStateHash> pipeline_render_queues_;
     GlobalUBO global_ubo_data_ = {};
     handle_ty command_buffer_ = 0;
+    ExecuteCallback execute_callback_;
 };
 
 }// namespace ocarina

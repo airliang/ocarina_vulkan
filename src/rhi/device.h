@@ -124,6 +124,7 @@ public:
         virtual void destroy_pipeline_layout(RHIPipelineLayout* layout) noexcept = 0;
         virtual void bind_pipeline(const CommandBuffer& cmd_buffer, const handle_ty pipeline) noexcept = 0;
         virtual RHIPipeline *create_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass, RHIPipelineLayout* pipeline_layout) noexcept = 0;
+        virtual RHIPipeline *create_compute_pipeline(ShaderProgram* shader_program, RHIPipelineLayout* pipeline_layout) noexcept = 0;
         virtual void destroy_pipeline(RHIPipeline *pipeline) noexcept = 0;
 
         virtual void memory_allocate(handle_ty *handle, size_t size, bool exported = true) {}
@@ -292,6 +293,10 @@ public:
 
     RHIPipeline *create_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass, RHIPipelineLayout* pipeline_layout) noexcept {
         return impl_->create_pipeline(pipeline_state, render_pass, pipeline_layout);
+    }
+
+    RHIPipeline *create_compute_pipeline(ShaderProgram* shader_program, RHIPipelineLayout* pipeline_layout) noexcept {
+        return impl_->create_compute_pipeline(shader_program, pipeline_layout);
     }
 
     void destroy_pipeline(RHIPipeline *pipeline) noexcept {

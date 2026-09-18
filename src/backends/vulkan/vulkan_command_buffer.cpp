@@ -31,6 +31,9 @@ VulkanCommandBuffer::~VulkanCommandBuffer() {
 }
 
 void VulkanCommandBuffer::begin_render_pass(RHIRenderPass* render_pass) {
+    if (render_pass == nullptr || render_pass->is_compute_pass()) {
+        return;
+    }
     current_render_pass_ = render_pass;
     VulkanRenderPass* vulkan_render_pass = static_cast<VulkanRenderPass*>(render_pass);
     if (render_pass->is_offscreen_renderpass()) {
@@ -296,11 +299,20 @@ void VulkanCommandBuffer::end_render_pass() {
 void VulkanCommandBuffer::bind_pipeline(const RHIPipeline* pipeline) {
     VulkanPipeline* vulkan_pipeline = static_cast<VulkanPipeline*>(const_cast<RHIPipeline*>(pipeline));
     OC_ASSERT(vulkan_pipeline != nullptr);
-    if (current_pipeline_ != vulkan_pipeline) {
-        vkCmdBindPipeline(vulkan_command_buffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, vulkan_pipeline->pipeline_);
+    const VkPipelineBindPoint bind_point = vulkan_pipeline->is_compute
+        ? VK_PIPELINE_BIND_POINT_COMPUTE
+        : VK_PIPELINE_BIND_POINT_GRAPHICS;
+    if (current_pipeline_ != vulkan_pipeline || current_bind_point_ != bind_point) {
+        vkCmdBindPipeline(vulkan_command_buffer_, bind_point, vulkan_pipeline->pipeline_);
         current_pipeline_ = vulkan_pipeline;
+        current_bind_point_ = bind_point;
+        // Descriptor set compatibility depends on bind point + layout.
+        state_.dirty_mask = 0;
+        for (uint32_t i = 0; i < MAX_DESCRIPTOR_SETS_PER_SHADER; ++i) {
+            state_.bound_sets[i] = VK_NULL_HANDLE;
+            state_.bound_set_layouts[i] = VK_NULL_HANDLE;
+        }
     }
-    
 }
 void VulkanCommandBuffer::bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t first_set, uint32_t descriptor_set_count, handle_ty pipeline_layout_handle) {
     VkPipelineLayout pipeline_layout = reinterpret_cast<VkPipelineLayout>(pipeline_layout_handle);
@@ -328,11 +340,15 @@ void VulkanCommandBuffer::bind_descriptor_sets(DescriptorSet** descriptor_sets, 
     if (state_.dirty_mask != 0) {
         for (uint32_t i = 0; i < MAX_DESCRIPTOR_SETS_PER_SHADER; ++i) {
             if (state_.dirty_mask & (1 << i)) {
-                // Option A: Bind single set
-                vkCmdBindDescriptorSets(vulkan_command_buffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, state_.bound_set_layouts[i], i, 1, &state_.bound_sets[i], 0, nullptr);
-
-                // Option B: For optimization, you could group contiguous bits 
-                // into a single vkCmdBindDescriptorSets call.
+                vkCmdBindDescriptorSets(
+                    vulkan_command_buffer_,
+                    current_bind_point_,
+                    state_.bound_set_layouts[i],
+                    i,
+                    1,
+                    &state_.bound_sets[i],
+                    0,
+                    nullptr);
             }
         }
     }
@@ -369,6 +385,10 @@ void VulkanCommandBuffer::draw(uint32_t vertex_count, uint32_t instance_count, u
         instance_count,
         first_vertex,
         first_instance);
+}
+
+void VulkanCommandBuffer::dispatch(uint32_t group_count_x, uint32_t group_count_y, uint32_t group_count_z) {
+    vkCmdDispatch(vulkan_command_buffer_, group_count_x, group_count_y, group_count_z);
 }
 
 void VulkanCommandBuffer::push_constants(
@@ -507,6 +527,7 @@ void VulkanCommandBuffer::set_scissor(int32_t x, int32_t y, uint32_t width, uint
 
 void VulkanCommandBuffer::reset() {
     current_pipeline_ = nullptr;
+    current_bind_point_ = VK_PIPELINE_BIND_POINT_GRAPHICS;
     state_.dirty_mask = 0;
     std::fill(std::begin(state_.bound_sets), std::end(state_.bound_sets), VK_NULL_HANDLE);
     std::fill(std::begin(state_.bound_set_layouts), std::end(state_.bound_set_layouts), VK_NULL_HANDLE);
@@ -817,6 +838,21 @@ void VulkanCommandBuffer::image_layout_barrier(VkImage image, VkImageAspectFlags
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
         source_stage = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
         destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_GENERAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+        source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destination_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    } else if (old_layout == VK_IMAGE_LAYOUT_GENERAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        source_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else if (old_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_GENERAL) {
+        barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+        source_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        destination_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     } else {
         throw std::runtime_error("VulkanCommandBuffer::image_layout_barrier: unsupported layout transition");
     }

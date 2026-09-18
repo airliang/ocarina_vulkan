@@ -214,9 +214,6 @@ VulkanPipeline* create_vulkan_graphics_pipeline(
     depth_stencil_state.depthCompareOp = get_vulkan_compare_op(pipeline_state.depth_stencil_state.depth_compare_op);
     depth_stencil_state.depthTestEnable = pipeline_state.depth_stencil_state.depth_test_enable ? VK_TRUE : VK_FALSE;
     depth_stencil_state.depthWriteEnable = pipeline_state.depth_stencil_state.depth_write_enable ? VK_TRUE : VK_FALSE;
-    if (use_dynamic_rendering && dynamic_formats->depth_format != VK_FORMAT_UNDEFINED) {
-        depth_stencil_state.depthTestEnable = VK_TRUE;
-    }
 
     VkPipelineViewportStateCreateInfo viewport_state = {};
     viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -275,6 +272,56 @@ VulkanPipeline* create_vulkan_graphics_pipeline(
     }
 
     VK_CHECK_RESULT(vkCreateGraphicsPipelines(
+        device->logicalDevice(),
+        VK_NULL_HANDLE,
+        1,
+        &pipeline_create_info,
+        nullptr,
+        &pipeline_entry->pipeline_));
+    pipeline_entry->pipeline_layout_ = vulkan_pipeline_layout->layout_;
+    pipeline_entry->pipeline_layout = vulkan_pipeline_layout->handle;
+
+    return pipeline_entry;
+}
+
+VulkanPipeline* create_vulkan_compute_pipeline(
+    ShaderProgram* shader_program,
+    VulkanDevice* device,
+    RHIPipelineLayout* pipeline_layout)
+{
+    if (shader_program == nullptr || device == nullptr || pipeline_layout == nullptr) {
+        return nullptr;
+    }
+    if (!shader_program->is_compute()) {
+        return nullptr;
+    }
+
+    auto* compute_shader = static_cast<VulkanShader*>(shader_program->compute_shader());
+    auto* vulkan_pipeline_layout = static_cast<VulkanPipelineLayout*>(pipeline_layout);
+    if (compute_shader == nullptr || vulkan_pipeline_layout == nullptr) {
+        return nullptr;
+    }
+
+    VulkanPipeline* pipeline_entry = ocarina::new_with_allocator<VulkanPipeline>();
+    pipeline_entry->is_compute = true;
+    pipeline_entry->push_constant_size = vulkan_pipeline_layout->push_constant_size;
+    pipeline_entry->push_constant_shader_stages_ = vulkan_pipeline_layout->push_constant_shader_stage_flags;
+    pipeline_entry->descriptor_set_layouts_ = vulkan_pipeline_layout->descriptor_set_layouts_;
+
+    VkPipelineShaderStageCreateInfo shader_stage{};
+    shader_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shader_stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    shader_stage.module = compute_shader->shader_module();
+    shader_stage.pName = compute_shader->get_entry_point();
+
+    VkComputePipelineCreateInfo pipeline_create_info{};
+    pipeline_create_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pipeline_create_info.stage = shader_stage;
+    pipeline_create_info.layout = vulkan_pipeline_layout->layout_;
+    pipeline_create_info.basePipelineIndex = -1;
+    pipeline_create_info.basePipelineHandle = VK_NULL_HANDLE;
+
+    VK_CHECK_RESULT(vkCreateComputePipelines(
         device->logicalDevice(),
         VK_NULL_HANDLE,
         1,

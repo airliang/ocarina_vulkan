@@ -99,6 +99,7 @@ public:
     RHIPipelineLayout* create_pipeline_layout(const PipelineLayoutDesc& desc) noexcept override;
     void destroy_pipeline_layout(RHIPipelineLayout* layout) noexcept override;
     RHIPipeline *create_pipeline(const PipelineState &pipeline_state, RHIRenderPass *render_pass, RHIPipelineLayout* pipeline_layout) noexcept override;
+    RHIPipeline *create_compute_pipeline(ShaderProgram* shader_program, RHIPipelineLayout* pipeline_layout) noexcept override;
     void destroy_pipeline(RHIPipeline *pipeline) noexcept override;
     //DescriptorSet *get_global_descriptor_set(const string &name) noexcept override;
     //void bind_descriptor_sets(DescriptorSet **descriptor_set, uint32_t descriptor_sets_num, RHIPipeline* pipeline) noexcept override;

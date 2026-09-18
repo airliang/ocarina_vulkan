@@ -93,6 +93,21 @@ void VulkanDescriptorSet::update_bindless_texture_at_index(uint32_t index, Textu
     }
 }
 
+void VulkanDescriptorSet::update_bindless_sampler_at_index(uint32_t index, const TextureSampler& sampler) {
+    if (writer_ == nullptr) {
+        return;
+    }
+    size_t binding_count = layout_->get_bindings_count();
+    for (size_t i = 0; i < binding_count; ++i) {
+        ShaderVariableBinding* binding = layout_->get_binding(i);
+        if (binding && binding->is_bindless && binding->type == ShaderBindingType::Sampler) {
+            VkSampler vk_sampler = VulkanDriver::instance().get_vulkan_sampler(sampler);
+            writer_->update_bindless_sampler_at_index(index, vk_sampler);
+            return;
+        }
+    }
+}
+
 VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VulkanDevice *device, uint8_t descriptor_set_index) : device_(device), descriptor_set_index_(descriptor_set_index) {
 
 }

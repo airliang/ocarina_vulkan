@@ -27,10 +27,6 @@ public:
         uint32_t element_index = 0,
         uint32_t texture_count = 1,
         VkDescriptorType descriptor_type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-    void bind_default_bindless_texture(uint32_t binding, uint32_t texture_count, VkDescriptorType descriptor_type);
-    void bind_default_bindless_samplers(uint32_t binding, uint32_t sampler_count);
-    void bind_default_texture(uint32_t binding, VkDescriptorType descriptor_type);
-    void bind_default_sampler(uint32_t binding);
     void bind_sampler(uint32_t binding, VkDescriptorImageInfo* sampler, uint32_t element_index = 0, uint32_t sampler_count = 1);
     void build(VulkanDevice* device);
 
@@ -40,6 +36,7 @@ public:
     void update_cubemap(uint64_t name_id, Cubemap *cubemap);
     void update_sampler(uint64_t name_id, VkSampler sampler);
     void update_bindless_texture_at_index(uint32_t index, Texture *texture);
+    void update_bindless_sampler_at_index(uint32_t index, VkSampler sampler);
 
 private:
     std::unordered_map<uint64_t, VulkanDescriptor*> descriptors_;
@@ -47,9 +44,6 @@ private:
     /// Keeps VkDescriptorBufferInfo alive across vkUpdateDescriptorSets.
     std::vector<VkDescriptorBufferInfo> buffer_infos_;
     std::vector<VkDescriptorImageInfo> image_infos_;
-    /// Placeholder writes so a descriptor is valid before the app supplies a real resource.
-    /// Capacity is reserved up front to keep write pointers stable until build().
-    std::vector<VkDescriptorImageInfo> default_image_infos_;
     VulkanDescriptorSet *descriptor_set_ = nullptr;
     VulkanDevice *device_ = nullptr;
     VulkanDescriptorImage *bindless_textures_descriptor_ = nullptr;

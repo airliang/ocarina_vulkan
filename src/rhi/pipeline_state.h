@@ -295,6 +295,7 @@ struct RHIPipeline
 {
     handle_ty pipeline_layout = InvalidUI64;
     uint32_t push_constant_size = 0;
+    bool is_compute = false;
 };
 
 }// namespace ocarina

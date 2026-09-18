@@ -11,6 +11,10 @@ namespace ocarina {
 class DescriptorSetLayout;
 class Device;
 class RHIShader;
+class CommandBuffer;
+class DescriptorSet;
+struct RHIPipeline;
+struct RHIPipelineLayout;
 
 /// Backend-agnostic descriptor binding type derived from shader reflection.
 enum class ShaderBindingType : uint8_t {
@@ -100,6 +104,15 @@ public:
     [[nodiscard]] RHIShader* pixel_shader() const noexcept { return pixel_shader_; }
     [[nodiscard]] RHIShader* compute_shader() const noexcept { return compute_shader_; }
 
+    [[nodiscard]] uint32_t thread_group_size_x() const noexcept { return thread_group_size_[0]; }
+    [[nodiscard]] uint32_t thread_group_size_y() const noexcept { return thread_group_size_[1]; }
+    [[nodiscard]] uint32_t thread_group_size_z() const noexcept { return thread_group_size_[2]; }
+
+    [[nodiscard]] RHIPipeline* compute_pipeline() const noexcept { return compute_pipeline_; }
+    [[nodiscard]] RHIPipelineLayout* compute_pipeline_layout() const noexcept {
+        return compute_pipeline_layout_;
+    }
+
     [[nodiscard]] handle_ty shader_handle(ShaderType stage) const noexcept;
 
     /// Compile VS+PS from HLSL, merge reflection, and build binding tables.
@@ -130,6 +143,37 @@ public:
     }
 
     void ensure_gpu_shaders(Device* device);
+
+    /// Create compute pipeline layout + PSO (compute programs only).
+    void ensure_compute_pipeline(Device* device);
+
+    /// Bind compute pipeline, optional descriptor sets, and dispatch workgroups.
+    void dispatch(
+        CommandBuffer& cmd,
+        DescriptorSet** descriptor_sets,
+        uint32_t first_set,
+        uint32_t descriptor_set_count,
+        uint32_t group_count_x,
+        uint32_t group_count_y = 1,
+        uint32_t group_count_z = 1);
+
+    /// Dispatch enough workgroups to cover a 2D (or 3D) extent using thread_group_size.
+    void dispatch_for_extent(
+        CommandBuffer& cmd,
+        DescriptorSet** descriptor_sets,
+        uint32_t first_set,
+        uint32_t descriptor_set_count,
+        uint32_t width,
+        uint32_t height,
+        uint32_t depth = 1);
+
+    /// Release compute PSO / layout owned by this program.
+    void release_compute_pipeline(Device* device);
+
+    void clear_compute_pipeline() noexcept {
+        compute_pipeline_ = nullptr;
+        compute_pipeline_layout_ = nullptr;
+    }
 
     void set_vertex_shader(RHIShader* shader) noexcept { vertex_shader_ = shader; }
     void set_pixel_shader(RHIShader* shader) noexcept { pixel_shader_ = shader; }
@@ -177,6 +221,9 @@ private:
     RHIShader* vertex_shader_ = nullptr;
     RHIShader* pixel_shader_ = nullptr;
     RHIShader* compute_shader_ = nullptr;
+    RHIPipeline* compute_pipeline_ = nullptr;
+    RHIPipelineLayout* compute_pipeline_layout_ = nullptr;
+    uint32_t thread_group_size_[3] = {1, 1, 1};
 };
 
 } // namespace ocarina

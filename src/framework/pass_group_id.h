@@ -8,7 +8,8 @@ namespace ocarina {
 /// Logical recording / scheduling groups. Numeric order is the default frame
 /// execution order when iterating Renderer's pass-group map.
 enum class PassGroupId : uint32_t {
-    Offscreen = 0,
+    ComputePass = 0,
+    Offscreen,
     GBuffer,
     Lighting,
     Skybox,
@@ -21,6 +22,7 @@ enum class PassGroupId : uint32_t {
 
 [[nodiscard]] inline const char* pass_group_id_name(PassGroupId id) noexcept {
     switch (id) {
+        case PassGroupId::ComputePass: return "ComputePass";
         case PassGroupId::Offscreen: return "Offscreen";
         case PassGroupId::GBuffer: return "GBuffer";
         case PassGroupId::Lighting: return "Lighting";

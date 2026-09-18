@@ -434,8 +434,9 @@ class RenderTarget;
 struct RenderPassCreation
 {
     constexpr static uint32_t MAX_COLOR_ATTACHMENTS = 8;
-    /// Required. Swapchain or offscreen texture target.
-    RenderTarget* render_target = nullptr;
+/// Required for graphics passes. May be null for compute-only passes that only
+/// run an execute callback (no begin/end render pass).
+RenderTarget* render_target = nullptr;
     float4 clear_color = {0.025f, 0.025f, 0.025f, 1.0f};
     float clear_depth = 1.0f;
     uint32_t clear_stencil = 0;

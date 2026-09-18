@@ -27,6 +27,24 @@ void attach_swapchain_semaphores(
     }
 }
 
+void record_default_graphics_body(
+    Renderer& renderer,
+    CommandBuffer& cmd,
+    RHIRenderPass* render_pass,
+    PassGroupId group_id) noexcept {
+    if (group_id == PassGroupId::Skybox) {
+        if (Material* skybox = renderer.skybox_material()) {
+            renderer.draw_fullscreen(cmd, skybox, render_pass);
+        }
+    } else if (group_id == PassGroupId::PostProcess) {
+        if (Material* post = renderer.post_process_material()) {
+            renderer.draw_fullscreen(cmd, post, render_pass);
+        }
+    } else {
+        renderer.draw_render_queues(cmd, render_pass);
+    }
+}
+
 void record_render_pass(
     Renderer& renderer,
     Device* device,
@@ -35,18 +53,25 @@ void record_render_pass(
     PassGroupId group_id,
     const RenderPassGUICallback& render_gui) noexcept
 {
+    // Compute / custom callback with no graphics target: callback owns recording.
+    if (render_pass->is_compute_pass()
+        || group_id == PassGroupId::ComputePass) {
+        if (render_pass->has_execute_callback()) {
+            render_pass->execute(cmd);
+        }
+        return;
+    }
+
     if (render_pass->is_swapchain_renderpass()) {
         attach_swapchain_semaphores(device, cmd, render_pass);
     }
 
     cmd.begin_render_pass(render_pass);
 
-    if (group_id == PassGroupId::Skybox) {
-        if (Material* skybox = renderer.skybox_material()) {
-            renderer.draw_fullscreen(cmd, skybox, render_pass);
-        }
+    if (render_pass->has_execute_callback()) {
+        render_pass->execute(cmd);
     } else {
-        renderer.draw_render_queues(cmd, render_pass);
+        record_default_graphics_body(renderer, cmd, render_pass, group_id);
     }
 
     if (render_gui) {
@@ -67,7 +92,13 @@ void record_pass_group(
     const RenderPassGUICallback& render_gui) noexcept
 {
     for (RHIRenderPass* render_pass : render_passes) {
-        if (group_id != PassGroupId::Skybox) {
+        const bool skip_queue_populate =
+            group_id == PassGroupId::Skybox
+            || group_id == PassGroupId::PostProcess
+            || group_id == PassGroupId::ComputePass
+            || render_pass->is_compute_pass()
+            || render_pass->has_execute_callback();
+        if (!skip_queue_populate) {
             renderer.populate_render_pass_queues(render_pass);
         }
 
@@ -117,8 +148,6 @@ RHIRenderPass* RenderPassTask::swapchain_render_pass() const noexcept {
 
 void RenderPassTask::ExecuteRange(enki::TaskSetPartition range, uint32_t threadnum) {
     OC_PROFILE_FUNCTION;
-
-    //log_enki_task_execute_range("RenderPassTask", threadnum, range.start, range.end, execute_thread_id_);
 
     if (range.start != 0 || renderer_ == nullptr || device_ == nullptr) {
         return;

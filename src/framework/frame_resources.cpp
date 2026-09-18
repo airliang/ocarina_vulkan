@@ -18,7 +18,7 @@ namespace ocarina {
 
 namespace {
 
-constexpr uint32_t kVertexFragmentStageFlags = 1u | 16u; // VS | PS
+constexpr uint32_t kFrameStageFlags = 1u | 16u | 32u; // VS | PS | CS
 
 float3 normalize_or_default(const float3& v, const float3& fallback) noexcept {
     const float len_sq = v.x * v.x + v.y * v.y + v.z * v.z;
@@ -40,7 +40,7 @@ ShaderVariableBinding make_frame_binding(
     result.binding = binding;
     result.descriptor_set = static_cast<uint8_t>(DescriptorSetIndex::FRAME_SET);
     result.type = type;
-    result.stage_flags = kVertexFragmentStageFlags;
+    result.stage_flags = kFrameStageFlags;
     result.size = size;
     result.count = 1;
     result.is_bindless = is_bindless;
@@ -92,6 +92,25 @@ void FrameResources::create_global_descriptor_set() {
     }
     global_ubo_descriptor_bound_ = false;
     transform_storage_descriptor_bound_ = false;
+    global_samplers_descriptor_bound_ = false;
+    init_global_samplers();
+}
+
+void FrameResources::init_global_samplers() {
+    for (uint32_t i = 0; i < kBindlessSamplerCount; ++i) {
+        global_samplers_[i] = bindless_sampler_config(i);
+    }
+}
+
+void FrameResources::bind_global_samplers_if_needed() {
+    if (global_samplers_descriptor_bound_ || global_descriptor_set_ == nullptr) {
+        return;
+    }
+
+    for (uint32_t i = 0; i < kBindlessSamplerCount; ++i) {
+        global_descriptor_set_->update_bindless_sampler_at_index(i, global_samplers_[i]);
+    }
+    global_samplers_descriptor_bound_ = true;
 }
 
 void FrameResources::release_gpu_buffers() {
@@ -108,6 +127,8 @@ void FrameResources::release_gpu_buffers() {
         transform_buffer_.reset();
     }
     transform_storage_descriptor_bound_ = false;
+
+    global_samplers_descriptor_bound_ = false;
 
     global_descriptor_sets_by_name_.clear();
     global_descriptor_set_ = nullptr;
@@ -467,6 +488,7 @@ void FrameResources::upload_global_uniform_buffer(Camera* camera) {
 void FrameResources::update_per_frame(double dt, Camera* camera) {
     upload_global_uniform_buffer(camera);
     upload_transform_buffer();
+    bind_global_samplers_if_needed();
     flush_pending_bindless_updates();
     process_material_update();
 

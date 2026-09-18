@@ -30,6 +30,7 @@ public:
         virtual void bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t first_set, uint32_t descriptor_set_count, handle_ty pipeline_layout) = 0;
         virtual void draw_indexed(uint32_t index_count, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance) = 0;
         virtual void draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance) = 0;
+        virtual void dispatch(uint32_t group_count_x, uint32_t group_count_y, uint32_t group_count_z) = 0;
         virtual void push_constants(
             const void* data,
             uint32_t offset,
@@ -146,6 +147,11 @@ public:
     void draw(uint32_t vertex_count, uint32_t instance_count = 1, uint32_t first_vertex = 0, uint32_t first_instance = 0)
     {
         impl_->draw(vertex_count, instance_count, first_vertex, first_instance);
+    }
+
+    void dispatch(uint32_t group_count_x, uint32_t group_count_y = 1, uint32_t group_count_z = 1)
+    {
+        impl_->dispatch(group_count_x, group_count_y, group_count_z);
     }
 
     void draw_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride)

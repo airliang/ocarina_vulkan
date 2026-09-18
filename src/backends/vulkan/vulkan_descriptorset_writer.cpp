@@ -17,11 +17,13 @@ VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, Vulka
     : descriptor_set_(descriptor_set), device_(device) {
     VulkanDescriptorSetLayout *layout = descriptor_set->layout();
     size_t bindings_count = layout->get_bindings_count();
-    default_image_infos_.reserve(bindings_count);
     for (size_t i = 0; i < bindings_count; ++i)
     {
         ShaderVariableBinding* binding = layout->get_binding(i);
-        if (binding && binding->type == ShaderBindingType::UniformBuffer) {
+        if (binding == nullptr) {
+            continue;
+        }
+        if (binding->type == ShaderBindingType::UniformBuffer) {
             // UBO memory is owned by FrameResources / Material — only track the binding here.
             VulkanDescriptorBuffer *descriptor_buffer = ocarina::new_with_allocator<VulkanDescriptorBuffer>();
             descriptor_buffer->binding = binding->binding;
@@ -29,7 +31,7 @@ VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, Vulka
             descriptor_buffer->buffer_ = nullptr;
             descriptors_.insert(std::make_pair(hash64(descriptor_buffer->name_), descriptor_buffer));
         }
-        else if (binding && binding->type == ShaderBindingType::StorageBuffer) {
+        else if (binding->type == ShaderBindingType::StorageBuffer) {
             VulkanDescriptorBuffer *descriptor_buffer = ocarina::new_with_allocator<VulkanDescriptorBuffer>();
             descriptor_buffer->binding = binding->binding;
             descriptor_buffer->name_ = binding->name;
@@ -37,7 +39,6 @@ VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, Vulka
             descriptors_.insert(std::make_pair(hash64(descriptor_buffer->name_), descriptor_buffer));
         }
         else if (binding->type == ShaderBindingType::CombinedImageSampler) {
-
             VulkanDescriptorImage *descriptor_image = ocarina::new_with_allocator<VulkanDescriptorImage>();
             descriptor_image->binding = binding->binding;
             descriptor_image->name_ = binding->name;
@@ -46,9 +47,6 @@ VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, Vulka
             descriptors_.insert(std::make_pair(hash64(descriptor_image->name_), descriptor_image));
             if (binding->is_bindless) {
                 bindless_textures_descriptor_ = descriptor_image;
-                bind_default_bindless_texture(binding->binding, MAX_BINDLESS_TEXTURE_ARRAY_SIZE, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-            } else {
-                bind_default_texture(binding->binding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
             }
         } else if (binding->type == ShaderBindingType::SampledImage) {
             VulkanDescriptorImage *descriptor_image = ocarina::new_with_allocator<VulkanDescriptorImage>();
@@ -59,9 +57,15 @@ VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, Vulka
             descriptors_.insert(std::make_pair(hash64(descriptor_image->name_), descriptor_image));
             if (binding->is_bindless) {
                 bindless_textures_descriptor_ = descriptor_image;
-                bind_default_bindless_texture(binding->binding, MAX_BINDLESS_TEXTURE_ARRAY_SIZE, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
-            } else {
-                bind_default_texture(binding->binding, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
+            }
+        } else if (binding->type == ShaderBindingType::StorageImage) {
+            VulkanDescriptorImage *descriptor_image = ocarina::new_with_allocator<VulkanDescriptorImage>();
+            descriptor_image->binding = binding->binding;
+            descriptor_image->name_ = binding->name;
+            descriptor_image->descriptor_type_ = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+            descriptors_.insert(std::make_pair(hash64(descriptor_image->name_), descriptor_image));
+            if (binding->is_bindless) {
+                bindless_textures_descriptor_ = descriptor_image;
             }
         } else if (binding->type == ShaderBindingType::Sampler) {
             VulkanDescriptorSampler *descriptor_sampler = ocarina::new_with_allocator<VulkanDescriptorSampler>();
@@ -70,17 +74,8 @@ VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, Vulka
             descriptors_.insert(std::make_pair(hash64(descriptor_sampler->name_), descriptor_sampler));
             if (binding->is_bindless) {
                 bindless_samplers_descriptor_ = descriptor_sampler;
-                bind_default_bindless_samplers(binding->binding, MAX_BINDLESS_SAMPLER_ARRAY_SIZE);
-            } else {
-                bind_default_sampler(binding->binding);
             }
-        } 
-        // Add other types of descriptors as needed
-    }
-
-    // Descriptor sets are allocated on the render thread; flush defaults immediately.
-    if (!writes_.empty()) {
-        build(device);
+        }
     }
 }
 
@@ -134,71 +129,6 @@ void VulkanDescriptorSetWriter::bind_texture(uint32_t binding,
     write.descriptorCount = texture_count;
     write.descriptorType = descriptor_type;
     write.pImageInfo = texture;
-    writes_.push_back(write);
-}
-
-void VulkanDescriptorSetWriter::bind_default_bindless_texture(uint32_t binding, uint32_t texture_count, VkDescriptorType descriptor_type) {
-    image_infos_.resize(texture_count);
-    VulkanTexture *default_white = VulkanDriver::instance().get_internal_white_texture();
-
-    for (uint32_t i = 0; i < texture_count; ++i) {
-        image_infos_[i] = descriptor_type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
-            ? default_white->get_sampled_image_descriptor_info()
-            : default_white->get_descriptor_info();
-    }
-
-    VkWriteDescriptorSet write{};
-    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.dstSet = descriptor_set_->descriptor_set();
-    write.dstBinding = binding;
-    write.descriptorCount = texture_count;
-    write.descriptorType = descriptor_type;
-    write.pImageInfo = image_infos_.data();
-    writes_.push_back(write);
-}
-
-void VulkanDescriptorSetWriter::bind_default_texture(uint32_t binding, VkDescriptorType descriptor_type) {
-    VulkanTexture *default_white = VulkanDriver::instance().get_internal_white_texture();
-    if (default_white == nullptr) {
-        return;
-    }
-
-    default_image_infos_.push_back(descriptor_type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
-        ? default_white->get_sampled_image_descriptor_info()
-        : default_white->get_descriptor_info());
-    bind_texture(binding, &default_image_infos_.back(), 0, 1, descriptor_type);
-}
-
-void VulkanDescriptorSetWriter::bind_default_sampler(uint32_t binding) {
-    VkSampler default_sampler = VulkanDriver::instance().get_bindless_sampler(0);
-    if (default_sampler == VK_NULL_HANDLE) {
-        return;
-    }
-
-    VkDescriptorImageInfo sampler_info{};
-    sampler_info.sampler = default_sampler;
-    sampler_info.imageView = VK_NULL_HANDLE;
-    sampler_info.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    default_image_infos_.push_back(sampler_info);
-    bind_sampler(binding, &default_image_infos_.back());
-}
-
-void VulkanDescriptorSetWriter::bind_default_bindless_samplers(uint32_t binding, uint32_t sampler_count) {
-    image_infos_.resize(sampler_count);
-    VulkanTexture* default_white = VulkanDriver::instance().get_internal_white_texture();
-    for (uint32_t i = 0; i < sampler_count; ++i) {
-        const uint32_t sampler_index = std::min(i, 3u);
-        image_infos_[i] = default_white->get_sampled_image_descriptor_info();
-        image_infos_[i].sampler = VulkanDriver::instance().get_bindless_sampler(sampler_index);
-    }
-
-    VkWriteDescriptorSet write{};
-    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.dstSet = descriptor_set_->descriptor_set();
-    write.dstBinding = binding;
-    write.descriptorCount = sampler_count;
-    write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-    write.pImageInfo = image_infos_.data();
     writes_.push_back(write);
 }
 
@@ -291,11 +221,14 @@ void VulkanDescriptorSetWriter::update_texture(uint64_t name_id, Texture *textur
         VulkanDescriptorImage *descriptor_image = static_cast<VulkanDescriptorImage *>(it->second);
         const VkDescriptorType descriptor_type = descriptor_image->descriptor_type_;
 
-        // A separate Texture2D reflects as SAMPLED_IMAGE; writing it as COMBINED_IMAGE_SAMPLER
-        // makes the update invalid, leaving the descriptor unwritten at draw time.
-        VkDescriptorImageInfo descriptor_info = descriptor_type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
-            ? vulkan_texture->get_sampled_image_descriptor_info()
-            : vulkan_texture->get_descriptor_info();
+        VkDescriptorImageInfo descriptor_info{};
+        if (descriptor_type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) {
+            descriptor_info = vulkan_texture->get_storage_image_descriptor_info();
+        } else if (descriptor_type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
+            descriptor_info = vulkan_texture->get_sampled_image_descriptor_info();
+        } else {
+            descriptor_info = vulkan_texture->get_descriptor_info();
+        }
         bind_texture(descriptor_image->binding, &descriptor_info, 0, 1, descriptor_type);
 
         //bind its sampler
@@ -382,6 +315,33 @@ void VulkanDescriptorSetWriter::update_bindless_texture_at_index(uint32_t index,
     update.dstBinding = bindless_textures_descriptor_->binding;
     update.dstArrayElement = index;
     update.descriptorType = descriptor_type;
+    update.descriptorCount = 1;
+    update.pImageInfo = &descriptor_info;
+
+    VulkanDevice* device = VulkanDriver::instance().get_device();
+    vkUpdateDescriptorSets(device->logicalDevice(), 1, &update, 0, nullptr);
+}
+
+void VulkanDescriptorSetWriter::update_bindless_sampler_at_index(uint32_t index, VkSampler sampler) {
+    if (!bindless_samplers_descriptor_ || sampler == VK_NULL_HANDLE || index == InvalidUI32) {
+        return;
+    }
+
+    if (index >= MAX_BINDLESS_SAMPLER_ARRAY_SIZE) {
+        return;
+    }
+
+    VkDescriptorImageInfo descriptor_info{};
+    descriptor_info.sampler = sampler;
+    descriptor_info.imageView = VK_NULL_HANDLE;
+    descriptor_info.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    VkWriteDescriptorSet update{};
+    update.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    update.dstSet = descriptor_set_->descriptor_set();
+    update.dstBinding = bindless_samplers_descriptor_->binding;
+    update.dstArrayElement = index;
+    update.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
     update.descriptorCount = 1;
     update.pImageInfo = &descriptor_info;
 

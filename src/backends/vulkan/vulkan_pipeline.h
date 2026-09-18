@@ -53,6 +53,11 @@ VulkanPipeline* create_vulkan_graphics_pipeline(
     RHIPipelineLayout* pipeline_layout,
     const DynamicRenderingFormats* dynamic_formats = nullptr);
 
+VulkanPipeline* create_vulkan_compute_pipeline(
+    ShaderProgram* shader_program,
+    VulkanDevice* device,
+    RHIPipelineLayout* pipeline_layout);
+
 void destroy_vulkan_graphics_pipeline(VulkanDevice* device, VulkanPipeline* pipeline) noexcept;
 
 }// namespace ocarina

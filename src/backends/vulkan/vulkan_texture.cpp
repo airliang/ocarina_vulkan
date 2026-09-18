@@ -62,11 +62,14 @@ void VulkanTexture::init_render_target(uint32_t width, uint32_t height, PixelSto
     }
 
     VkImageUsageFlags vk_usage = get_vulkan_image_usage_flags(static_cast<uint32_t>(usage));
-    if (!is_depth && (vk_usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) == 0) {
+    const bool wants_color_attachment =
+        (static_cast<uint32_t>(usage) & static_cast<uint32_t>(TextureUsageFlags::RenderTarget)) != 0;
+    if (!is_depth && wants_color_attachment && (vk_usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) == 0) {
         vk_usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     }
     if ((vk_usage & VK_IMAGE_USAGE_SAMPLED_BIT) == 0
-        && (static_cast<uint32_t>(usage) & static_cast<uint32_t>(TextureUsageFlags::ShaderReadOnly)) != 0) {
+        && ((static_cast<uint32_t>(usage) & static_cast<uint32_t>(TextureUsageFlags::ShaderReadOnly)) != 0
+            || (static_cast<uint32_t>(usage) & static_cast<uint32_t>(TextureUsageFlags::ShaderReadWrite)) != 0)) {
         vk_usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
     }
 
@@ -98,7 +101,8 @@ void VulkanTexture::init_render_target(uint32_t width, uint32_t height, PixelSto
 
     create_render_target_image_view();
 
-    if ((static_cast<uint32_t>(usage) & static_cast<uint32_t>(TextureUsageFlags::ShaderReadOnly)) != 0) {
+    if ((static_cast<uint32_t>(usage) & static_cast<uint32_t>(TextureUsageFlags::ShaderReadOnly)) != 0
+        || (static_cast<uint32_t>(usage) & static_cast<uint32_t>(TextureUsageFlags::ShaderReadWrite)) != 0) {
         TextureSampler sampler;
         create_sampler(sampler);
     }

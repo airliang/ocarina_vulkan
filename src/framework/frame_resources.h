@@ -14,6 +14,7 @@
 #include "global_uniform_buffer.h"
 #include "entity_component_system.h"
 #include "bindless_texture_registry.h"
+#include "rhi/bindless_sampler.h"
 
 namespace ocarina {
 class DescriptorSetLayout;
@@ -137,6 +138,11 @@ public:
     [[nodiscard]] TypedBuffer<GPUTransform>& transform_buffer() noexcept { return transform_buffer_; }
     [[nodiscard]] const TypedBuffer<GPUTransform>& transform_buffer() const noexcept { return transform_buffer_; }
 
+    /// Engine-owned bindless sampler table (indices match get_bindless_sampler_index).
+    [[nodiscard]] const std::array<TextureSampler, kBindlessSamplerCount>& global_samplers() const noexcept {
+        return global_samplers_;
+    }
+
     void set_sun_direction(const float3& direction) noexcept;
     void set_sun_color(const float3& color) noexcept;
     void set_sun_intensity(float intensity) noexcept;
@@ -163,6 +169,8 @@ private:
     void grow_transform_gpu_buffer(size_t element_count);
     void bind_global_ubo_if_needed();
     void bind_transform_storage_buffer_if_needed();
+    void bind_global_samplers_if_needed();
+    void init_global_samplers();
 
     Device* device_ = nullptr;
     DescriptorSetLayout* frame_descriptor_set_layout_ = nullptr;
@@ -185,6 +193,8 @@ private:
     bool global_ubo_descriptor_bound_ = false;
     TypedBuffer<GPUTransform> transform_buffer_{};
     bool transform_storage_descriptor_bound_ = false;
+    std::array<TextureSampler, kBindlessSamplerCount> global_samplers_{};
+    bool global_samplers_descriptor_bound_ = false;
     UpdateCallback update_ = nullptr;
 };
 

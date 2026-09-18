@@ -1,9 +1,11 @@
 #include "shader_program.h"
 
+#include "command_buffer.h"
 #include "context.h"
 #include "core/hash.h"
 #include "core/logging.h"
 #include "device.h"
+#include "pipeline_state.h"
 #include "shader_compiler.h"
 
 #include <algorithm>
@@ -124,6 +126,86 @@ void ShaderProgram::ensure_gpu_shaders(Device* device) {
     }
 }
 
+void ShaderProgram::ensure_compute_pipeline(Device* device) {
+    if (device == nullptr || !is_compute() || compute_pipeline_ != nullptr) {
+        return;
+    }
+
+    ensure_gpu_shaders(device);
+    if (compute_shader_ == nullptr) {
+        return;
+    }
+
+    if (compute_pipeline_layout_ == nullptr) {
+        PipelineLayoutDesc desc{};
+        if (!device->build_pipeline_layout_desc(this, desc)) {
+            return;
+        }
+        compute_pipeline_layout_ = device->create_pipeline_layout(desc);
+    }
+    if (compute_pipeline_layout_ == nullptr) {
+        return;
+    }
+
+    compute_pipeline_ = device->create_compute_pipeline(this, compute_pipeline_layout_);
+}
+
+void ShaderProgram::release_compute_pipeline(Device* device) {
+    if (device == nullptr) {
+        compute_pipeline_ = nullptr;
+        compute_pipeline_layout_ = nullptr;
+        return;
+    }
+    if (compute_pipeline_ != nullptr) {
+        device->destroy_pipeline(compute_pipeline_);
+        compute_pipeline_ = nullptr;
+    }
+    if (compute_pipeline_layout_ != nullptr) {
+        device->destroy_pipeline_layout(compute_pipeline_layout_);
+        compute_pipeline_layout_ = nullptr;
+    }
+}
+
+void ShaderProgram::dispatch(
+    CommandBuffer& cmd,
+    DescriptorSet** descriptor_sets,
+    uint32_t first_set,
+    uint32_t descriptor_set_count,
+    uint32_t group_count_x,
+    uint32_t group_count_y,
+    uint32_t group_count_z) {
+    if (compute_pipeline_ == nullptr || group_count_x == 0 || group_count_y == 0 || group_count_z == 0) {
+        return;
+    }
+
+    cmd.bind_pipeline(compute_pipeline_);
+    if (descriptor_sets != nullptr && descriptor_set_count > 0) {
+        cmd.bind_descriptor_sets(
+            descriptor_sets,
+            first_set,
+            descriptor_set_count,
+            compute_pipeline_->pipeline_layout);
+    }
+    cmd.dispatch(group_count_x, group_count_y, group_count_z);
+}
+
+void ShaderProgram::dispatch_for_extent(
+    CommandBuffer& cmd,
+    DescriptorSet** descriptor_sets,
+    uint32_t first_set,
+    uint32_t descriptor_set_count,
+    uint32_t width,
+    uint32_t height,
+    uint32_t depth) {
+    const uint32_t tg_x = std::max(thread_group_size_[0], 1u);
+    const uint32_t tg_y = std::max(thread_group_size_[1], 1u);
+    const uint32_t tg_z = std::max(thread_group_size_[2], 1u);
+    const uint32_t groups_x = (std::max(width, 1u) + tg_x - 1u) / tg_x;
+    const uint32_t groups_y = (std::max(height, 1u) + tg_y - 1u) / tg_y;
+    const uint32_t groups_z = (std::max(depth, 1u) + tg_z - 1u) / tg_z;
+    dispatch(cmd, descriptor_sets, first_set, descriptor_set_count, groups_x, groups_y, groups_z);
+}
+
 ShaderProgram* ShaderProgram::compile_graphics_from_HLSL(
     const std::string& vertex_shader_file,
     const std::string& pixel_shader_file,
@@ -193,6 +275,12 @@ ShaderProgram* ShaderProgram::compile_compute_from_HLSL(
     program->key_.compute_options = options;
     program->key_.entry_point = entry_point;
     program->compute_spirv_ = std::move(compiled.spirv);
+    program->thread_group_size_[0] = static_cast<uint32_t>(
+        std::max(compiled.reflection.thread_group_size[0], 1));
+    program->thread_group_size_[1] = static_cast<uint32_t>(
+        std::max(compiled.reflection.thread_group_size[1], 1));
+    program->thread_group_size_[2] = static_cast<uint32_t>(
+        std::max(compiled.reflection.thread_group_size[2], 1));
     program->merge_stage_reflection(
         compiled.reflection,
         ShaderType::ComputeShader,

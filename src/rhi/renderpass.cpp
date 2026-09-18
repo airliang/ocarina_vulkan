@@ -18,7 +18,6 @@ RHIRenderPass::RHIRenderPass(const RenderPassCreation &render_pass_creation)
       clear_color_attachment_(render_pass_creation.clear_color_attachment),
       clear_depth_attachment_(render_pass_creation.clear_depth_attachment),
       present_swapchain_(render_pass_creation.present_swapchain) {
-    OC_ASSERT(render_target_ != nullptr);
 }
 
 RHIRenderPass::~RHIRenderPass() {

@@ -121,6 +121,10 @@ public:
     void set_skybox_material(Material* material) noexcept { skybox_material_ = material; }
     [[nodiscard]] Material* skybox_material() const noexcept { return skybox_material_; }
 
+    /// Optional fullscreen material drawn by PassGroupId::PostProcess via draw_fullscreen.
+    void set_post_process_material(Material* material) noexcept { post_process_material_ = material; }
+    [[nodiscard]] Material* post_process_material() const noexcept { return post_process_material_; }
+
     void update_visible_render_components();
     void populate_render_pass_queues(RHIRenderPass* render_pass);
 
@@ -165,6 +169,7 @@ protected:
     Scene* scene_ = nullptr;
     Camera* camera_ = nullptr;
     Material* skybox_material_ = nullptr;
+    Material* post_process_material_ = nullptr;
     RendererPrimitiveCullTask primitive_cull_task_;
     bool frustum_culling_enabled_ = true;
     RenderPassPrimitiveFilter render_pass_primitive_filter_;

@@ -187,6 +187,15 @@ DescriptorSetLayout* VulkanDevice::create_frame_descriptor_set_layout(
 }
 
 void VulkanDevice::release_shader_program(ShaderProgram* program) noexcept {
+    if (program != nullptr) {
+        if (RHIPipeline* pipeline = program->compute_pipeline()) {
+            destroy_pipeline(pipeline);
+        }
+        if (RHIPipelineLayout* layout = program->compute_pipeline_layout()) {
+            destroy_pipeline_layout(layout);
+        }
+        program->clear_compute_pipeline();
+    }
     VulkanDriver::instance().release_program_shaders(program);
 }
 
@@ -661,6 +670,12 @@ RHIPipeline *VulkanDevice::create_pipeline(
         vulkan_render_pass->render_pass(),
         pipeline_layout,
         nullptr);
+}
+
+RHIPipeline *VulkanDevice::create_compute_pipeline(
+    ShaderProgram* shader_program,
+    RHIPipelineLayout* pipeline_layout) noexcept {
+    return create_vulkan_compute_pipeline(shader_program, this, pipeline_layout);
 }
 
 void VulkanDevice::destroy_pipeline(RHIPipeline *pipeline) noexcept {

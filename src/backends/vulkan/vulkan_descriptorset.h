@@ -182,6 +182,7 @@ public:
     void update_cubemap(uint64_t name_id, Cubemap *cubemap) override;
     void update_sampler(uint64_t name_id, const TextureSampler& sampler) override;
     void update_bindless_texture_at_index(uint32_t index, Texture *texture) override;
+    void update_bindless_sampler_at_index(uint32_t index, const TextureSampler& sampler) override;
     VulkanDescriptorSetLayout *get_layout() const {
         return layout_;
     }

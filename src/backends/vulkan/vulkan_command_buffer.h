@@ -27,6 +27,7 @@ public:
     void bind_descriptor_sets(DescriptorSet** descriptor_sets, uint32_t first_set, uint32_t descriptor_set_count, handle_ty pipeline_layout) override;
     void draw_indexed(uint32_t index_count, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance) override;
     void draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance) override;
+    void dispatch(uint32_t group_count_x, uint32_t group_count_y, uint32_t group_count_z) override;
     void push_constants(
         const void* data,
         uint32_t offset,
@@ -91,6 +92,7 @@ private:
     VkCommandBuffer vulkan_command_buffer_ = VK_NULL_HANDLE;
     VkPipelineStageFlags2 pipeline_stage_flags_; 
     VulkanPipeline* current_pipeline_ = nullptr;
+    VkPipelineBindPoint current_bind_point_ = VK_PIPELINE_BIND_POINT_GRAPHICS;
     CommandBufferState state_;
     QueueType queue_type_ = QueueType::Graphics;
     bool record_gpu_timestamps_ = true;

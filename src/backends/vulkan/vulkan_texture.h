@@ -103,6 +103,10 @@ public:
         return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     }
 
+    [[nodiscard]] VkImageLayout storage_image_layout() const noexcept {
+        return VK_IMAGE_LAYOUT_GENERAL;
+    }
+
     VkDescriptorImageInfo get_descriptor_info() const
     {
         VkDescriptorImageInfo image_info{};
@@ -116,6 +120,15 @@ public:
     {
         VkDescriptorImageInfo image_info{};
         image_info.imageLayout = sampling_image_layout();
+        image_info.imageView = image_view_;
+        image_info.sampler = VK_NULL_HANDLE;
+        return image_info;
+    }
+
+    VkDescriptorImageInfo get_storage_image_descriptor_info() const
+    {
+        VkDescriptorImageInfo image_info{};
+        image_info.imageLayout = storage_image_layout();
         image_info.imageView = image_view_;
         image_info.sampler = VK_NULL_HANDLE;
         return image_info;

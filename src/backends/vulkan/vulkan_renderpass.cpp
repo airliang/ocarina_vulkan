@@ -41,6 +41,11 @@ void VulkanRenderPass::setup_render_pass() {
         return;
     }
 
+    // Compute-only pass: no attachments / VkRenderPass.
+    if (render_target_ == nullptr) {
+        return;
+    }
+
     if (is_use_swapchain_framebuffer()) {
         VulkanSwapchain *swapChain = device_->get_swapchain();
         size_ = swapChain->resolution();
