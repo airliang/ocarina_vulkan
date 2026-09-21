@@ -22,7 +22,7 @@
 #include "framework/camera.h"
 #include "framework/resource_manager.h"
 #include "framework/material.h"
-#include "framework/shader_parameters.h"
+#include "rhi/shader_parameters.h"
 #include "framework/async_loader.h"
 #include "framework/pso_request.h"
 #include "framework/frame_resources.h"
@@ -128,15 +128,7 @@ int main(int argc, char *argv[]) {
             return;
         }
 
-        compute_program->ensure_compute_pipeline(&device);
-        RHIPipeline* pipeline = compute_program->compute_pipeline();
-        if (pipeline == nullptr) {
-            return;
-        }
-
-        // Set compute parameters before dispatch.
         compute_params->set_texture("outputTexture", compute_output);
-        compute_params->apply_uploads();
 
         const handle_ty tex_handle = reinterpret_cast<handle_ty>(compute_output->impl());
         const TextureLayout src_layout =
@@ -144,12 +136,7 @@ int main(int argc, char *argv[]) {
         cmd.transition_texture_layout(tex_handle, src_layout, TextureLayout::General);
         compute_output_initialized = true;
 
-        // Bind compute pipeline first so descriptor binds use COMPUTE bind point.
-        cmd.bind_pipeline(pipeline);
-        FrameResources::instance().bind_global_descriptor_sets(cmd, pipeline);
-        compute_params->bind(cmd, pipeline);
-        compute_program->dispatch_for_extent(
-            cmd, nullptr, 0, 0, window_size.x, window_size.y);
+        renderer.dispatch_compute_shader_for_extent(cmd, *compute_params, window_size.x, window_size.y);
 
         cmd.transition_texture_layout(
             tex_handle,

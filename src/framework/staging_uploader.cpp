@@ -367,29 +367,96 @@ uint64_t StagingUploader::upload_cubemap_faces(
     }
 
     const uint2 face_res = cubemap->face_resolution();
-    BufferTextureCopy regions[6]{};
-    const size_t face_bytes = total_bytes / 6;
-    for (uint32_t i = 0; i < 6; ++i) {
-        regions[i].buffer_offset = static_cast<uint64_t>(i) * face_bytes;
-        regions[i].mip_level = 0;
-        regions[i].base_array_layer = i;
-        regions[i].layer_count = 1;
-        regions[i].width = face_res.x;
-        regions[i].height = face_res.y;
-        regions[i].depth = 1;
-    }
-
-    if (device_ == nullptr || packed_face_pixels == nullptr || total_bytes == 0) {
+    const uint32_t mip_levels = cubemap->mip_levels();
+    const PixelStorage format = cubemap->pixel_storage();
+    const uint32_t channels = static_cast<uint32_t>(channel_num(format));
+    const size_t face_bytes = mip_level_byte_size(face_res.x, face_res.y, channels);
+    if (total_bytes < face_bytes * 6) {
         return 0;
     }
 
-    ensure_capacity(total_bytes);
+    const void *upload_pixels = packed_face_pixels;
+    size_t upload_bytes = face_bytes * 6;
+    std::vector<BufferTextureCopy> regions;
+    std::vector<uint8_t> packed_mips;
+
+    if (mip_levels <= 1) {
+        regions.resize(6);
+        for (uint32_t i = 0; i < 6; ++i) {
+            regions[i].buffer_offset = static_cast<uint64_t>(i) * face_bytes;
+            regions[i].mip_level = 0;
+            regions[i].base_array_layer = i;
+            regions[i].layer_count = 1;
+            regions[i].width = face_res.x;
+            regions[i].height = face_res.y;
+            regions[i].depth = 1;
+        }
+    } else {
+        if (!is_8bit(format)) {
+            throw std::runtime_error("Cubemap CPU mipmap generation only supports 8-bit pixel formats");
+        }
+
+        CpuMipChain face_chains[6];
+        const uint8_t *base_faces = static_cast<const uint8_t *>(packed_face_pixels);
+        for (uint32_t face = 0; face < 6; ++face) {
+            face_chains[face] = build_cpu_mip_chain(
+                base_faces + face * face_bytes,
+                face_res.x,
+                face_res.y,
+                mip_levels,
+                format);
+        }
+
+        size_t packed_bytes = 0;
+        for (uint32_t mip = 0; mip < mip_levels; ++mip) {
+            packed_bytes += mip_level_byte_size(
+                                 face_chains[0].level_widths[mip],
+                                 face_chains[0].level_heights[mip],
+                                 channels)
+                            * 6;
+        }
+        packed_mips.resize(packed_bytes);
+        regions.resize(static_cast<size_t>(mip_levels) * 6);
+
+        size_t offset = 0;
+        uint32_t region_index = 0;
+        for (uint32_t mip = 0; mip < mip_levels; ++mip) {
+            const uint32_t mip_w = face_chains[0].level_widths[mip];
+            const uint32_t mip_h = face_chains[0].level_heights[mip];
+            const size_t mip_face_bytes = mip_level_byte_size(mip_w, mip_h, channels);
+            for (uint32_t face = 0; face < 6; ++face) {
+                std::memcpy(
+                    packed_mips.data() + offset,
+                    face_chains[face].pixels.data() + face_chains[face].level_offsets[mip],
+                    mip_face_bytes);
+
+                BufferTextureCopy &region = regions[region_index++];
+                region.buffer_offset = static_cast<uint64_t>(offset);
+                region.mip_level = mip;
+                region.base_array_layer = face;
+                region.layer_count = 1;
+                region.width = mip_w;
+                region.height = mip_h;
+                region.depth = 1;
+                offset += mip_face_bytes;
+            }
+        }
+
+        upload_pixels = packed_mips.data();
+        upload_bytes = packed_mips.size();
+    }
+
+    if (device_ == nullptr || upload_pixels == nullptr || upload_bytes == 0) {
+        return 0;
+    }
+
+    ensure_capacity(upload_bytes);
     if (staging_ == 0 || !upload_timeline_.valid()) {
         return 0;
     }
 
     wait_for_staging_reuse();
-    write_staging(packed_face_pixels, total_bytes);
+    write_staging(upload_pixels, upload_bytes);
 
     CommandBuffer cmd = device_->get_command_buffer(QueueType::Copy);
     cmd.begin();
@@ -400,8 +467,8 @@ uint64_t StagingUploader::upload_cubemap_faces(
     cmd.copy_buffer_to_cubemap(
         staging_,
         reinterpret_cast<handle_ty>(cubemap->impl()),
-        regions,
-        6);
+        regions.data(),
+        static_cast<uint32_t>(regions.size()));
     cmd.transition_cubemap_layout(
         reinterpret_cast<handle_ty>(cubemap->impl()),
         TextureLayout::TransferDst,

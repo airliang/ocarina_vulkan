@@ -1,6 +1,5 @@
 #include "shader_parameters.h"
 
-#include "resource_manager.h"
 #include "rhi/command_buffer.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/device.h"
@@ -32,15 +31,15 @@ ShaderParameters::~ShaderParameters() {
 }
 
 void ShaderParameters::release_gpu_buffers() {
-    ResourceManager& resources = ResourceManager::instance();
     for (auto& [name_id, ubo] : uniform_buffers_) {
         (void)name_id;
-        if (ubo.buffer.handle() != 0) {
-            resources.release_buffer(ubo.buffer.handle());
+        if (ubo.buffer.handle() != 0 && device_ != nullptr) {
+            device_->destroy_buffer(ubo.buffer.handle());
             ubo.buffer.reset();
         }
         ubo.descriptor_bound = false;
         ubo.dirty = false;
+        ubo.use_external = false;
     }
     cached_descriptor_values_.clear();
 }
@@ -177,11 +176,11 @@ void ShaderParameters::ensure_uniform_buffer_gpus() {
         }
         const Property* property = find_property(name_id);
         const char* buffer_name = property != nullptr ? property->name.c_str() : "shader_uniform";
-        ubo.buffer = ResourceManager::instance().create_buffer<std::byte>(
-            device_,
+        const handle_ty handle = device_->create_buffer(
             ubo.size,
             GraphicBufferBindFlags::ConstantBuffer,
             buffer_name);
+        ubo.buffer = TypedBuffer<std::byte>(handle, ubo.size);
         ubo.descriptor_bound = false;
         ubo.dirty = true;
     }
@@ -204,7 +203,7 @@ bool ShaderParameters::is_ready() {
     }
     for (const auto& [name_id, ubo] : uniform_buffers_) {
         (void)name_id;
-        if (ubo.size > 0 && ubo.buffer.handle() == 0) {
+        if (ubo.size > 0 && ubo.buffer.handle() == 0 && !ubo.use_external) {
             return false;
         }
     }
@@ -212,7 +211,7 @@ bool ShaderParameters::is_ready() {
 }
 
 void ShaderParameters::upload_owned_uniform_buffer(uint64_t name_id, OwnedUniformBuffer& ubo) {
-    if (ubo.buffer.handle() == 0 || ubo.size == 0) {
+    if (ubo.use_external || ubo.buffer.handle() == 0 || ubo.size == 0) {
         return;
     }
 
@@ -225,7 +224,9 @@ void ShaderParameters::upload_owned_uniform_buffer(uint64_t name_id, OwnedUnifor
         return;
     }
 
-    ubo.buffer.copy_from_immediately(ubo.cpu_data.data(), ubo.size);
+    if (ubo.dirty) {
+        ubo.buffer.copy_from_immediately(ubo.cpu_data.data(), ubo.size);
+    }
     if (!ubo.descriptor_bound) {
         descriptor_set->update_buffer(name_id, ubo.buffer.handle(), 0, ubo.size);
         ubo.descriptor_bound = true;
@@ -233,9 +234,65 @@ void ShaderParameters::upload_owned_uniform_buffer(uint64_t name_id, OwnedUnifor
     ubo.dirty = false;
 }
 
+void ShaderParameters::flush_pending_descriptor(uint64_t name_id, CachedDescriptorValue& cached) {
+    if (!cached.dirty || cached.kind == PendingDescriptorKind::None || cached.resource == 0) {
+        return;
+    }
+
+    const Property* property = find_property(name_id);
+    if (property == nullptr) {
+        cached.dirty = false;
+        return;
+    }
+    DescriptorSet* descriptor_set = find_descriptor_set_for_property(*property);
+    if (descriptor_set == nullptr) {
+        return;
+    }
+
+    switch (cached.kind) {
+        case PendingDescriptorKind::Texture:
+            descriptor_set->update_texture(
+                name_id,
+                reinterpret_cast<Texture*>(cached.resource));
+            break;
+        case PendingDescriptorKind::Cubemap:
+            descriptor_set->update_cubemap(
+                name_id,
+                reinterpret_cast<Cubemap*>(cached.resource),
+                static_cast<uint32_t>(cached.offset));
+            break;
+        case PendingDescriptorKind::StorageBuffer:
+            descriptor_set->update_storage_buffer(
+                name_id,
+                cached.resource,
+                cached.offset,
+                cached.size);
+            break;
+        case PendingDescriptorKind::UniformBuffer:
+            descriptor_set->update_buffer(
+                name_id,
+                cached.resource,
+                static_cast<uint32_t>(cached.offset),
+                static_cast<uint32_t>(cached.size));
+            break;
+        case PendingDescriptorKind::None:
+        default:
+            break;
+    }
+    cached.dirty = false;
+}
+
 void ShaderParameters::apply_uploads() {
     ensure_gpu_ready();
+
+    for (auto& [name_id, cached] : cached_descriptor_values_) {
+        flush_pending_descriptor(name_id, cached);
+    }
+
     for (auto& [name_id, ubo] : uniform_buffers_) {
+        if (ubo.use_external) {
+            continue;
+        }
         if (!ubo.dirty && ubo.descriptor_bound) {
             continue;
         }
@@ -246,13 +303,11 @@ void ShaderParameters::apply_uploads() {
     }
 }
 
-void ShaderParameters::bind(CommandBuffer& cmd, const RHIPipeline* pipeline) {
+void ShaderParameters::bind_local_descriptor_sets(CommandBuffer& cmd, const RHIPipeline* pipeline) {
     if (pipeline == nullptr || pipeline->pipeline_layout == 0
         || pipeline->pipeline_layout == InvalidUI64) {
         return;
     }
-
-    apply_uploads();
 
     for (uint32_t set_index = 0; set_index < MAX_DESCRIPTOR_SETS_PER_SHADER; ++set_index) {
         if (set_index == kFrameSetIndex) {
@@ -264,6 +319,11 @@ void ShaderParameters::bind(CommandBuffer& cmd, const RHIPipeline* pipeline) {
         }
         cmd.bind_descriptor_sets(&descriptor_set, set_index, 1, pipeline->pipeline_layout);
     }
+}
+
+void ShaderParameters::bind(CommandBuffer& cmd, const RHIPipeline* pipeline) {
+    apply_uploads();
+    bind_local_descriptor_sets(cmd, pipeline);
 }
 
 const ShaderParameters::Property* ShaderParameters::find_property(uint64_t name_id) const noexcept {
@@ -289,19 +349,25 @@ DescriptorSet* ShaderParameters::find_descriptor_set_for_property(const Property
     return descriptor_sets_[property.descriptor_set];
 }
 
-bool ShaderParameters::cache_descriptor_value(
+bool ShaderParameters::stage_descriptor_value(
     uint64_t name_id,
+    PendingDescriptorKind kind,
     handle_ty resource,
     uint64_t offset,
     uint64_t size) noexcept {
-    const auto it = cached_descriptor_values_.find(name_id);
-    if (it != cached_descriptor_values_.end()
-        && it->second.resource == resource
-        && it->second.offset == offset
-        && it->second.size == size) {
+    auto& cached = cached_descriptor_values_[name_id];
+    if (cached.kind == kind
+        && cached.resource == resource
+        && cached.offset == offset
+        && cached.size == size
+        && !cached.dirty) {
         return false;
     }
-    cached_descriptor_values_[name_id] = CachedDescriptorValue{resource, offset, size};
+    cached.kind = kind;
+    cached.resource = resource;
+    cached.offset = offset;
+    cached.size = size;
+    cached.dirty = true;
     return true;
 }
 
@@ -340,6 +406,7 @@ void ShaderParameters::write_uniform_member(uint64_t name_id, const void* data, 
     }
     std::memcpy(ubo->cpu_data.data() + property->offset, data, copy_size);
     ubo->dirty = true;
+    ubo->use_external = false;
 }
 
 void ShaderParameters::set_buffer(const char* name, handle_ty buffer, uint64_t offset, uint64_t size) {
@@ -350,19 +417,11 @@ void ShaderParameters::set_buffer(const char* name, handle_ty buffer, uint64_t o
 }
 
 void ShaderParameters::set_buffer(uint64_t name_id, handle_ty buffer, uint64_t offset, uint64_t size) {
-    ensure_gpu_ready();
     const Property* property = find_property(name_id);
     if (property == nullptr || property->kind != PropertyKind::StorageBuffer || buffer == 0) {
         return;
     }
-    DescriptorSet* descriptor_set = find_descriptor_set_for_property(*property);
-    if (descriptor_set == nullptr) {
-        return;
-    }
-    if (!cache_descriptor_value(name_id, buffer, offset, size)) {
-        return;
-    }
-    descriptor_set->update_storage_buffer(name_id, buffer, offset, size);
+    stage_descriptor_value(name_id, PendingDescriptorKind::StorageBuffer, buffer, offset, size);
 }
 
 void ShaderParameters::set_texture(const char* name, Texture* texture) {
@@ -373,20 +432,34 @@ void ShaderParameters::set_texture(const char* name, Texture* texture) {
 }
 
 void ShaderParameters::set_texture(uint64_t name_id, Texture* texture) {
-    ensure_gpu_ready();
     const Property* property = find_property(name_id);
     if (property == nullptr || property->kind != PropertyKind::Texture || texture == nullptr) {
         return;
     }
-    DescriptorSet* descriptor_set = find_descriptor_set_for_property(*property);
-    if (descriptor_set == nullptr) {
+    stage_descriptor_value(
+        name_id,
+        PendingDescriptorKind::Texture,
+        reinterpret_cast<handle_ty>(texture));
+}
+
+void ShaderParameters::set_cubemap(const char* name, Cubemap* cubemap, uint32_t mip_level) {
+    if (name == nullptr) {
         return;
     }
-    const handle_ty texture_handle = reinterpret_cast<handle_ty>(texture);
-    if (!cache_descriptor_value(name_id, texture_handle)) {
+    set_cubemap(hash64(name), cubemap, mip_level);
+}
+
+void ShaderParameters::set_cubemap(uint64_t name_id, Cubemap* cubemap, uint32_t mip_level) {
+    const Property* property = find_property(name_id);
+    if (property == nullptr || property->kind != PropertyKind::Texture || cubemap == nullptr) {
         return;
     }
-    descriptor_set->update_texture(name_id, texture);
+    stage_descriptor_value(
+        name_id,
+        PendingDescriptorKind::Cubemap,
+        reinterpret_cast<handle_ty>(cubemap),
+        mip_level,
+        0);
 }
 
 void ShaderParameters::set_uniform_buffer(
@@ -405,24 +478,21 @@ void ShaderParameters::set_uniform_buffer(
     handle_ty buffer,
     uint32_t offset,
     uint32_t size) {
-    ensure_gpu_ready();
     const Property* property = find_property(name_id);
     if (property == nullptr || property->kind != PropertyKind::UniformBuffer || buffer == 0) {
         return;
     }
-    DescriptorSet* descriptor_set = find_descriptor_set_for_property(*property);
-    if (descriptor_set == nullptr) {
-        return;
-    }
-    if (!cache_descriptor_value(name_id, buffer, offset, size)) {
-        return;
-    }
-    // Prefer external buffer over owned CPU staging for this binding.
     if (OwnedUniformBuffer* owned = find_owned_uniform_buffer(name_id)) {
-        owned->descriptor_bound = true;
+        owned->use_external = true;
         owned->dirty = false;
+        owned->descriptor_bound = true;
     }
-    descriptor_set->update_buffer(name_id, buffer, offset, size);
+    stage_descriptor_value(
+        name_id,
+        PendingDescriptorKind::UniformBuffer,
+        buffer,
+        offset,
+        size);
 }
 
 void ShaderParameters::set_float(const char* name, float value) {

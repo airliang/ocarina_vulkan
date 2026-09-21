@@ -248,7 +248,7 @@ void VulkanDescriptorSetWriter::update_texture(uint64_t name_id, Texture *textur
     }
 }
 
-void VulkanDescriptorSetWriter::update_cubemap(uint64_t name_id, Cubemap *cubemap) {
+void VulkanDescriptorSetWriter::update_cubemap(uint64_t name_id, Cubemap *cubemap, uint32_t mip_level) {
     auto it = descriptors_.find(name_id);
     if (it == descriptors_.end() || cubemap == nullptr) {
         return;
@@ -258,9 +258,14 @@ void VulkanDescriptorSetWriter::update_cubemap(uint64_t name_id, Cubemap *cubema
     VulkanDescriptorImage *descriptor_image = static_cast<VulkanDescriptorImage *>(it->second);
     const VkDescriptorType descriptor_type = descriptor_image->descriptor_type_;
 
-    VkDescriptorImageInfo descriptor_info = descriptor_type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
-        ? vulkan_cubemap->get_sampled_image_descriptor_info()
-        : vulkan_cubemap->get_descriptor_info();
+    VkDescriptorImageInfo descriptor_info{};
+    if (descriptor_type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) {
+        descriptor_info = vulkan_cubemap->get_storage_image_descriptor_info(mip_level);
+    } else if (descriptor_type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
+        descriptor_info = vulkan_cubemap->get_sampled_image_descriptor_info();
+    } else {
+        descriptor_info = vulkan_cubemap->get_descriptor_info();
+    }
     bind_texture(descriptor_image->binding, &descriptor_info, 0, 1, descriptor_type);
 
     VkDescriptorImageInfo sampler_info{};

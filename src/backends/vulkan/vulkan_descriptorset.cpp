@@ -60,10 +60,10 @@ void VulkanDescriptorSet::update_texture(uint64_t name_id, Texture *texture) {
     }
 }
 
-void VulkanDescriptorSet::update_cubemap(uint64_t name_id, Cubemap *cubemap) {
+void VulkanDescriptorSet::update_cubemap(uint64_t name_id, Cubemap *cubemap, uint32_t mip_level) {
     ShaderVariableBinding* binding = layout_->get_binding_by_nameid(name_id);
     if (binding && writer_) {
-        writer_->update_cubemap(name_id, cubemap);
+        writer_->update_cubemap(name_id, cubemap, mip_level);
     }
 }
 

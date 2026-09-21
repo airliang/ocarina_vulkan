@@ -7,6 +7,20 @@ namespace ocarina {
 
 Cubemap::Cubemap(
     Device::Impl *device,
+    uint32_t width,
+    uint32_t height,
+    PixelStorage pixel_storage,
+    const TextureSampler &sampler,
+    TextureUsageFlags usage,
+    uint32_t mip_levels)
+    : RHIResource(device, Tag::CUBEMAP, 0) {
+    OC_ASSERT(device != nullptr);
+    OC_ASSERT(width > 0 && height > 0);
+    handle_ = device->create_cubemap(width, height, pixel_storage, sampler, usage, mip_levels);
+}
+
+Cubemap::Cubemap(
+    Device::Impl *device,
     const Image (&faces)[6],
     const TextureSampler &sampler)
     : RHIResource(device, Tag::CUBEMAP, 0) {
@@ -23,7 +37,8 @@ Cubemap::Cubemap(
         faces[0].resolution().x,
         faces[0].resolution().y,
         faces[0].pixel_storage(),
-        sampler);
+        sampler,
+        cubemap_sampled_upload_usage());
 }
 
 }// namespace ocarina

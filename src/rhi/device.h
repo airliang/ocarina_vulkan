@@ -91,7 +91,9 @@ public:
             uint32_t width,
             uint32_t height,
             PixelStorage pixel_storage,
-            const TextureSampler &sampler) noexcept = 0;
+            const TextureSampler &sampler,
+            TextureUsageFlags usage,
+            uint32_t mip_levels = 1) noexcept = 0;
         virtual void destroy_cubemap(handle_ty handle) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_shader_from_program(ShaderProgram* program, ShaderType stage) noexcept = 0;

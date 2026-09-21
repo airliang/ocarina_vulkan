@@ -1,0 +1,71 @@
+// Lambertian irradiance convolution (split-sum IBL, Phase 2).
+// Hemisphere Riemann sum matches liangairan/pbr/prefilterIrradianceCubemap.
+#include "frame.hlsl"
+#include "descriptor_bindings.hlsl"
+
+#define PI 3.14159265359
+
+[[vk::binding(0, MATERIAL_SET)]] TextureCube envMap : register(t0);
+[[vk::binding(1, MATERIAL_SET)]] SamplerState sampler_envMap : register(s0);
+
+[[vk::binding(2, MATERIAL_SET)]]
+[[vk::image_format("rgba8")]]
+RWTexture2DArray<unorm float4> irradianceMap : register(u0);
+
+float3 CubemapDirection(uint faceIndex, float2 uv)
+{
+    // uv in [0,1], image origin at top-left. Face order: +X,-X,+Y,-Y,+Z,-Z.
+    float2 st = uv * 2.0 - 1.0;
+    if (faceIndex == 0) {
+        return float3(1.0, -st.y, -st.x);
+    }
+    if (faceIndex == 1) {
+        return float3(-1.0, -st.y, st.x);
+    }
+    if (faceIndex == 2) {
+        return float3(st.x, 1.0, st.y);
+    }
+    if (faceIndex == 3) {
+        return float3(st.x, -1.0, -st.y);
+    }
+    if (faceIndex == 4) {
+        return float3(st.x, -st.y, 1.0);
+    }
+    return float3(-st.x, -st.y, -1.0);
+}
+
+[numthreads(8, 8, 1)]
+void main(uint3 DTid : SV_DispatchThreadID)
+{
+    uint width = 0;
+    uint height = 0;
+    uint layers = 0;
+    irradianceMap.GetDimensions(width, height, layers);
+    if (DTid.x >= width || DTid.y >= height || DTid.z >= 6) {
+        return;
+    }
+
+    float2 uv = (float2(DTid.xy) + 0.5) / float2(width, height);
+    float3 N = normalize(CubemapDirection(DTid.z, uv));
+
+    float3 up = abs(N.y) < 0.999 ? float3(0.0, 1.0, 0.0) : float3(0.0, 0.0, 1.0);
+    float3 right = normalize(cross(up, N));
+    up = cross(N, right);
+
+    float3 irradiance = float3(0.0, 0.0, 0.0);
+    const float sampleDelta = 0.025;
+    float nrSamples = 0.0;
+    for (float phi = 0.0; phi < 2.0 * PI; phi += sampleDelta)
+    {
+        for (float theta = 0.0; theta < 0.5 * PI; theta += sampleDelta)
+        {
+            float3 tangentSample = float3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
+            float3 sampleVec = tangentSample.x * right + tangentSample.y * up + tangentSample.z * N;
+            irradiance += envMap.SampleLevel(sampler_envMap, sampleVec, 0.0).rgb * cos(theta) * sin(theta);
+            nrSamples += 1.0;
+        }
+    }
+    irradiance = PI * irradiance * (1.0 / max(nrSamples, 1.0));
+
+    irradianceMap[DTid] = float4(irradiance, 1.0);
+}

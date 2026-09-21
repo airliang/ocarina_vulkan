@@ -585,22 +585,44 @@ Texture* ResourceManager::create_render_target_texture(
     return texture;
 }
 
-Cubemap* ResourceManager::create_cubemap(
+Cubemap* ResourceManager::create_empty_cubemap(
     Device* device,
-    const Image (&faces)[6],
-    const TextureSampler& sampler) {
+    uint32_t width,
+    uint32_t height,
+    PixelStorage pixel_storage,
+    const TextureSampler& sampler,
+    TextureUsageFlags usage,
+    uint32_t mip_levels) {
     Cubemap* cubemap = ocarina::new_with_allocator<Cubemap>(
         device->impl(),
-        faces,
-        sampler);
+        width,
+        height,
+        pixel_storage,
+        sampler,
+        usage,
+        mip_levels);
     if (cubemap == nullptr) {
         return nullptr;
     }
+
+    cubemap->set_gpu_resource_state(GPUResourceState::GPU_Ready);
 
     {
         std::lock_guard<std::mutex> l{mutex_};
         cubemaps_.push_back(cubemap);
     }
+    return cubemap;
+}
+
+void ResourceManager::upload_cubemap_faces(
+    Device* device,
+    Cubemap* cubemap,
+    const Image (&faces)[6]) {
+    if (device == nullptr || cubemap == nullptr) {
+        return;
+    }
+
+    cubemap->set_gpu_resource_state(GPUResourceState::CPU_Loaded);
 
     auto request = std::make_shared<CubemapGPUResourceRequest>(device, cubemap);
     size_t total_bytes = 0;
@@ -619,6 +641,24 @@ Cubemap* ResourceManager::create_cubemap(
     }
 
     GPUResourceThread::instance().enqueue(std::move(request));
+}
+
+Cubemap* ResourceManager::create_cubemap(
+    Device* device,
+    const Image (&faces)[6],
+    const TextureSampler& sampler) {
+    Cubemap* cubemap = create_empty_cubemap(
+        device,
+        faces[0].resolution().x,
+        faces[0].resolution().y,
+        faces[0].pixel_storage(),
+        sampler,
+        cubemap_sampled_upload_usage());
+    if (cubemap == nullptr) {
+        return nullptr;
+    }
+
+    upload_cubemap_faces(device, cubemap, faces);
     return cubemap;
 }
 

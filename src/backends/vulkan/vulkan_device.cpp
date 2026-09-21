@@ -255,9 +255,11 @@ handle_ty VulkanDevice::create_cubemap(
     uint32_t width,
     uint32_t height,
     PixelStorage pixel_storage,
-    const TextureSampler &sampler) noexcept {
+    const TextureSampler &sampler,
+    TextureUsageFlags usage,
+    uint32_t mip_levels) noexcept {
     auto cubemap = ocarina::new_with_allocator<VulkanCubemap>(
-        this, width, height, pixel_storage, sampler);
+        this, width, height, pixel_storage, sampler, usage, mip_levels);
     return reinterpret_cast<handle_ty>(cubemap);
 }
 

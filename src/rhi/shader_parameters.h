@@ -7,6 +7,7 @@
 #include "rhi/shader_program.h"
 #include "rhi/resources/buffer.h"
 #include "rhi/resources/texture.h"
+#include "rhi/resources/cubemap.h"
 #include "math/basic_types.h"
 
 namespace ocarina {
@@ -18,8 +19,12 @@ class CommandBuffer;
 struct RHIPipeline;
 
 /// CPU/GPU parameter block for a ShaderProgram (typically compute).
-/// Owns descriptor sets for set indices > 0 (set 0 is FrameResources / global).
-class OC_FRAMEWORK_API ShaderParameters {
+/// Owns descriptor sets for set indices > 0 (set 0 is FRAME / global — bound separately).
+///
+/// Setters only stage CPU state and mark bindings dirty (safe off the render thread).
+/// Descriptor / UBO GPU updates run in apply_uploads() / bind() on the render thread.
+/// Dispatch via Renderer::dispatch_compute_shader(_for_extent).
+class OC_RHI_API ShaderParameters {
 public:
     enum class PropertyKind : uint8_t {
         UniformMember = 0,
@@ -48,15 +53,16 @@ public:
     ShaderParameters& operator=(const ShaderParameters&) = delete;
 
     [[nodiscard]] ShaderProgram* shader_program() const noexcept { return shader_program_; }
+    [[nodiscard]] Device* device() const noexcept { return device_; }
 
     /// Allocate local descriptor sets / UBO GPU buffers if needed (render thread).
     void ensure_gpu_ready();
     [[nodiscard]] bool is_ready();
 
-    /// Flush dirty owned uniform buffers to GPU and update descriptors.
+    /// Flush dirty owned UBOs and pending descriptor writes (render thread).
     void apply_uploads();
 
-    /// Bind all local descriptor sets (set > 0) for the given pipeline layout.
+    /// Flush pending updates, then bind all local descriptor sets (set > 0).
     void bind(CommandBuffer& cmd, const RHIPipeline* pipeline);
 
     /// Storage buffer binding (StructuredBuffer / RWStructuredBuffer / ByteAddressBuffer).
@@ -66,6 +72,10 @@ public:
     /// Sampled texture or storage image (RWTexture) — type comes from reflection.
     void set_texture(const char* name, Texture* texture);
     void set_texture(uint64_t name_id, Texture* texture);
+
+    /// Sampled TextureCube or storage image (RWTexture2DArray of one cube mip).
+    void set_cubemap(const char* name, Cubemap* cubemap, uint32_t mip_level = 0);
+    void set_cubemap(uint64_t name_id, Cubemap* cubemap, uint32_t mip_level = 0);
 
     /// Bind an external uniform buffer to a reflected UBO binding.
     void set_uniform_buffer(const char* name, handle_ty buffer, uint32_t offset, uint32_t size);
@@ -87,34 +97,49 @@ public:
     void release_gpu_buffers();
 
 private:
+    enum class PendingDescriptorKind : uint8_t {
+        None = 0,
+        Texture,
+        Cubemap,
+        StorageBuffer,
+        UniformBuffer,
+    };
+
     struct OwnedUniformBuffer {
         uint32_t size = 0;
         TypedBuffer<std::byte> buffer{};
         std::vector<uint8_t> cpu_data{};
         bool descriptor_bound = false;
         bool dirty = false;
+        /// When true, an external UBO binding is staged; skip owned CPU upload path.
+        bool use_external = false;
     };
 
-    /// Last value written to a descriptor binding; skip GPU update when unchanged.
+    /// Staged descriptor binding; GPU write happens in apply_uploads().
     struct CachedDescriptorValue {
+        PendingDescriptorKind kind = PendingDescriptorKind::None;
         handle_ty resource = 0;
         uint64_t offset = 0;
         uint64_t size = 0;
+        bool dirty = false;
     };
 
     void init_from_reflection();
     void allocate_descriptor_sets();
     void ensure_uniform_buffer_gpus();
     void upload_owned_uniform_buffer(uint64_t name_id, OwnedUniformBuffer& ubo);
+    void flush_pending_descriptor(uint64_t name_id, CachedDescriptorValue& cached);
+    void bind_local_descriptor_sets(CommandBuffer& cmd, const RHIPipeline* pipeline);
     void write_uniform_member(uint64_t name_id, const void* data, size_t size);
 
     [[nodiscard]] const Property* find_property(uint64_t name_id) const noexcept;
     [[nodiscard]] OwnedUniformBuffer* find_owned_uniform_buffer(uint64_t name_id) noexcept;
     [[nodiscard]] DescriptorSet* find_descriptor_set_for_property(const Property& property) const noexcept;
 
-    /// Returns true if the cached value changed and the descriptor should be rewritten.
-    [[nodiscard]] bool cache_descriptor_value(
+    /// Stage a descriptor value. Returns true if the staged value changed (marked dirty).
+    [[nodiscard]] bool stage_descriptor_value(
         uint64_t name_id,
+        PendingDescriptorKind kind,
         handle_ty resource,
         uint64_t offset = 0,
         uint64_t size = 0) noexcept;

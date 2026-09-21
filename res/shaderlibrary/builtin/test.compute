@@ -1,0 +1,30 @@
+// Compute shader that fills an output texture using screen UVs.
+// Includes the same FRAME_SET (set 0) resources as mesh.vert / mesh.frag.
+#include "frame.hlsl"
+#include "descriptor_bindings.hlsl"
+
+[[vk::binding(0, MATERIAL_SET)]]
+[[vk::image_format("rgba8")]]
+RWTexture2D<unorm float4> outputTexture : register(u0);
+
+[numthreads(8, 8, 1)]
+void main(uint3 DTid : SV_DispatchThreadID)
+{
+    uint width = 0;
+    uint height = 0;
+    outputTexture.GetDimensions(width, height);
+    if (DTid.x >= width || DTid.y >= height) {
+        return;
+    }
+
+    float2 uv = (float2(DTid.xy) + 0.5) / float2(width, height);
+
+    // Color from UV across the whole screen; tint with camera/sun from global_ubo
+    // so the FRAME_SET bindings are actually used.
+    float3 base = float3(uv, 0.25 + 0.75 * uv.x * uv.y);
+    float3 tint = saturate(sunColor.rgb) * max(sunIntensity, 0.0);
+    float3 color = lerp(base, base * (0.5 + 0.5 * tint), 0.35);
+    color += 0.05 * saturate(cameraPos.xyz * 0.01);
+
+    outputTexture[DTid.xy] = float4(color, 1.0);
+}

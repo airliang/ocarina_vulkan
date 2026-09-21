@@ -114,6 +114,23 @@ public:
         const TextureViewCreation& texture_view,
         const TextureSampler& sampler) const noexcept;
 
+    /// Create an empty cubemap immediately (no pixel upload).
+    /// @p mip_levels 0 = full chain, 1 = base level only.
+    [[nodiscard]] Cubemap* create_empty_cubemap(
+        Device* device,
+        uint32_t width,
+        uint32_t height,
+        PixelStorage pixel_storage,
+        const TextureSampler& sampler,
+        TextureUsageFlags usage,
+        uint32_t mip_levels = 1);
+
+    /// Bake six CPU faces into an existing cubemap (CopyDst usage required).
+    void upload_cubemap_faces(
+        Device* device,
+        Cubemap* cubemap,
+        const Image (&faces)[6]);
+
     /// Create a cubemap from six faces (+X,-X,+Y,-Y,+Z,-Z) and enqueue GPU upload.
     [[nodiscard]] Cubemap* create_cubemap(
         Device* device,

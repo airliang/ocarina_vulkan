@@ -29,6 +29,7 @@ class Device;
 class Scene;
 class Camera;
 class Material;
+class ShaderParameters;
 
 
 class Renderer : public concepts::Noncopyable {
@@ -116,6 +117,22 @@ public:
     void draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass);
     /// Bind material pipeline + descriptors and draw a fullscreen triangle (no mesh).
     void draw_fullscreen(CommandBuffer& cmd, Material* material, RHIRenderPass* render_pass);
+
+    /// Flush ShaderParameters, bind compute PSO + FRAME set + local sets, then dispatch.
+    void dispatch_compute_shader(
+        CommandBuffer& cmd,
+        ShaderParameters& parameters,
+        uint32_t group_count_x,
+        uint32_t group_count_y = 1,
+        uint32_t group_count_z = 1);
+
+    /// Same as dispatch_compute_shader, covering a 2D/3D extent with the program's thread group size.
+    void dispatch_compute_shader_for_extent(
+        CommandBuffer& cmd,
+        ShaderParameters& parameters,
+        uint32_t width,
+        uint32_t height,
+        uint32_t depth = 1);
 
     /// Optional skybox material drawn by PassGroupId::Skybox via draw_fullscreen.
     void set_skybox_material(Material* material) noexcept { skybox_material_ = material; }

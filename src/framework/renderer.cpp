@@ -17,6 +17,8 @@
 #include "renderer_primitive_cull_task.h"
 #include "rhi/device.h"
 #include "rhi/renderpass.h"
+#include "rhi/shader_parameters.h"
+#include "rhi/shader_program.h"
 #include "rhi/vertex_buffer.h"
 #include "rhi/index_buffer.h"
 #include "rhi/descriptor_set.h"
@@ -335,6 +337,51 @@ void Renderer::draw_fullscreen(CommandBuffer& cmd, Material* material, RHIRender
     }
 
     FullscreenTriangle::draw(cmd);
+}
+
+void Renderer::dispatch_compute_shader(
+    CommandBuffer& cmd,
+    ShaderParameters& parameters,
+    uint32_t group_count_x,
+    uint32_t group_count_y,
+    uint32_t group_count_z) {
+    ShaderProgram* program = parameters.shader_program();
+    Device* device = parameters.device();
+    if (program == nullptr || device == nullptr
+        || group_count_x == 0 || group_count_y == 0 || group_count_z == 0) {
+        return;
+    }
+
+    program->ensure_compute_pipeline(device);
+    RHIPipeline* pipeline = program->compute_pipeline();
+    if (pipeline == nullptr) {
+        return;
+    }
+
+    cmd.bind_pipeline(pipeline);
+    FrameResources::instance().bind_global_descriptor_sets(cmd, pipeline);
+    parameters.bind(cmd, pipeline);
+    cmd.dispatch(group_count_x, group_count_y, group_count_z);
+}
+
+void Renderer::dispatch_compute_shader_for_extent(
+    CommandBuffer& cmd,
+    ShaderParameters& parameters,
+    uint32_t width,
+    uint32_t height,
+    uint32_t depth) {
+    ShaderProgram* program = parameters.shader_program();
+    if (program == nullptr) {
+        return;
+    }
+
+    const uint32_t tg_x = std::max(program->thread_group_size_x(), 1u);
+    const uint32_t tg_y = std::max(program->thread_group_size_y(), 1u);
+    const uint32_t tg_z = std::max(program->thread_group_size_z(), 1u);
+    const uint32_t groups_x = (std::max(width, 1u) + tg_x - 1u) / tg_x;
+    const uint32_t groups_y = (std::max(height, 1u) + tg_y - 1u) / tg_y;
+    const uint32_t groups_z = (std::max(depth, 1u) + tg_z - 1u) / tg_z;
+    dispatch_compute_shader(cmd, parameters, groups_x, groups_y, groups_z);
 }
 
 void Renderer::cull_visible_primitives_parallel(Scene& scene, const Frustum& frustum) {

@@ -4,6 +4,8 @@
 #include "core/profiler.h"
 #include "math/basic_types.h"
 
+#include <algorithm>
+
 namespace ocarina {
 
 VulkanCubemap::VulkanCubemap(
@@ -11,14 +13,24 @@ VulkanCubemap::VulkanCubemap(
     uint32_t width,
     uint32_t height,
     PixelStorage pixel_storage,
-    const TextureSampler &sampler)
+    const TextureSampler &sampler,
+    TextureUsageFlags usage,
+    uint32_t mip_levels)
     : device_(device) {
     PROFILE_SCOPE();
     texture_sampler_ = sampler;
+    usage_flags_ = usage;
     face_res_ = make_uint2(width, height);
     pixel_storage_ = pixel_storage;
     image_format_ = get_vulkan_format(pixel_storage_, false);
-    mip_levels_ = 1;
+    const uint32_t full_mips = cubemap_mip_count(width, height);
+    mip_levels_ = mip_levels == 0 ? full_mips : std::min(mip_levels, full_mips);
+    mip_levels_ = std::max(mip_levels_, 1u);
+
+    VkImageUsageFlags vk_usage = get_vulkan_image_usage_flags(static_cast<uint32_t>(usage));
+    if (vk_usage == 0) {
+        vk_usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    }
 
     VkImageCreateInfo image_info{};
     image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -32,7 +44,7 @@ VulkanCubemap::VulkanCubemap(
     image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
     image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    image_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    image_info.usage = vk_usage;
 
     VK_CHECK_RESULT(vkCreateImage(device_->logicalDevice(), &image_info, nullptr, &image_));
 
@@ -66,7 +78,34 @@ VulkanCubemap::VulkanCubemap(
     view_info.subresourceRange.layerCount = 6;
     VK_CHECK_RESULT(vkCreateImageView(device_->logicalDevice(), &view_info, nullptr, &image_view_));
 
+    if ((static_cast<uint32_t>(usage) & static_cast<uint32_t>(TextureUsageFlags::ShaderReadWrite)) != 0) {
+        create_storage_mip_views();
+    }
+
     create_sampler(sampler);
+}
+
+void VulkanCubemap::create_storage_mip_views() {
+    storage_mip_views_.resize(mip_levels_);
+    for (uint32_t mip = 0; mip < mip_levels_; ++mip) {
+        VkImageViewCreateInfo view_info{};
+        view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        view_info.image = image_;
+        view_info.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+        view_info.format = image_format_;
+        view_info.components = {
+            VK_COMPONENT_SWIZZLE_R,
+            VK_COMPONENT_SWIZZLE_G,
+            VK_COMPONENT_SWIZZLE_B,
+            VK_COMPONENT_SWIZZLE_A};
+        view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        view_info.subresourceRange.baseMipLevel = mip;
+        view_info.subresourceRange.levelCount = 1;
+        view_info.subresourceRange.baseArrayLayer = 0;
+        view_info.subresourceRange.layerCount = 6;
+        VK_CHECK_RESULT(vkCreateImageView(
+            device_->logicalDevice(), &view_info, nullptr, &storage_mip_views_[mip]));
+    }
 }
 
 void VulkanCubemap::create_sampler(const TextureSampler &sampler_creation) {
@@ -92,6 +131,12 @@ VulkanCubemap::~VulkanCubemap() {
     if (sampler_ != VK_NULL_HANDLE) {
         vkDestroySampler(device_->logicalDevice(), sampler_, nullptr);
     }
+    for (VkImageView view : storage_mip_views_) {
+        if (view != VK_NULL_HANDLE) {
+            vkDestroyImageView(device_->logicalDevice(), view, nullptr);
+        }
+    }
+    storage_mip_views_.clear();
     if (image_view_ != VK_NULL_HANDLE) {
         vkDestroyImageView(device_->logicalDevice(), image_view_, nullptr);
     }
