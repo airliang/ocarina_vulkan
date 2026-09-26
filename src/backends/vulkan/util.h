@@ -85,6 +85,9 @@ static VkFormat get_vulkan_format(PixelStorage format, bool srgb) {
         case ocarina::PixelStorage::FLOAT4:
             return VK_FORMAT_R32G32B32A32_SFLOAT;
             break;
+        case ocarina::PixelStorage::HALF4:
+            return VK_FORMAT_R16G16B16A16_SFLOAT;
+            break;
         case ocarina::PixelStorage::UNKNOWN:
             break;
         default:

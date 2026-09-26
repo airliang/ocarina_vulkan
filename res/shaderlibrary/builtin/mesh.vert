@@ -9,6 +9,7 @@ struct VSInput
 [[vk::location(1)]] float3 Normal : NORMAL0;
 [[vk::location(2)]] float2 UV : TEXCOORD0;
 [[vk::location(3)]] float4 Color : COLOR0;
+[[vk::location(4)]] float4 Tangent : TANGENT0;
 };
 
 [[vk::push_constant]]
@@ -23,6 +24,7 @@ struct VSOutput
 [[vk::location(3)]] float3 ViewVec : TEXCOORD1;
 [[vk::location(4)]] float3 LightVec : TEXCOORD2;
 [[vk::location(5)]] float3 WorldPos : TEXCOORD3;
+[[vk::location(6)]] float4 Tangent : TANGENT0;
 };
 
 VSOutput main(VSInput input)
@@ -35,6 +37,10 @@ VSOutput main(VSInput input)
 
 	float3x3 normalMatrix = transpose((float3x3)transform.modelMatrixInverse);
 	output.Normal = normalize(mul(normalMatrix, input.Normal));
+	float3 worldTangent = normalize(mul(normalMatrix, input.Tangent.xyz));
+	// Re-orthogonalize after non-uniform scale, keep glTF tangent.w handedness.
+	worldTangent = normalize(worldTangent - output.Normal * dot(output.Normal, worldTangent));
+	output.Tangent = float4(worldTangent, input.Tangent.w);
 	output.Color = input.Color.rgb;
 	output.UV = input.UV;
 	output.LightVec = -sunDirection.xyz;

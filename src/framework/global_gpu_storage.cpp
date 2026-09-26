@@ -37,6 +37,7 @@ void GlobalGPUStorage::upload_mesh(OwnedMeshGeometry&& geometry, Mesh* mesh) {
     request->device = device_;
     request->positions = std::move(geometry.positions);
     request->normals = std::move(geometry.normals);
+    request->tangents = std::move(geometry.tangents);
     request->uvs = std::move(geometry.uvs);
     request->colors = std::move(geometry.colors);
     request->indices = std::move(geometry.indices);

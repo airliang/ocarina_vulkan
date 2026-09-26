@@ -31,6 +31,7 @@ private:
     TextureUsageFlags usage_flags_ = TextureUsageFlags::None;
     VkImageAspectFlags aspect_mask_ = VK_IMAGE_ASPECT_COLOR_BIT;
     bool is_render_target_ = false;
+    bool srgb_ = false;
 public:
     VulkanTexture(
         VulkanDevice *device,
@@ -77,6 +78,7 @@ public:
     [[nodiscard]] const TextureSampler* get_sampler_pointer() const noexcept override { return &texture_sampler_; }
     [[nodiscard]] bool is_render_target() const noexcept override { return is_render_target_; }
     [[nodiscard]] TextureUsageFlags usage_flags() const noexcept override { return usage_flags_; }
+    [[nodiscard]] bool is_srgb() const noexcept override { return srgb_; }
     uint32_t width() const noexcept { return res_.x; }
     uint32_t height() const noexcept { return res_.y; }
     uint32_t depth() const noexcept { return res_.z; }

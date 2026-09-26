@@ -19,9 +19,9 @@ struct alignas(16) GlobalUniformBuffer {
     float4 sun_direction = make_float4(-0.4f, -1.0f, -0.3f, 0.0f);
     float4 sun_color = make_float4(1.0f, 1.0f, 1.0f, 1.0f);
     float sun_intensity = 10.0f;
-    float sun_pad0 = 0.0f;
-    float sun_pad1 = 0.0f;
-    float sun_pad2 = 0.0f;
+    uint32_t brdf_lut_index = 0xffffffffu;
+    uint32_t brdf_lut_sampler_index = 1;///< LINEAR + CLAMP (clamp-to-edge)
+    float sun_pad = 0.0f;
 };
 
 }// namespace ocarina

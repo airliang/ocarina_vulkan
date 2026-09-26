@@ -145,6 +145,12 @@ public:
         /// @param draw_data Opaque ImDrawData* from ImGui::GetDrawData().
         virtual void imgui_rhi_render_draw_data(void* draw_data, handle_ty command_buffer) noexcept {}
         virtual void imgui_rhi_shutdown() noexcept {}
+        /// Register a sampled texture for ImGui::Image. Returns a backend texture id (0 if unsupported).
+        [[nodiscard]] virtual handle_ty imgui_add_texture(Texture *texture) noexcept {
+            (void)texture;
+            return 0;
+        }
+        virtual void imgui_remove_texture(handle_ty imgui_texture) noexcept { (void)imgui_texture; }
         virtual CommandBuffer get_command_buffer() = 0;
         virtual CommandBuffer get_command_buffer(QueueType queue_type) {
             (void)queue_type;
@@ -323,6 +329,14 @@ public:
 
     void imgui_rhi_shutdown() noexcept {
         impl_->imgui_rhi_shutdown();
+    }
+
+    [[nodiscard]] handle_ty imgui_add_texture(Texture *texture) noexcept {
+        return impl_->imgui_add_texture(texture);
+    }
+
+    void imgui_remove_texture(handle_ty imgui_texture) noexcept {
+        impl_->imgui_remove_texture(imgui_texture);
     }
 
     CommandBuffer get_command_buffer() noexcept {

@@ -462,7 +462,9 @@ struct TextureViewCreation {
     uint32_t mip_level_count = 1;                     ///< mip level count
     uint32_t array_layer_count = 1;                   ///< array layer count
     TextureUsageFlags usage = TextureUsageFlags::None;///< texture usage
-    //SamplerCreation sampler;                          ///< sampler creation
+    /// When true, 8-bit color formats use *_SRGB Vulkan formats (albedo / baseColor).
+    /// Keep false for linear data maps (ORM, normals, masks).
+    bool srgb = false;
 };
 
 #define MAX_DESCRIPTOR_SETS_PER_SHADER 8

@@ -58,7 +58,7 @@ private:
     [[nodiscard]] Material* create_material(const tinygltf::Material& material, const tinygltf::Model& model);
     [[nodiscard]] Material* create_default_material();
     [[nodiscard]] Mesh* get_or_create_mesh(const tinygltf::Primitive& gltf_primitive, const tinygltf::Model& model);
-    [[nodiscard]] TextureHandle load_gltf_image(int image_index, const tinygltf::Model& model);
+    [[nodiscard]] TextureHandle load_gltf_image(int image_index, const tinygltf::Model& model, bool srgb);
     [[nodiscard]] static uint64_t make_geometry_key(const tinygltf::Primitive& primitive);
 
     std::string gltf_file_;

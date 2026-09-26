@@ -147,6 +147,8 @@ public:
     void set_sun_color(const float3& color) noexcept;
     void set_sun_intensity(float intensity) noexcept;
     void set_light_position(const float3& position) noexcept;
+    void set_brdf_lut_index(uint32_t index) noexcept;
+    void set_brdf_lut_sampler_index(uint32_t index) noexcept;
 
     void set_update_callback(UpdateCallback cb) {
         update_ = std::move(cb);

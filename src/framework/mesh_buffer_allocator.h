@@ -14,12 +14,14 @@ class IndexBuffer;
 
 constexpr uint64_t kMeshVertexPageBytes = 32ull * 1024ull * 1024ull;
 constexpr uint32_t kMeshBytesPerVertex =
-    static_cast<uint32_t>(sizeof(Vector3) + sizeof(Vector3) + sizeof(Vector2) + sizeof(Vector4));
+    static_cast<uint32_t>(
+        sizeof(Vector3) + sizeof(Vector3) + sizeof(Vector4) + sizeof(Vector2) + sizeof(Vector4));
 
 struct MeshGeometryInput {
     uint32_t vertex_count = 0;
     const Vector3* positions = nullptr;
     const Vector3* normals = nullptr;
+    const Vector4* tangents = nullptr;
     const Vector2* uvs = nullptr;
     const Vector4* colors = nullptr;
     const uint16_t* indices = nullptr;

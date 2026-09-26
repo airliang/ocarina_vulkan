@@ -103,7 +103,10 @@ void VulkanTexture::init_render_target(uint32_t width, uint32_t height, PixelSto
 
     if ((static_cast<uint32_t>(usage) & static_cast<uint32_t>(TextureUsageFlags::ShaderReadOnly)) != 0
         || (static_cast<uint32_t>(usage) & static_cast<uint32_t>(TextureUsageFlags::ShaderReadWrite)) != 0) {
-        TextureSampler sampler;
+        TextureSampler sampler{
+            TextureSampler::Filter::LINEAR_LINEAR,
+            TextureSampler::Address::EDGE};
+        texture_sampler_ = sampler;
         create_sampler(sampler);
     }
 }
@@ -137,7 +140,8 @@ void VulkanTexture::init_from_pixels(
     res_.y = height;
     res_.z = depth;
     pixel_storage_ = format;
-    image_format_ = get_vulkan_format(format, false);
+    srgb_ = texture_view.srgb;
+    image_format_ = get_vulkan_format(format, srgb_);
     texture_sampler_ = sampler;
 
     uint32_t max_mip_levels = static_cast<uint32_t>(std::floor(std::log2(std::max(res_.x, res_.y)))) + 1;

@@ -141,6 +141,8 @@ public:
     void imgui_rhi_new_frame() noexcept override;
     void imgui_rhi_render_draw_data(void* draw_data, handle_ty command_buffer) noexcept override;
     void imgui_rhi_shutdown() noexcept override;
+    [[nodiscard]] handle_ty imgui_add_texture(Texture *texture) noexcept override;
+    void imgui_remove_texture(handle_ty imgui_texture) noexcept override;
     CommandBuffer get_command_buffer() noexcept override;
     CommandBuffer get_command_buffer(QueueType queue_type) noexcept override;
     void release_command_buffer(const CommandBuffer& cmd_buffer) noexcept override;

@@ -15,7 +15,7 @@ void export_image_enum(PythonExporter &exporter) {
     OC_EXPORT_ENUM(exporter.module, PixelStorage,
                    BYTE1, BYTE2, BYTE4,
                    UINT1, UINT2, UINT4,
-                   FLOAT1, FLOAT2, FLOAT4, UNKNOWN)
+                   FLOAT1, FLOAT2, FLOAT4, HALF4, UNKNOWN)
 
     OC_EXPORT_ENUM(exporter.module, ImageWrap,
                    Repeat, Black, Clamp)

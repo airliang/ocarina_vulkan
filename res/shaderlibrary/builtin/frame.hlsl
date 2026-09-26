@@ -14,7 +14,9 @@
 	float4 sunDirection;   // xyz = world-space direction the sun light travels
 	float4 sunColor;       // rgb = sun tint
 	float sunIntensity;
-	float3 sunPad;
+	uint brdfLutIndex;
+	uint brdfLutSamplerIndex;
+	float sunPad;
 };
 
 [[vk::binding(BIND_TEXTURES, FRAME_SET)]] Texture2D g_textures[] : register(t0);

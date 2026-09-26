@@ -19,6 +19,7 @@
 #include "vulkan_descriptorset.h"
 #include "vulkan_descriptorset_writer.h"
 #include "vulkan_texture.h"
+#include "rhi/resources/texture.h"
 #include "vulkan_cubemap.h"
 #include "rhi/command_buffer.h"
 #include "vulkan_command_buffer.h"
@@ -889,6 +890,31 @@ void VulkanDevice::imgui_rhi_render_draw_data(void* draw_data, handle_ty command
 void VulkanDevice::imgui_rhi_shutdown() noexcept
 {
     ImGui_ImplVulkan_Shutdown();
+}
+
+handle_ty VulkanDevice::imgui_add_texture(Texture *texture) noexcept
+{
+    if (texture == nullptr || texture->impl() == nullptr) {
+        return 0;
+    }
+    auto *vulkan_texture = static_cast<VulkanTexture *>(texture->impl());
+    const VkDescriptorImageInfo info = vulkan_texture->get_descriptor_info();
+    if (info.imageView == VK_NULL_HANDLE || info.sampler == VK_NULL_HANDLE) {
+        return 0;
+    }
+    VkDescriptorSet descriptor_set = ImGui_ImplVulkan_AddTexture(
+        info.sampler,
+        info.imageView,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    return reinterpret_cast<handle_ty>(descriptor_set);
+}
+
+void VulkanDevice::imgui_remove_texture(handle_ty imgui_texture) noexcept
+{
+    if (imgui_texture == 0) {
+        return;
+    }
+    ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(imgui_texture));
 }
 
 CommandBuffer VulkanDevice::get_command_buffer() noexcept

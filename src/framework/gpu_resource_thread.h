@@ -63,6 +63,7 @@ struct TextureGPUResourceRequest : GPUResourceRequest {
 struct MeshGPUResourceRequest : GPUResourceRequest {
     std::vector<Vector3> positions;
     std::vector<Vector3> normals;
+    std::vector<Vector4> tangents;
     std::vector<Vector2> uvs;
     std::vector<Vector4> colors;
     std::vector<uint16_t> indices;

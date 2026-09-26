@@ -121,6 +121,7 @@ uint64_t ResourceManager::make_texture_key(
         name,
         texture_view.mip_level_count,
         texture_view.usage,
+        texture_view.srgb,
         sampler.filter(),
         sampler.u_address(),
         sampler.v_address(),

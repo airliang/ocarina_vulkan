@@ -48,14 +48,14 @@ public:
     virtual void begin_tool_tip() noexcept = 0;
     virtual void end_tool_tip() noexcept = 0;
 
-    virtual void image(uint tex_handle, uint2 size, float2 uv0, float2 uv1) noexcept = 0;
+    virtual void image(handle_ty tex_id, uint2 size, float2 uv0, float2 uv1) noexcept = 0;
     virtual void image(const Image &image) noexcept = 0;
     virtual void image(const ImageView &image_view) noexcept = 0;
-    void adaptive_image(uint tex_handle, uint2 res, float2 uv0 = make_float2(0),
+    void adaptive_image(handle_ty tex_id, uint2 res, float2 uv0 = make_float2(0),
                         float2 uv1 = make_float2(1.f)) {
         float ratio = res.x * 1.f / res.y;
         uint2 size = make_uint2(node_size().x, node_size().x / ratio);
-        image(tex_handle, min(size, res), uv0, uv1);
+        image(tex_id, min(size, res), uv0, uv1);
     }
 
     virtual void begin_disabled() noexcept = 0;
@@ -76,8 +76,8 @@ public:
 
     virtual uint2 node_size() noexcept = 0;
 
-    void image(uint tex_handle, uint2 size) noexcept {
-        image(tex_handle, size, make_float2(0), make_float2(1));
+    void image(handle_ty tex_id, uint2 size) noexcept {
+        image(tex_id, size, make_float2(0), make_float2(1));
     }
 
     OC_MAKE_MEMBER_GETTER(window, )

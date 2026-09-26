@@ -45,6 +45,7 @@ public:
         [[nodiscard]] virtual size_t max_member_size() const noexcept = 0;
         [[nodiscard]] virtual bool is_render_target() const noexcept { return false; }
         [[nodiscard]] virtual TextureUsageFlags usage_flags() const noexcept { return TextureUsageFlags::None; }
+        [[nodiscard]] virtual bool is_srgb() const noexcept { return false; }
     };
 
 public:
@@ -116,6 +117,7 @@ public:
 
     [[nodiscard]] bool is_render_target() const noexcept { return impl()->is_render_target(); }
     [[nodiscard]] TextureUsageFlags usage_flags() const noexcept { return impl()->usage_flags(); }
+    [[nodiscard]] bool is_srgb() const noexcept { return impl()->is_srgb(); }
 };
 
 template<typename T>

@@ -35,6 +35,8 @@ enum struct PixelStorage : uint {
     FLOAT2,
     FLOAT4,
 
+    HALF4,///< RGBA16F
+
     UNKNOWN
 };
 
@@ -83,6 +85,7 @@ OC_NDSC_INLINE size_t pixel_size(PixelStorage pixel_storage) noexcept {
         case PixelStorage::FLOAT1: return sizeof(float);
         case PixelStorage::FLOAT2: return sizeof(float2);
         case PixelStorage::FLOAT4: return sizeof(float4);
+        case PixelStorage::HALF4: return 8;
         case PixelStorage::UINT1: break;
         case PixelStorage::UINT2: break;
         case PixelStorage::UINT4: break;
@@ -123,6 +126,8 @@ OC_NDSC_INLINE uint32_t format_size_in_bytes(PixelStorage pixel_storage) {
         case ocarina::PixelStorage::UINT4:
         case ocarina::PixelStorage::FLOAT4:
             return 16;
+        case ocarina::PixelStorage::HALF4:
+            return 8;
         case ocarina::PixelStorage::UNKNOWN:
             return 0;
         default:

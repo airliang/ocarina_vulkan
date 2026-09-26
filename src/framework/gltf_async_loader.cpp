@@ -112,7 +112,8 @@ GltfPixelSource resolve_gltf_image_pixels(const tinygltf::Image& gltf_image, con
     }
 
     if (!gltf_image.uri.empty()) {
-        Image image = Image::load(gltf_directory / gltf_image.uri, ColorSpace::SRGB);
+        // Keep encoded 8-bit bytes. Albedo uses VK *_SRGB views; ORM/normals stay linear UNORM.
+        Image image = Image::load(gltf_directory / gltf_image.uri, ColorSpace::LINEAR);
         if (image.pixel_ptr() == nullptr) {
             return result;
         }
@@ -403,9 +404,11 @@ BoundingBox GltfAsyncLoader::append_primitive_geometry(
 
     std::vector<Vector3> positions;
     std::vector<Vector3> normals;
+    std::vector<Vector4> tangents;
     std::vector<Vector2> uvs;
     std::vector<Vector4> colors;
     bool has_normals = false;
+    bool has_tangents = false;
     bool has_uvs = false;
     bool has_colors = false;
 
@@ -450,6 +453,12 @@ BoundingBox GltfAsyncLoader::append_primitive_geometry(
                 memcpy(normals.data(), data, static_cast<size_t>(count) * sizeof(Vector3));
                 has_normals = true;
             }
+        } else if (name == "TANGENT") {
+            if (type == TINYGLTF_TYPE_VEC4 && component_type == TINYGLTF_COMPONENT_TYPE_FLOAT) {
+                tangents.resize(static_cast<size_t>(count));
+                memcpy(tangents.data(), data, static_cast<size_t>(count) * sizeof(Vector4));
+                has_tangents = true;
+            }
         } else if (name == "TEXCOORD_0") {
             if (type == TINYGLTF_TYPE_VEC2 && component_type == TINYGLTF_COMPONENT_TYPE_FLOAT) {
                 uvs.resize(static_cast<size_t>(count));
@@ -477,6 +486,9 @@ BoundingBox GltfAsyncLoader::append_primitive_geometry(
 
     if (!has_normals) {
         normals.clear();
+    }
+    if (!has_tangents) {
+        tangents.clear();
     }
     if (!has_uvs) {
         uvs.clear();
@@ -519,6 +531,9 @@ BoundingBox GltfAsyncLoader::append_primitive_geometry(
     if (has_normals) {
         geometry.normals = std::move(normals);
     }
+    if (has_tangents) {
+        geometry.tangents = std::move(tangents);
+    }
     if (has_uvs) {
         geometry.uvs = std::move(uvs);
     }
@@ -537,16 +552,19 @@ BoundingBox GltfAsyncLoader::append_primitive_geometry(
     return local_bounds;
 }
 
-TextureHandle GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::Model& model) {
+TextureHandle GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::Model& model, bool srgb) {
     if (image_index < 0 || image_index >= static_cast<int>(model.images.size())) {
         return TextureHandle{};
     }
 
-    const auto cached = image_textures_.find(image_index);
+    // Cache key must distinguish sRGB vs linear views of the same image file.
+    const int cache_key = srgb ? image_index : -(image_index + 1);
+    const auto cached = image_textures_.find(cache_key);
     if (cached != image_textures_.end()) {
         OC_INFO_FORMAT(
-            "GltfAsyncLoader::load_gltf_image: cache hit image_index {} (0.000 ms)",
-            image_index);
+            "GltfAsyncLoader::load_gltf_image: cache hit image_index {} srgb={} (0.000 ms)",
+            image_index,
+            srgb);
         return cached->second;
     }
 
@@ -573,9 +591,11 @@ TextureHandle GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::
     TextureViewCreation texture_view{};
     texture_view.mip_level_count = 0;
     texture_view.usage = TextureUsageFlags::ShaderReadOnly;
+    texture_view.srgb = srgb;
     TextureSampler sampler{TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT};
 
-    const std::string texture_name = image_path.filename().string();
+    const std::string texture_name =
+        image_path.filename().string() + (srgb ? "_srgb" : "_linear");
     TextureHandle handle = ResourceManager::instance().get_texture_handle(
         texture_name, texture_view, sampler);
     if (handle.bindless_index_ == InvalidUI32) {
@@ -590,11 +610,12 @@ TextureHandle GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::
             pixels.data);
     }
 
-    image_textures_.emplace(image_index, handle);
+    image_textures_.emplace(cache_key, handle);
     OC_INFO_FORMAT(
-        "GltfAsyncLoader::load_gltf_image: image_index {} ({}), bindless={}, {:.3f} ms",
+        "GltfAsyncLoader::load_gltf_image: image_index {} ({}), srgb={}, bindless={}, {:.3f} ms",
         image_index,
         texture_name.c_str(),
+        srgb,
         handle.bindless_index_,
         elapsed_ms(start));
     return handle;
@@ -616,7 +637,7 @@ Material* GltfAsyncLoader::create_default_material() {
     prim_material->set_property("roughness", 1.f);
     prim_material->set_property("metallic", 0.f);
     prim_material->set_property("ao", 1.f);
-    prim_material->set_property("normalIndex", 0u);
+    prim_material->set_property("normalIndex", InvalidUI32);
     prim_material->set_property("normalSamplerIndex", 0u);
     prim_material->set_property("metallicRoughnessIndex", InvalidUI32);
     prim_material->set_property("metallicRoughnessSamplerIndex", 0u);
@@ -653,7 +674,7 @@ Material* GltfAsyncLoader::create_material(
     prim_material->set_property("roughness", roughness);
     prim_material->set_property("metallic", metallic);
     prim_material->set_property("ao", ao);
-    prim_material->set_property("normalIndex", 0u);
+    prim_material->set_property("normalIndex", InvalidUI32);
     prim_material->set_property("normalSamplerIndex", 0u);
     prim_material->set_property("metallicRoughnessIndex", InvalidUI32);
     prim_material->set_property("metallicRoughnessSamplerIndex", 0u);
@@ -664,7 +685,7 @@ Material* GltfAsyncLoader::create_material(
     if (pbr.baseColorTexture.index >= 0 &&
         pbr.baseColorTexture.index < static_cast<int>(model.textures.size())) {
         const int image_index = model.textures[pbr.baseColorTexture.index].source;
-        const TextureHandle albedo_handle = load_gltf_image(image_index, model);
+        const TextureHandle albedo_handle = load_gltf_image(image_index, model, true);
         if (albedo_handle.bindless_index_ != InvalidUI32) {
             prim_material->set_bindless_texture("albedoIndex", albedo_handle);
             prim_material->set_property(
@@ -678,7 +699,7 @@ Material* GltfAsyncLoader::create_material(
     if (pbr.metallicRoughnessTexture.index >= 0 &&
         pbr.metallicRoughnessTexture.index < static_cast<int>(model.textures.size())) {
         const int image_index = model.textures[pbr.metallicRoughnessTexture.index].source;
-        const TextureHandle mr_handle = load_gltf_image(image_index, model);
+        const TextureHandle mr_handle = load_gltf_image(image_index, model, false);
         if (mr_handle.bindless_index_ != InvalidUI32) {
             prim_material->set_bindless_texture("metallicRoughnessIndex", mr_handle);
             prim_material->set_property(
@@ -686,6 +707,20 @@ Material* GltfAsyncLoader::create_material(
                 &mr_handle.bindless_index_,
                 sizeof(mr_handle.bindless_index_));
             prim_material->set_property("metallicRoughnessSamplerIndex", linear_repeat_sampler);
+        }
+    }
+
+    if (material.normalTexture.index >= 0 &&
+        material.normalTexture.index < static_cast<int>(model.textures.size())) {
+        const int image_index = model.textures[material.normalTexture.index].source;
+        const TextureHandle normal_handle = load_gltf_image(image_index, model, false);
+        if (normal_handle.bindless_index_ != InvalidUI32) {
+            prim_material->set_bindless_texture("normalIndex", normal_handle);
+            prim_material->set_property(
+                "normalIndex",
+                &normal_handle.bindless_index_,
+                sizeof(normal_handle.bindless_index_));
+            prim_material->set_property("normalSamplerIndex", linear_repeat_sampler);
         }
     }
 

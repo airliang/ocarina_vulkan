@@ -59,10 +59,9 @@ bool ImGuiWidgets::radio_button(const std::string &label, bool active) noexcept 
     return ImGui::RadioButton(label.c_str(), active);
 }
 
-void ImGuiWidgets::image(ocarina::uint tex_handle, ocarina::uint2 size,
+void ImGuiWidgets::image(handle_ty tex_id, ocarina::uint2 size,
                          ocarina::float2 uv0, ocarina::float2 uv1) noexcept {
-    auto tex_id = static_cast<ImTextureID>(static_cast<handle_ty>(tex_handle));
-    ImGui::Image(tex_id, to_ImVec2(size), to_ImVec2(uv0), to_ImVec2(uv1));
+    ImGui::Image(static_cast<ImTextureID>(tex_id), to_ImVec2(size), to_ImVec2(uv0), to_ImVec2(uv1));
 }
 
 uint2 ImGuiWidgets::node_size() noexcept {

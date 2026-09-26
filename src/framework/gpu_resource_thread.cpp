@@ -84,6 +84,7 @@ void MeshGPUResourceRequest::process() {
     input.vertex_count = static_cast<uint32_t>(positions.size());
     input.positions = positions.empty() ? nullptr : positions.data();
     input.normals = normals.empty() ? nullptr : normals.data();
+    input.tangents = tangents.empty() ? nullptr : tangents.data();
     input.uvs = uvs.empty() ? nullptr : uvs.data();
     input.colors = colors.empty() ? nullptr : colors.data();
     input.indices = indices.empty() ? nullptr : indices.data();

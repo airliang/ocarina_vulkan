@@ -35,8 +35,9 @@ bool resize_mip_level(
     uint32_t dst_w,
     uint32_t dst_h,
     uint32_t channels,
-    PixelStorage format) {
-    if (format == PixelStorage::BYTE4) {
+    PixelStorage format,
+    bool srgb) {
+    if (format == PixelStorage::BYTE4 && srgb) {
         return stbir_resize_uint8_srgb(
                    src, static_cast<int>(src_w), static_cast<int>(src_h), 0,
                    dst, static_cast<int>(dst_w), static_cast<int>(dst_h), 0,
@@ -56,7 +57,8 @@ CpuMipChain build_cpu_mip_chain(
     uint32_t width,
     uint32_t height,
     uint32_t mip_levels,
-    PixelStorage format) {
+    PixelStorage format,
+    bool srgb) {
     PROFILE_SCOPE();
     const uint32_t channels = static_cast<uint32_t>(channel_num(format));
     const uint8_t *base = static_cast<const uint8_t *>(base_pixels);
@@ -94,7 +96,7 @@ CpuMipChain build_cpu_mip_chain(
         const uint32_t dst_h = chain.level_heights[i];
         const uint8_t *src = chain.pixels.data() + chain.level_offsets[i - 1];
         uint8_t *dst = chain.pixels.data() + chain.level_offsets[i];
-        if (!resize_mip_level(src, src_w, src_h, dst, dst_w, dst_h, channels, format)) {
+        if (!resize_mip_level(src, src_w, src_h, dst, dst_w, dst_h, channels, format, srgb)) {
             throw std::runtime_error("failed to generate CPU mipmaps with stb_image_resize");
         }
         src_w = dst_w;
@@ -336,7 +338,8 @@ uint64_t StagingUploader::upload_texture_cpu_pixels(
         throw std::runtime_error("CPU mipmap generation only supports 8-bit pixel formats");
     }
 
-    const CpuMipChain chain = build_cpu_mip_chain(data, res.x, res.y, mip_levels, format);
+    const CpuMipChain chain = build_cpu_mip_chain(
+        data, res.x, res.y, mip_levels, format, impl->is_srgb());
 
     std::vector<BufferTextureCopy> regions(chain.level_offsets.size());
     for (size_t i = 0; i < chain.level_offsets.size(); ++i) {
@@ -404,7 +407,8 @@ uint64_t StagingUploader::upload_cubemap_faces(
                 face_res.x,
                 face_res.y,
                 mip_levels,
-                format);
+                format,
+                false);
         }
 
         size_t packed_bytes = 0;

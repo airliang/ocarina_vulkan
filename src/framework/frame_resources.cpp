@@ -322,6 +322,14 @@ void FrameResources::set_light_position(const float3& position) noexcept {
     global_ubo_.light_pos = make_float4(position.x, position.y, position.z, 1.0f);
 }
 
+void FrameResources::set_brdf_lut_index(uint32_t index) noexcept {
+    global_ubo_.brdf_lut_index = index;
+}
+
+void FrameResources::set_brdf_lut_sampler_index(uint32_t index) noexcept {
+    global_ubo_.brdf_lut_sampler_index = index;
+}
+
 void FrameResources::create_default_gpu_buffers() {
     if (device_ == nullptr) {
         return;

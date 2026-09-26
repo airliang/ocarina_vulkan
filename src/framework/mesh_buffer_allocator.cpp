@@ -12,6 +12,7 @@ namespace ocarina {
 namespace {
 
 constexpr Vector3 kDefaultNormal = {0.0f, 0.0f, 1.0f};
+constexpr Vector4 kDefaultTangent = {1.0f, 0.0f, 0.0f, 1.0f};
 constexpr Vector2 kDefaultUv = {0.0f, 0.0f};
 constexpr Vector4 kDefaultColor = {1.0f, 1.0f, 1.0f, 1.0f};
 
@@ -52,6 +53,8 @@ void VertexAllocator::allocate_page_streams(VertexPage& page, uint32_t vertex_ca
         VertexAttributeType::Enum::Position, vertex_capacity, sizeof(Vector3));
     page.buffer->allocate_stream_capacity(
         VertexAttributeType::Enum::Normal, vertex_capacity, sizeof(Vector3));
+    page.buffer->allocate_stream_capacity(
+        VertexAttributeType::Enum::Tangent, vertex_capacity, sizeof(Vector4));
     page.buffer->allocate_stream_capacity(
         VertexAttributeType::Enum::TexCoord0, vertex_capacity, sizeof(Vector2));
     page.buffer->allocate_stream_capacity(
@@ -216,6 +219,23 @@ MeshGeometrySlice MeshBufferAllocator::upload(const MeshGeometryInput& input) {
             vertex_buffer,
             VertexAttributeType::Enum::Normal,
             normals.data(),
+            slice.vertex_offset,
+            input.vertex_count);
+    }
+
+    if (input.tangents != nullptr) {
+        uploader.upload_vertex_attribute_range(
+            vertex_buffer,
+            VertexAttributeType::Enum::Tangent,
+            input.tangents,
+            slice.vertex_offset,
+            input.vertex_count);
+    } else {
+        std::vector<Vector4> tangents(input.vertex_count, kDefaultTangent);
+        uploader.upload_vertex_attribute_range(
+            vertex_buffer,
+            VertexAttributeType::Enum::Tangent,
+            tangents.data(),
             slice.vertex_offset,
             input.vertex_count);
     }
