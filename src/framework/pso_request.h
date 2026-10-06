@@ -104,6 +104,7 @@ struct PSORequestHash {
         size_t hash = 0;
         hash_combine(hash, reinterpret_cast<uintptr_t>(request.render_pass));
         hash_combine(hash, static_cast<uint32_t>(request.primitive_type));
+        hash_combine(hash, static_cast<uint32_t>(request.blend_state.blend_enable));
         if (request.has_shader_paths()) {
             hash_combine(hash, std::hash<std::string>{}(request.vertex_shader_path));
             hash_combine(hash, std::hash<std::string>{}(request.pixel_shader_path));

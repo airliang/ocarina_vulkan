@@ -107,6 +107,19 @@ handle_ty ShaderProgram::shader_handle(ShaderType stage) const noexcept {
     }
 }
 
+uint64_t ShaderProgram::shader_stage_hash(ShaderType stage) const noexcept {
+    switch (stage) {
+        case ShaderType::VertexShader:
+            return vertex_shader_hash_;
+        case ShaderType::PixelShader:
+            return pixel_shader_hash_;
+        case ShaderType::ComputeShader:
+            return compute_shader_hash_;
+        default:
+            return 0;
+    }
+}
+
 void ShaderProgram::ensure_gpu_shaders(Device* device) {
     if (device == nullptr) {
         return;
@@ -219,7 +232,8 @@ ShaderProgram* ShaderProgram::compile_graphics_from_HLSL(
             ShaderType::VertexShader,
             entry_point,
             vertex_compiled,
-            RHIContext::instance().rebuild_shaders())) {
+            RHIContext::instance().rebuild_shaders(),
+            vertex_options)) {
         return nullptr;
     }
 
@@ -229,7 +243,8 @@ ShaderProgram* ShaderProgram::compile_graphics_from_HLSL(
             ShaderType::PixelShader,
             entry_point,
             pixel_compiled,
-            RHIContext::instance().rebuild_shaders())) {
+            RHIContext::instance().rebuild_shaders(),
+            pixel_options)) {
         return nullptr;
     }
 
@@ -241,6 +256,8 @@ ShaderProgram* ShaderProgram::compile_graphics_from_HLSL(
     program->key_.entry_point = entry_point;
     program->vertex_spirv_ = std::move(vertex_compiled.spirv);
     program->pixel_spirv_ = std::move(pixel_compiled.spirv);
+    program->vertex_shader_hash_ = vertex_compiled.shader_hash;
+    program->pixel_shader_hash_ = pixel_compiled.shader_hash;
 
     program->merge_stage_reflection(
         vertex_compiled.reflection,
@@ -266,7 +283,8 @@ ShaderProgram* ShaderProgram::compile_compute_from_HLSL(
             ShaderType::ComputeShader,
             entry_point,
             compiled,
-            RHIContext::instance().rebuild_shaders())) {
+            RHIContext::instance().rebuild_shaders(),
+            options)) {
         return nullptr;
     }
 
@@ -275,6 +293,7 @@ ShaderProgram* ShaderProgram::compile_compute_from_HLSL(
     program->key_.compute_options = options;
     program->key_.entry_point = entry_point;
     program->compute_spirv_ = std::move(compiled.spirv);
+    program->compute_shader_hash_ = compiled.shader_hash;
     program->thread_group_size_[0] = static_cast<uint32_t>(
         std::max(compiled.reflection.thread_group_size[0], 1));
     program->thread_group_size_[1] = static_cast<uint32_t>(

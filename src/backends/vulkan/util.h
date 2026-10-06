@@ -333,6 +333,18 @@ static VkBlendFactor get_vulkan_blend_factor(BlendFunction blend_function) {
             return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
         case BlendFunction::DST_COLOR:
             return VK_BLEND_FACTOR_DST_COLOR;
+        case BlendFunction::ONE_MINUS_DST_COLOR:
+            return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
+        case BlendFunction::SRC_ALPHA:
+            return VK_BLEND_FACTOR_SRC_ALPHA;
+        case BlendFunction::ONE_MINUS_SRC_ALPHA:
+            return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        case BlendFunction::DST_ALPHA:
+            return VK_BLEND_FACTOR_DST_ALPHA;
+        case BlendFunction::ONE_MINUS_DST_ALPHA:
+            return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
+        case BlendFunction::SRC_ALPHA_SATURATE:
+            return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;
         default:
             return VK_BLEND_FACTOR_ZERO;
     }

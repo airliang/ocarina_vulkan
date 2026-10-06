@@ -149,17 +149,18 @@ void VulkanShader::create_vertex_stream_binding() {
 VulkanShader* VulkanShaderManager::get_or_create_shader_from_program(
     VulkanDevice* device,
     ShaderProgram* program,
-    ShaderType shader_type) {
-    if (program == nullptr) {
+    ShaderType shader_type,
+    uint64_t shader_hash) {
+    if (program == nullptr || shader_hash == 0) {
         return nullptr;
     }
 
-    const ProgramShaderKey key{program, shader_type};
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        const auto it = program_shaders_.find(key);
-        if (it != program_shaders_.end()) {
-            return it->second;
+        const auto it = program_shaders_.find(shader_hash);
+        if (it != program_shaders_.end() && it->second.shader != nullptr) {
+            ++it->second.ref_count;
+            return it->second.shader;
         }
     }
 
@@ -169,19 +170,29 @@ VulkanShader* VulkanShaderManager::get_or_create_shader_from_program(
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
-    const auto it = program_shaders_.find(key);
-    if (it != program_shaders_.end()) {
+    const auto it = program_shaders_.find(shader_hash);
+    if (it != program_shaders_.end() && it->second.shader != nullptr) {
         ocarina::delete_with_allocator(shader);
-        return it->second;
+        ++it->second.ref_count;
+        return it->second.shader;
     }
 
     const handle_ty shader_handle = reinterpret_cast<handle_ty>(shader);
     shaders_.insert({shader_handle, shader});
-    program_shaders_.insert({key, shader});
+    program_shaders_.insert({shader_hash, CachedProgramShader{shader, 1}});
     vulkan_shader_entries_.insert(std::make_pair(
         shader_handle,
         VulkanShaderEntry{shader->shader_module(), shader->stage(), shader->get_entry_point()}));
     return shader;
+}
+
+VulkanShader* VulkanShaderManager::find_shader_by_hash(uint64_t shader_hash) const {
+    if (shader_hash == 0) {
+        return nullptr;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto it = program_shaders_.find(shader_hash);
+    return it != program_shaders_.end() ? it->second.shader : nullptr;
 }
 
 VulkanShader* VulkanShaderManager::find_shader_from_program(
@@ -190,9 +201,7 @@ VulkanShader* VulkanShaderManager::find_shader_from_program(
     if (program == nullptr) {
         return nullptr;
     }
-    std::lock_guard<std::mutex> lock(mutex_);
-    const auto it = program_shaders_.find(ProgramShaderKey{program, shader_type});
-    return it != program_shaders_.end() ? it->second : nullptr;
+    return find_shader_by_hash(program->shader_stage_hash(shader_type));
 }
 
 void VulkanShaderManager::release_program_shaders(ShaderProgram* program) {
@@ -202,12 +211,22 @@ void VulkanShaderManager::release_program_shaders(ShaderProgram* program) {
 
     std::lock_guard<std::mutex> lock(mutex_);
     for (ShaderType stage : {ShaderType::VertexShader, ShaderType::PixelShader, ShaderType::ComputeShader}) {
-        const ProgramShaderKey key{program, stage};
-        const auto it = program_shaders_.find(key);
-        if (it == program_shaders_.end()) {
+        const uint64_t shader_hash = program->shader_stage_hash(stage);
+        if (shader_hash == 0) {
             continue;
         }
-        VulkanShader* shader = it->second;
+
+        const auto it = program_shaders_.find(shader_hash);
+        if (it == program_shaders_.end() || it->second.shader == nullptr) {
+            continue;
+        }
+
+        if (it->second.ref_count > 1) {
+            --it->second.ref_count;
+            continue;
+        }
+
+        VulkanShader* shader = it->second.shader;
         shaders_.erase(reinterpret_cast<handle_ty>(shader));
         vulkan_shader_entries_.erase(reinterpret_cast<handle_ty>(shader));
         program_shaders_.erase(it);
@@ -226,8 +245,9 @@ VulkanShaderEntry VulkanShaderManager::get_shader_entry(handle_ty shader_handle)
 void VulkanShaderManager::clear(VulkanDevice* device) {
     (void)device;
     std::lock_guard<std::mutex> lock(mutex_);
-    for (auto& [key, shader] : program_shaders_) {
-        ocarina::delete_with_allocator(shader);
+    for (auto& [hash, entry] : program_shaders_) {
+        (void)hash;
+        ocarina::delete_with_allocator(entry.shader);
     }
     program_shaders_.clear();
     vulkan_shader_entries_.clear();

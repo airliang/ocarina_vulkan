@@ -87,6 +87,9 @@ public:
     [[nodiscard]] const std::vector<uint32_t>& pixel_spirv() const noexcept { return pixel_spirv_; }
     [[nodiscard]] const std::vector<uint32_t>& compute_spirv() const noexcept { return compute_spirv_; }
 
+    /// Per-stage compile identity (filename + ShaderType + entry + options).
+    [[nodiscard]] uint64_t shader_stage_hash(ShaderType stage) const noexcept;
+
     [[nodiscard]] const std::vector<ShaderVariableBinding>& variables() const noexcept {
         return variables_;
     }
@@ -211,6 +214,9 @@ private:
     std::vector<uint32_t> vertex_spirv_;
     std::vector<uint32_t> pixel_spirv_;
     std::vector<uint32_t> compute_spirv_;
+    uint64_t vertex_shader_hash_ = 0;
+    uint64_t pixel_shader_hash_ = 0;
+    uint64_t compute_shader_hash_ = 0;
     std::vector<ShaderVariableBinding> variables_;
     std::vector<ShaderPushConstant> push_constants_;
     std::vector<ShaderReflection::UniformBuffer> named_structs_;

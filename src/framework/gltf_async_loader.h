@@ -37,6 +37,10 @@ public:
 
     ~GltfAsyncLoader() noexcept;
 
+    /// Optional ALPHA_BLEND=1 mesh program / PSO for glTF alphaMode "BLEND" materials.
+    /// Uses the same shader files as the opaque request with a distinct pixel option set.
+    void set_alpha_blend_pso_request(PSORequest request);
+
     [[nodiscard]] Scene& get_scene() noexcept { return scene_; }
     [[nodiscard]] const Scene& get_scene() const noexcept { return scene_; }
 
@@ -61,14 +65,19 @@ private:
     [[nodiscard]] TextureHandle load_gltf_image(int image_index, const tinygltf::Model& model, bool srgb);
     [[nodiscard]] static uint64_t make_geometry_key(const tinygltf::Primitive& primitive);
 
+    [[nodiscard]] ShaderProgram* resolve_shader_program(const PSORequest& request);
+
     std::string gltf_file_;
     fs::path gltf_directory_;
     PSORequest mesh_pso_request_{};
+    PSORequest alpha_blend_pso_request_{};
+    bool has_alpha_blend_pso_request_ = false;
     std::unique_ptr<tinygltf::Model> gltf_model_;
     bool gltf_model_parsed_ = false;
     bool gltf_parse_success_ = false;
     std::string gltf_parse_error_;
     ShaderProgram* shader_program_ = nullptr;
+    ShaderProgram* alpha_blend_shader_program_ = nullptr;
     std::vector<Mesh*> mesh_storage_;
     std::unordered_map<int, TextureHandle> image_textures_;
     std::unordered_map<uint64_t, Mesh*> geometry_meshes_;

@@ -33,6 +33,15 @@ void RHIRenderPass::clear_draw_call_items() {
     }
 }
 
+bool RHIRenderPass::has_draw_calls() const noexcept {
+    for (const auto &queue : pipeline_render_queues_) {
+        if (queue.second != nullptr && !queue.second->draw_call_items.empty()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void RHIRenderPass::add_draw_call(uint32_t render_component_index, const PipelineState& pipeline_state) {
     auto it = pipeline_render_queues_.find(pipeline_state);
     if (it != pipeline_render_queues_.end()) {

@@ -34,6 +34,8 @@
 #include "framework/bindless_texture_registry.h"
 #include "framework/primitive.h"
 #include "rhi/shader_program.h"
+#include "rhi/shader_program_key.h"
+#include "rhi/pipeline_state.h"
 #include "core/image.h"
 
 #include "ext/enkiTS/src/TaskScheduler.h"
@@ -370,6 +372,13 @@ int main(int argc, char *argv[]) {
     opaque_pass_creation.present_swapchain = false;
     RHIRenderPass* opaque_pass = device.create_render_pass(opaque_pass_creation);
 
+    RenderPassCreation transparent_pass_creation;
+    transparent_pass_creation.render_target = &swapchain_target;
+    transparent_pass_creation.clear_color_attachment = false;
+    transparent_pass_creation.clear_depth_attachment = false;
+    transparent_pass_creation.present_swapchain = false;
+    RHIRenderPass* transparent_pass = device.create_render_pass(transparent_pass_creation);
+
     RenderPassCreation ui_pass_creation;
     ui_pass_creation.render_target = &swapchain_target;
     ui_pass_creation.clear_color_attachment = false;
@@ -383,12 +392,27 @@ int main(int argc, char *argv[]) {
     ibl_loader.set_pso_requests({std::move(skybox_pso)});
     ibl_loader.set_target_render_pass(skybox_pass);
 
+    PSORequest opaque_mesh_pso = PSORequest::make_graphics(
+        mesh_vert_abs,
+        mesh_pbr_frag_abs,
+        opaque_pass,
+        {},
+        {make_shader_option("ALPHA_BLEND", 0)});
     GltfAsyncLoader gltf_loader(
         &renderer.task_scheduler(),
         &device,
-        PSORequest::make_graphics(mesh_vert_abs, mesh_pbr_frag_abs, opaque_pass),
+        opaque_mesh_pso,
         fs::absolute(gltf_path).string(),
         opaque_pass);
+    PSORequest alpha_blend_mesh_pso = PSORequest::make_graphics(
+        mesh_vert_abs,
+        mesh_pbr_frag_abs,
+        transparent_pass,
+        {},
+        {make_shader_option("ALPHA_BLEND", 1)});
+    alpha_blend_mesh_pso.blend_state = BlendState::AlphaBlend();
+    alpha_blend_mesh_pso.depth_stencil_state.depth_write_enable = false;
+    gltf_loader.set_alpha_blend_pso_request(std::move(alpha_blend_mesh_pso));
     gltf_loader.set_progress_listener(&loading_progress);
 
     CombinedLoader combined_loader;
@@ -396,9 +420,15 @@ int main(int argc, char *argv[]) {
     combined_loader.gltf_loader = &gltf_loader;
 
     renderer.set_camera(&camera);
+    // Scene geometry goes to Opaque / Transparent only; UI pass is ImGui.
+    renderer.set_render_pass_primitive_filter(
+        [opaque_pass, transparent_pass](uint32_t, RHIRenderPass* pass) {
+            return pass == opaque_pass || pass == transparent_pass;
+        });
     renderer.pass_group(PassGroupId::ComputePass).add_render_pass(compute_pass);
     renderer.pass_group(PassGroupId::Skybox).add_render_pass(skybox_pass);
     renderer.pass_group(PassGroupId::Opaque).add_render_pass(opaque_pass);
+    renderer.pass_group(PassGroupId::Transparent).add_render_pass(transparent_pass);
     renderer.pass_group(PassGroupId::UI).add_render_pass(ui_pass);
 
     ImguiRenderer imgui_renderer(*window);

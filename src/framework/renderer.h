@@ -115,6 +115,8 @@ public:
     }
 
     void draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass);
+    /// Draw alpha-blended / transparent materials previously queued on @p render_pass.
+    void draw_transparents(CommandBuffer& cmd, RHIRenderPass* render_pass);
     /// Bind material pipeline + descriptors and draw a fullscreen triangle (no mesh).
     void draw_fullscreen(CommandBuffer& cmd, Material* material, RHIRenderPass* render_pass);
 
@@ -143,7 +145,9 @@ public:
     [[nodiscard]] Material* post_process_material() const noexcept { return post_process_material_; }
 
     void update_visible_render_components();
-    void populate_render_pass_queues(RHIRenderPass* render_pass);
+    /// Fill @p render_pass draw queues from visible primitives.
+    /// Opaque / Transparent groups only enqueue matching (non-)blend materials.
+    void populate_render_pass_queues(RHIRenderPass* render_pass, PassGroupId group_id);
 
     using RenderPassPrimitiveFilter = ocarina::function<bool(uint32_t entity_index, RHIRenderPass* render_pass)>;
     void set_render_pass_primitive_filter(RenderPassPrimitiveFilter filter) {

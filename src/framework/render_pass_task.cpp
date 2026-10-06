@@ -40,6 +40,8 @@ void record_default_graphics_body(
         if (Material* post = renderer.post_process_material()) {
             renderer.draw_fullscreen(cmd, post, render_pass);
         }
+    } else if (group_id == PassGroupId::Transparent) {
+        renderer.draw_transparents(cmd, render_pass);
     } else {
         renderer.draw_render_queues(cmd, render_pass);
     }
@@ -92,6 +94,8 @@ void record_pass_group(
     const RenderPassGUICallback& render_gui) noexcept
 {
     for (RHIRenderPass* render_pass : render_passes) {
+        // UI is often the sole scene pass (e.g. test-asyncLoadGLTF); still populate queues.
+        // Skybox / PostProcess / Compute use fullscreen or callbacks instead.
         const bool skip_queue_populate =
             group_id == PassGroupId::Skybox
             || group_id == PassGroupId::PostProcess
@@ -99,7 +103,12 @@ void record_pass_group(
             || render_pass->is_compute_pass()
             || render_pass->has_execute_callback();
         if (!skip_queue_populate) {
-            renderer.populate_render_pass_queues(render_pass);
+            renderer.populate_render_pass_queues(render_pass, group_id);
+        }
+
+        // Transparent pass is optional: skip begin/end when nothing blended this frame.
+        if (group_id == PassGroupId::Transparent && !render_pass->has_draw_calls()) {
+            continue;
         }
 
         const RenderPassGUICallback& pass_render_gui =

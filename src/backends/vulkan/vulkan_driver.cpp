@@ -99,8 +99,10 @@ inline VkDevice VulkanDriver::device() const {
 VulkanShader* VulkanDriver::get_or_create_shader_from_program(
     VulkanDevice* device,
     ShaderProgram* program,
-    ShaderType shader_type) {
-    return vulkan_shader_manager->get_or_create_shader_from_program(device, program, shader_type);
+    ShaderType shader_type,
+    uint64_t shader_hash) {
+    return vulkan_shader_manager->get_or_create_shader_from_program(
+        device, program, shader_type, shader_hash);
 }
 
 VulkanShader* VulkanDriver::find_shader_from_program(

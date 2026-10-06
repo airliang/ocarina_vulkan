@@ -131,6 +131,25 @@ public:
         return pipeline_state_.blend_state;
     }
 
+    /// Enable standard alpha blending (SRC_ALPHA / ONE_MINUS_SRC_ALPHA) and disable depth writes.
+    void set_alpha_blend_enabled(bool enabled) {
+        if (enabled) {
+            set_blend_state(BlendState::AlphaBlend());
+            DepthStencilState depth_state = pipeline_state_.depth_stencil_state;
+            depth_state.depth_write_enable = false;
+            set_depth_stencil_state(depth_state);
+        } else {
+            set_blend_state(BlendState::Opaque());
+            DepthStencilState depth_state = pipeline_state_.depth_stencil_state;
+            depth_state.depth_write_enable = true;
+            set_depth_stencil_state(depth_state);
+        }
+    }
+
+    [[nodiscard]] bool is_transparent() const noexcept {
+        return pipeline_state_.blend_state.blend_enable;
+    }
+
     void set_raster_state(const RasterState& raster_state) {
         if (raster_state != pipeline_state_.raster_state) {
             pipeline_state_.raster_state = raster_state;

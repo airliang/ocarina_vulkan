@@ -100,26 +100,30 @@ bool DXCCompiler::compile_hlsl_spriv(const CompileInput &input, CompileResult &r
         args.push_back(L"cs_6_0");
     }
 
+    // Keep wide strings alive until Compile returns (args stores LPCWSTR pointers).
+    std::vector<std::wstring> owned_wstrings;
+    owned_wstrings.reserve(2 + input.include_paths.size() + input.macros.size());
+
     std::string file_dir = get_file_directory(input.full_file_path);
     args.push_back(L"-I");
-    std::wstring wpath = string_to_wstring(file_dir);
-    args.push_back(wpath.c_str());
+    owned_wstrings.push_back(string_to_wstring(file_dir));
+    args.push_back(owned_wstrings.back().c_str());
     for (size_t i = 0; i < input.include_paths.size(); ++i) {
         args.push_back(L"-I");
-        args.push_back(std::wstring(input.include_paths[i].begin(), input.include_paths[i].end()).c_str());
+        owned_wstrings.emplace_back(input.include_paths[i].begin(), input.include_paths[i].end());
+        args.push_back(owned_wstrings.back().c_str());
     }
 
     args.push_back(L"-E");
-    std::wstring wEntry(input.entry.begin(), input.entry.end());
-    args.push_back(wEntry.c_str());
+    owned_wstrings.emplace_back(input.entry.begin(), input.entry.end());
+    args.push_back(owned_wstrings.back().c_str());
     args.push_back(L"-spirv");
     args.push_back(L"-fspv-target-env=vulkan1.1");
 
-    for (auto& option : input.macros)
-    {
+    for (const auto& option : input.macros) {
         args.push_back(L"-D");
-        std::wstring woption(option.begin(), option.end());
-        args.push_back(woption.c_str());
+        owned_wstrings.emplace_back(option.begin(), option.end());
+        args.push_back(owned_wstrings.back().c_str());
     }
 
     DxcBuffer src_buffer = {

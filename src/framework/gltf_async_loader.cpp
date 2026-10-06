@@ -18,6 +18,7 @@
 #include "global_gpu_storage.h"
 #include "bounding_box.h"
 #include "resource_manager.h"
+#include "rhi/shader_program_key.h"
 #include "rhi/vertex_buffer.h"
 #include "rhi/index_buffer.h"
 #include "rhi/resources/texture.h"
@@ -193,28 +194,63 @@ GltfAsyncLoader::~GltfAsyncLoader() noexcept {
     mesh_storage_.clear();
 }
 
+void GltfAsyncLoader::set_alpha_blend_pso_request(PSORequest request) {
+    if (request.render_pass == nullptr) {
+        request.render_pass = target_render_pass_;
+    }
+    // Same shader files as opaque; pixel option selects the ALPHA_BLEND=1 variant.
+    if (request.vertex_shader_path.empty()) {
+        request.vertex_shader_path = mesh_pso_request_.vertex_shader_path;
+    }
+    if (request.pixel_shader_path.empty()) {
+        request.pixel_shader_path = mesh_pso_request_.pixel_shader_path;
+    }
+    request.pixel_options.insert(make_shader_option("ALPHA_BLEND", 1));
+    if (!request.blend_state.blend_enable) {
+        request.blend_state = BlendState::AlphaBlend();
+    }
+    request.depth_stencil_state.depth_write_enable = false;
+
+    alpha_blend_pso_request_ = request;
+    has_alpha_blend_pso_request_ = true;
+    add_pso_request(std::move(request));
+}
+
+ShaderProgram* GltfAsyncLoader::resolve_shader_program(const PSORequest& request) {
+    if (request.has_shader_program()) {
+        request.shader_program->ensure_gpu_shaders(device_);
+        return request.shader_program;
+    }
+    if (!request.has_shader_paths() || device_ == nullptr) {
+        return nullptr;
+    }
+
+    ShaderProgram* program = ResourceManager::instance().create_shader_program(
+        device_,
+        request.vertex_shader_path,
+        request.pixel_shader_path,
+        request.vertex_options,
+        request.pixel_options);
+    if (program != nullptr) {
+        program->ensure_gpu_shaders(device_);
+    }
+    return program;
+}
+
 void GltfAsyncLoader::load(Device* device) {
     if (is_loaded_) {
         return;
     }
 
     device_ = device;
-    if (mesh_pso_request_.has_shader_paths()) {
-        ResourceManager& resources = ResourceManager::instance();
-        shader_program_ = resources.create_shader_program(
-            device,
-            mesh_pso_request_.vertex_shader_path,
-            mesh_pso_request_.pixel_shader_path,
-            mesh_pso_request_.vertex_options,
-            mesh_pso_request_.pixel_options);
-        if (shader_program_ != nullptr) {
-            shader_program_->ensure_gpu_shaders(device);
-            mesh_pso_request_.shader_program = shader_program_;
-        }
-    } else if (mesh_pso_request_.has_shader_program()) {
-        shader_program_ = mesh_pso_request_.shader_program;
-        if (shader_program_ != nullptr) {
-            shader_program_->ensure_gpu_shaders(device);
+    shader_program_ = resolve_shader_program(mesh_pso_request_);
+    if (shader_program_ != nullptr) {
+        mesh_pso_request_.shader_program = shader_program_;
+    }
+    if (has_alpha_blend_pso_request_) {
+        alpha_blend_shader_program_ = resolve_shader_program(alpha_blend_pso_request_);
+        if (alpha_blend_shader_program_ != nullptr) {
+            alpha_blend_pso_request_.shader_program = alpha_blend_shader_program_;
         }
     }
 
@@ -647,18 +683,23 @@ Material* GltfAsyncLoader::create_default_material() {
 Material* GltfAsyncLoader::create_material(
     const tinygltf::Material& material,
     const tinygltf::Model& model) {
-    if (shader_program_ == nullptr) {
+    const bool alpha_blend = material.alphaMode == "BLEND";
+    ShaderProgram* program = (alpha_blend && alpha_blend_shader_program_ != nullptr)
+        ? alpha_blend_shader_program_
+        : shader_program_;
+    if (program == nullptr) {
         return nullptr;
     }
 
     Material* prim_material = ResourceManager::instance().create_unique_material(
         device_,
-        shader_program_);
+        program);
     if (prim_material == nullptr) {
         return nullptr;
     }
 
     const auto& pbr = material.pbrMetallicRoughness;
+    // baseColorFactor.a is the glTF opacity scalar (defaults to 1 when omitted).
     const float4 base_color_factor = make_float4(
         static_cast<float>(pbr.baseColorFactor[0]),
         static_cast<float>(pbr.baseColorFactor[1]),
@@ -722,6 +763,11 @@ Material* GltfAsyncLoader::create_material(
                 sizeof(normal_handle.bindless_index_));
             prim_material->set_property("normalSamplerIndex", linear_repeat_sampler);
         }
+    }
+
+    // glTF alphaMode "BLEND" → ALPHA_BLEND shader + alpha-blend pipeline state.
+    if (alpha_blend) {
+        prim_material->set_alpha_blend_enabled(true);
     }
 
     return prim_material;

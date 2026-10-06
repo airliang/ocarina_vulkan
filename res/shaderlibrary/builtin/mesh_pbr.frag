@@ -2,6 +2,10 @@
 // MATERIAL_SET: material UBO + irradiance / specular cubemaps.
 // FRAME_SET: BRDF LUT via bindless g_textures[brdfLutIndex].
 // glTF ORM packing: G = roughness, B = metallic (R often packed AO).
+// Compile variants via pixel options: ALPHA_BLEND=0 (opaque) / ALPHA_BLEND=1 (blend).
+#ifndef ALPHA_BLEND
+#define ALPHA_BLEND 0
+#endif
 #include "frame.hlsl"
 #include "push_constant.hlsl"
 #include "material.hlsl"
@@ -143,5 +147,13 @@ float4 main(VSOutput input) : SV_TARGET
     float3 indirectSpecular = prefiltered * (F_ibl * envBRDF.x + envBRDF.y);
 
     color += indirectDiffuse + indirectSpecular;
-    return float4(color, sampled.a * material.baseColorFactor.a);
+
+#if ALPHA_BLEND
+    // glTF BLEND: texture alpha * baseColorFactor.a (factor is the CPU opacity control).
+    float alpha = sampled.a * material.baseColorFactor.a;
+    alpha = material.baseColorFactor.a;
+    return float4(color, alpha);
+#else
+    return float4(color, 1.0);
+#endif
 }

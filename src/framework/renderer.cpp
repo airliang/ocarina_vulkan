@@ -174,11 +174,13 @@ void Renderer::update_visible_render_components() {
     }
 }
 
-void Renderer::populate_render_pass_queues(RHIRenderPass* render_pass) {
+void Renderer::populate_render_pass_queues(RHIRenderPass* render_pass, PassGroupId group_id) {
     OC_PROFILE_FUNCTION;
     if (render_pass == nullptr || scene_ == nullptr) {
         return;
     }
+
+    render_pass->clear_draw_call_items();
 
     EntityComponentSystem& ecs = EntityComponentSystem::instance();
 
@@ -193,6 +195,14 @@ void Renderer::populate_render_pass_queues(RHIRenderPass* render_pass) {
             return;
         }
 
+        const bool transparent = material->is_transparent();
+        if (group_id == PassGroupId::Opaque && transparent) {
+            return;
+        }
+        if (group_id == PassGroupId::Transparent && !transparent) {
+            return;
+        }
+
         const PipelineState& pipeline_state = material->get_pipeline_state();
         render_pass->add_draw_call(entity_index, pipeline_state);
         PipelineManager::instance().enqueue(pipeline_state, render_pass);
@@ -201,16 +211,10 @@ void Renderer::populate_render_pass_queues(RHIRenderPass* render_pass) {
         }
     };
 
-    bool cleared = false;
     for (uint32_t entity_index : primitive_cull_task_.visible_entity_indices()) {
         if (render_pass_primitive_filter_
             && !render_pass_primitive_filter_(entity_index, render_pass)) {
             continue;
-        }
-
-        if (!cleared) {
-            render_pass->clear_draw_call_items();
-            cleared = true;
         }
 
         add_entity_draw_call(entity_index);
@@ -307,6 +311,11 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
                 0);
         }
     }
+}
+
+void Renderer::draw_transparents(CommandBuffer& cmd, RHIRenderPass* render_pass) {
+    OC_PROFILE_FUNCTION;
+    draw_render_queues(cmd, render_pass);
 }
 
 void Renderer::draw_fullscreen(CommandBuffer& cmd, Material* material, RHIRenderPass* render_pass) {

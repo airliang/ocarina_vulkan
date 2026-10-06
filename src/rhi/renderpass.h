@@ -56,6 +56,8 @@ public:
 
     void add_draw_call(uint32_t render_component_index, const PipelineState& pipeline_state);
 
+    [[nodiscard]] bool has_draw_calls() const noexcept;
+
     void set_execute_callback(ExecuteCallback callback) noexcept {
         execute_callback_ = std::move(callback);
     }

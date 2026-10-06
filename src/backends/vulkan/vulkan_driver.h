@@ -56,7 +56,8 @@ public:
     VulkanShader* get_or_create_shader_from_program(
         VulkanDevice* device,
         ShaderProgram* program,
-        ShaderType shader_type);
+        ShaderType shader_type,
+        uint64_t shader_hash);
     [[nodiscard]] VulkanShader* find_shader_from_program(
         ShaderProgram* program,
         ShaderType shader_type) const;

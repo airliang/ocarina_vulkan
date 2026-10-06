@@ -169,8 +169,9 @@ handle_ty VulkanDevice::create_shader_from_program(ShaderProgram* program, Shade
     if (program == nullptr) {
         return 0;
     }
-    VulkanShader* shader =
-        VulkanDriver::instance().get_or_create_shader_from_program(this, program, stage);
+    const uint64_t shader_hash = program->shader_stage_hash(stage);
+    VulkanShader* shader = VulkanDriver::instance().get_or_create_shader_from_program(
+        this, program, stage, shader_hash);
     if (shader != nullptr) {
         return reinterpret_cast<handle_ty>(shader);
     }
