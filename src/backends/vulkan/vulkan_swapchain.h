@@ -3,6 +3,7 @@
 #include "core/concepts.h"
 #include "core/stl.h"
 #include "rhi/graphics_descriptions.h"
+#include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 namespace ocarina {
 class VulkanTexture;
@@ -52,7 +53,7 @@ public:
 
     struct DepthStencil{
         VkImage image = VK_NULL_HANDLE;
-        VkDeviceMemory mem = VK_NULL_HANDLE;
+        VmaAllocation allocation = VK_NULL_HANDLE;
         VkImageView view = VK_NULL_HANDLE;
     } depth_stencil;
 

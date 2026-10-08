@@ -33,7 +33,9 @@ VulkanDriver::~VulkanDriver() {
 VulkanDevice* VulkanDriver::create_device(RHIContext* file_manager, const InstanceCreation& instance_creation)
 {
     vulkan_device_ = ocarina::new_with_allocator<ocarina::VulkanDevice>(file_manager, instance_creation);
-
+    // Logical device exists; create VMA before swapchain depth / any resource allocs.
+    create_allocator();
+    vulkan_device_->init_swapchain();
     initialize();
 
     return vulkan_device_;
@@ -336,6 +338,34 @@ void VulkanDriver::release_command_buffers() {
         }
     }
     command_buffer_pools_.clear();
+}
+
+void VulkanDriver::create_allocator()
+{
+    destroy_allocator();
+    if (vulkan_device_ == nullptr) {
+        return;
+    }
+
+    VmaAllocatorCreateInfo allocator_info{};
+    allocator_info.physicalDevice = vulkan_device_->physicalDevice();
+    allocator_info.device = vulkan_device_->logicalDevice();
+    allocator_info.instance = vulkan_device_->get_instance();
+    allocator_info.vulkanApiVersion = VK_API_VERSION_1_3;
+    // Do not set VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT unless
+    // VkPhysicalDeviceVulkan12Features::bufferDeviceAddress is enabled on the device.
+    // With that flag, VMA stamps VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT on every new
+    // memory block (including image/cubemap allocs), which fails validation otherwise.
+    allocator_info.flags = 0;
+    VK_CHECK_RESULT(vmaCreateAllocator(&allocator_info, &allocator_));
+}
+
+void VulkanDriver::destroy_allocator()
+{
+    if (allocator_ != VK_NULL_HANDLE) {
+        vmaDestroyAllocator(allocator_);
+        allocator_ = VK_NULL_HANDLE;
+    }
 }
 
 void VulkanDriver::initialize()

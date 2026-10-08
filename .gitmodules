@@ -25,3 +25,6 @@
 [submodule "src/ext/tracy"]
 	path = src/ext/tracy
 	url = https://github.com/wolfpld/tracy.git
+[submodule "src/ext/VulkanMemoryAllocator"]
+	path = src/ext/VulkanMemoryAllocator
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git

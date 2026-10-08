@@ -368,7 +368,10 @@ void VulkanDevice::init_vulkan()
     get_enable_extentions();
 
     create_logical_device();
+}
 
+void VulkanDevice::init_swapchain()
+{
     m_swapChain.create_surface(m_instance.instance(), m_windowHandle);
 
     OC_ASSERT(m_windowWidth > 0 && m_windowHeight > 0);
@@ -581,6 +584,8 @@ void VulkanDevice::get_enable_extentions()
 void VulkanDevice::shutdown()
 {
     m_swapChain.release();
+    // Depth stencil (and any other swapchain VMA allocs) are gone; tear down VMA before the device.
+    VulkanDriver::instance().destroy_allocator();
     vkDestroyDevice(logicalDevice_, nullptr);
 }
 

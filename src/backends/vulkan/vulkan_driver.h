@@ -6,6 +6,7 @@
 #include "rhi/graphics_descriptions.h"
 #include <vulkan/vulkan.h>
 #include "vulkan_pipeline.h"
+#include <vk_mem_alloc.h>
 #include <array>
 #include <mutex>
 #include <queue>
@@ -147,6 +148,13 @@ public:
     VkSemaphore get_present_complete_semaphore() const;
     VkSemaphore get_render_complete_semaphore() const;
 
+    /// Vulkan Memory Allocator owned by the driver (valid after initialize()).
+    [[nodiscard]] VmaAllocator allocator() const noexcept { return allocator_; }
+
+    /// Destroy VMA after all VMA-backed resources (incl. swapchain depth) are freed,
+    /// and before vkDestroyDevice.
+    void destroy_allocator();
+
     VkQueue get_queue(QueueType queue_type) const {
         if (queue_type == QueueType::Graphics) {
             return graphics_queue;
@@ -174,6 +182,7 @@ private:
     void destroy_internal_textures();
     void create_frame_sync();
     void destroy_frame_sync();
+    void create_allocator();
 private:
     static constexpr uint32_t kMaxFramesInFlight = 3;
 
@@ -237,5 +246,7 @@ private:
 
     std::list<VkSemaphore> timeline_semaphore_pool_;
     std::list<VkSemaphore> binary_semaphore_pool_;
+
+    VmaAllocator allocator_ = VK_NULL_HANDLE;
 };
 }// namespace ocarina

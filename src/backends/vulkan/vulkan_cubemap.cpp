@@ -1,6 +1,8 @@
 #include "vulkan_cubemap.h"
 #include "util.h"
 #include "vulkan_device.h"
+#include "vulkan_driver.h"
+#include "vulkan_vma.h"
 #include "core/profiler.h"
 #include "math/basic_types.h"
 
@@ -46,20 +48,11 @@ VulkanCubemap::VulkanCubemap(
     image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     image_info.usage = vk_usage;
 
-    VK_CHECK_RESULT(vkCreateImage(device_->logicalDevice(), &image_info, nullptr, &image_));
-
-    VkMemoryRequirements mem_requirements;
-    vkGetImageMemoryRequirements(device_->logicalDevice(), image_, &mem_requirements);
-
-    VkMemoryAllocateInfo alloc_info{};
-    alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    alloc_info.allocationSize = mem_requirements.size;
-    alloc_info.memoryTypeIndex = device_->get_memory_type(
-        mem_requirements.memoryTypeBits,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    VK_CHECK_RESULT(vkAllocateMemory(device_->logicalDevice(), &alloc_info, nullptr, &image_memory_));
-    VK_CHECK_RESULT(vkBindImageMemory(device_->logicalDevice(), image_, image_memory_, 0));
+    VmaAllocator allocator = VulkanDriver::instance().allocator();
+    OC_ASSERT(allocator != VK_NULL_HANDLE);
+    VmaAllocationCreateInfo alloc_create = make_vma_allocation_info(DeviceMemoryUsage::MEMORY_USAGE_GPU_ONLY);
+    VK_CHECK_RESULT(vmaCreateImage(
+        allocator, &image_info, &alloc_create, &image_, &allocation_, nullptr));
 
     VkImageViewCreateInfo view_info{};
     view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -140,11 +133,11 @@ VulkanCubemap::~VulkanCubemap() {
     if (image_view_ != VK_NULL_HANDLE) {
         vkDestroyImageView(device_->logicalDevice(), image_view_, nullptr);
     }
-    if (image_ != VK_NULL_HANDLE) {
-        vkDestroyImage(device_->logicalDevice(), image_, nullptr);
-    }
-    if (image_memory_ != VK_NULL_HANDLE) {
-        vkFreeMemory(device_->logicalDevice(), image_memory_, nullptr);
+    VmaAllocator allocator = VulkanDriver::instance().allocator();
+    if (allocator != VK_NULL_HANDLE && (image_ != VK_NULL_HANDLE || allocation_ != VK_NULL_HANDLE)) {
+        vmaDestroyImage(allocator, image_, allocation_);
+        image_ = VK_NULL_HANDLE;
+        allocation_ = VK_NULL_HANDLE;
     }
 }
 

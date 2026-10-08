@@ -106,6 +106,12 @@ foreach(_t IN LISTS _ocarina_spirv_targets)
     endif()
 endforeach()
 
+# Vulkan Memory Allocator — header-only INTERFACE includes.
+# Implementation lives in ocarina-backend-vulkan (vma_impl.cpp with VMA_IMPLEMENTATION).
+set(VMA_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+add_subdirectory(VulkanMemoryAllocator)
+set_target_properties(VulkanMemoryAllocator PROPERTIES FOLDER "ext")
+
 # Group remaining third-party targets under ext/ in Visual Studio.
 set(_ocarina_ext_targets
     xxhash ocarina-ext EASTL mimalloc-static EABase spdlog)

@@ -49,7 +49,11 @@ if(AUTO_LOCATE_VULKAN)
     # Shader compilation + reflection live in `ocarina-shader-compiler`.
 
     ocarina_add_backend(vulkan SOURCES ${HEADER_FILES} ${SOURCE_FILES})
-    target_link_libraries(ocarina-backend-vulkan PRIVATE Vulkan::Vulkan ocarina-imgui ocarina-shader-compiler)
+    target_link_libraries(ocarina-backend-vulkan PRIVATE
+        Vulkan::Vulkan
+        ocarina-imgui
+        ocarina-shader-compiler
+        GPUOpen::VulkanMemoryAllocator)
     target_include_directories(ocarina-backend-vulkan PRIVATE
         ${CMAKE_SOURCE_DIR}/src/ext/imgui
         ${CMAKE_SOURCE_DIR}/src/ext/imgui/backends)

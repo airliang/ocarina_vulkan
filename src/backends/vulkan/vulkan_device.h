@@ -87,6 +87,8 @@ public:
     [[nodiscard]] handle_ty find_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string>& options) noexcept override;
     void destroy_shader(handle_ty handle) noexcept override;
     void shutdown();
+    /// Create surface + swapchain after VmaAllocator exists on VulkanDriver.
+    void init_swapchain();
     VertexBuffer* create_vertex_buffer() noexcept override;
     IndexBuffer* create_index_buffer(const void *initial_data, uint32_t indices_count, bool bit16) noexcept override;
     VulkanBuffer *create_vulkan_buffer(VkBufferUsageFlags usage_flags, VkMemoryPropertyFlags memory_property_flags, VkDeviceSize size, const void *data = nullptr);
@@ -159,6 +161,7 @@ public:
         return supports_dynamic_rendering_;
     }
  private:
+    /// Up through logical device only (no swapchain — needs VMA first).
     void init_vulkan();
     void create_logical_device();
     void get_enable_features();

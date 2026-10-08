@@ -7,6 +7,7 @@
 #include "core/stl.h"
 #include "rhi/resources/texture.h"
 #include "rhi/resources/texture_sampler.h"
+#include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 
 namespace ocarina {
@@ -26,7 +27,7 @@ private:
     VulkanDevice* device_ = nullptr;
     VkFormat image_format_ = VK_FORMAT_UNDEFINED;
     uint32_t mip_levels_ = 1;
-    VkDeviceMemory image_memory_ = VK_NULL_HANDLE;
+    VmaAllocation allocation_ = VK_NULL_HANDLE;
     TextureSampler texture_sampler_;
     TextureUsageFlags usage_flags_ = TextureUsageFlags::None;
     VkImageAspectFlags aspect_mask_ = VK_IMAGE_ASPECT_COLOR_BIT;

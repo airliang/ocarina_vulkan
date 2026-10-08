@@ -1,6 +1,7 @@
-#pragma once
 #include "vulkan_swapchain.h"
 #include "vulkan_device.h"
+#include "vulkan_driver.h"
+#include "vulkan_vma.h"
 #include "util.h"
 #include "vulkan_texture.h"
 #include <algorithm>
@@ -272,16 +273,11 @@ void VulkanSwapchain::setup_depth_stencil()
     imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
     imageCI.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 
-    VK_CHECK_RESULT(vkCreateImage(device, &imageCI, nullptr, &depth_stencil.image));
-    VkMemoryRequirements mem_reqs{};
-    vkGetImageMemoryRequirements(device, depth_stencil.image, &mem_reqs);
-
-    VkMemoryAllocateInfo memAllloc{};
-    memAllloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    memAllloc.allocationSize = mem_reqs.size;
-    memAllloc.memoryTypeIndex = vulkan_device_->get_memory_type(mem_reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    VK_CHECK_RESULT(vkAllocateMemory(device, &memAllloc, nullptr, &depth_stencil.mem));
-    VK_CHECK_RESULT(vkBindImageMemory(device, depth_stencil.image, depth_stencil.mem, 0));
+    VmaAllocator allocator = VulkanDriver::instance().allocator();
+    OC_ASSERT(allocator != VK_NULL_HANDLE);
+    VmaAllocationCreateInfo alloc_create = make_vma_allocation_info(DeviceMemoryUsage::MEMORY_USAGE_GPU_ONLY);
+    VK_CHECK_RESULT(vmaCreateImage(
+        allocator, &imageCI, &alloc_create, &depth_stencil.image, &depth_stencil.allocation, nullptr));
 
     VkImageViewCreateInfo imageViewCI{};
     imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -311,18 +307,16 @@ void VulkanSwapchain::release_backbuffers()
 
 void VulkanSwapchain::release_depth_stencil()
 {
-    VkDevice device = vulkan_device_->logicalDevice();
     if (depth_stencil.view != VK_NULL_HANDLE) {
         vkDestroyImageView(vulkan_device_->logicalDevice(), depth_stencil.view, nullptr);
         depth_stencil.view = VK_NULL_HANDLE;
     }
-    if (depth_stencil.image != VK_NULL_HANDLE) {
-        vkDestroyImage(vulkan_device_->logicalDevice(), depth_stencil.image, nullptr);
+    VmaAllocator allocator = VulkanDriver::instance().allocator();
+    if (allocator != VK_NULL_HANDLE
+        && (depth_stencil.image != VK_NULL_HANDLE || depth_stencil.allocation != VK_NULL_HANDLE)) {
+        vmaDestroyImage(allocator, depth_stencil.image, depth_stencil.allocation);
         depth_stencil.image = VK_NULL_HANDLE;
-    }
-    if (depth_stencil.mem != VK_NULL_HANDLE) {
-        vkFreeMemory(vulkan_device_->logicalDevice(), depth_stencil.mem, nullptr);
-        depth_stencil.mem = VK_NULL_HANDLE;
+        depth_stencil.allocation = VK_NULL_HANDLE;
     }
 }
 

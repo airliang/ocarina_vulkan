@@ -4,6 +4,7 @@
 #include "core/stl.h"
 #include "core/singleton.h"
 #include "rhi/resources/buffer.h"
+#include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 namespace ocarina {
 class VulkanDevice;
@@ -40,7 +41,8 @@ private:
     VkBuffer vulkan_buffer_ = VK_NULL_HANDLE;
     VkBufferUsageFlags usage_ = {};
     VkMemoryPropertyFlags memory_property_flags_ = {};
-    VkDeviceMemory memory_ = VK_NULL_HANDLE;
+    VmaAllocation allocation_ = VK_NULL_HANDLE;
+    VmaAllocationInfo allocation_info_{};
     
     VkDescriptorBufferInfo descriptor_buffer_info_ = {};
     VkDeviceSize memory_allocation_size_ = 0;

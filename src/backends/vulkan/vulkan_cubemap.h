@@ -3,6 +3,7 @@
 #include "core/stl.h"
 #include "rhi/resources/cubemap.h"
 #include "rhi/resources/texture_sampler.h"
+#include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 
 namespace ocarina {
@@ -80,7 +81,7 @@ private:
     VkImage image_ = VK_NULL_HANDLE;
     VkImageView image_view_ = VK_NULL_HANDLE;
     std::vector<VkImageView> storage_mip_views_;
-    VkDeviceMemory image_memory_ = VK_NULL_HANDLE;
+    VmaAllocation allocation_ = VK_NULL_HANDLE;
     VkSampler sampler_ = VK_NULL_HANDLE;
     VkImageLayout image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
     VkFormat image_format_ = VK_FORMAT_UNDEFINED;

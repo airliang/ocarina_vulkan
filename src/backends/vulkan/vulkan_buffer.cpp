@@ -1,62 +1,71 @@
 #include "util.h"
 #include "vulkan_device.h"
 #include "vulkan_buffer.h"
+#include "vulkan_driver.h"
+#include "vulkan_vma.h"
+
+#include <cstring>
 
 namespace ocarina {
 
 VulkanBuffer::VulkanBuffer(VulkanDevice *device, VkBufferUsageFlags usage_flags, VkMemoryPropertyFlags memory_property_flags, 
     VkDeviceSize size, const void *data ) : Buffer(device, 0, static_cast<size_t>(size)), device_(device), usage_(usage_flags) {
     memory_property_flags_ = memory_property_flags;
+
+    VmaAllocator allocator = VulkanDriver::instance().allocator();
+    OC_ASSERT(allocator != VK_NULL_HANDLE);
+
     VkBufferCreateInfo buffer_create{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     buffer_create.usage = usage_flags;
     buffer_create.size = size;
-    VK_CHECK_RESULT(vkCreateBuffer(device->logicalDevice(), &buffer_create, nullptr, &vulkan_buffer_));
     size_in_byte_ = static_cast<size_t>(size);
 
-    // Create the memory backing up the buffer handle
-    VkMemoryRequirements memReqs;
-    VkMemoryAllocateInfo memAlloc = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    VmaAllocationCreateInfo alloc_create = make_vma_allocation_info(memory_property_flags_);
+    OC_ASSERT((usage_ & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) == 0);
 
-    vkGetBufferMemoryRequirements(device_->logicalDevice(), vulkan_buffer_, &memReqs);
-    memAlloc.allocationSize = memReqs.size;
-    memory_allocation_size_ = memReqs.size;
-    // Find a memory type index that fits the properties of the buffer
-    memAlloc.memoryTypeIndex = device_->get_memory_type(memReqs.memoryTypeBits, memory_property_flags_);
-    // If the buffer has VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT set we also need to enable the appropriate flag during allocation
-    VkMemoryAllocateFlagsInfoKHR allocFlagsInfo{};
-    if (usage_ & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
-        allocFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO_KHR;
-        allocFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
-        memAlloc.pNext = &allocFlagsInfo;
-    }
-    VK_CHECK_RESULT(vkAllocateMemory(device_->logicalDevice(), &memAlloc, nullptr, &memory_));
+    VK_CHECK_RESULT(vmaCreateBuffer(
+        allocator,
+        &buffer_create,
+        &alloc_create,
+        &vulkan_buffer_,
+        &allocation_,
+        &allocation_info_));
+    memory_allocation_size_ = allocation_info_.size;
 
-    VK_CHECK_RESULT(vkBindBufferMemory(device_->logicalDevice(), vulkan_buffer_, memory_, 0)); 
-    if (data)
-    {
+    if (data) {
         load_from_cpu(data, 0, size);
     }
 }
 
 VulkanBuffer::~VulkanBuffer() {
     unmap();
-    if (vulkan_buffer_ != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device_->logicalDevice(), vulkan_buffer_, nullptr);
-    }
-
-    if (memory_ != VK_NULL_HANDLE)
-    {
-        vkFreeMemory(device_->logicalDevice(), memory_, nullptr);
+    VmaAllocator allocator = VulkanDriver::instance().allocator();
+    if (allocator != VK_NULL_HANDLE && (vulkan_buffer_ != VK_NULL_HANDLE || allocation_ != VK_NULL_HANDLE)) {
+        vmaDestroyBuffer(allocator, vulkan_buffer_, allocation_);
+        vulkan_buffer_ = VK_NULL_HANDLE;
+        allocation_ = VK_NULL_HANDLE;
     }
 }
 
 void VulkanBuffer::load_from_cpu(const void *cpu_data, VkDeviceSize byte_offset,
                                  VkDeviceSize size) {
-    // If a pointer to the buffer data has been passed, map the buffer and copy over the data
-    if (cpu_data != nullptr) {
-        VkDeviceSize map_size = size;
+    if (cpu_data == nullptr || allocation_ == VK_NULL_HANDLE) {
+        return;
+    }
+
+    VmaAllocator allocator = VulkanDriver::instance().allocator();
+    void *mapped = allocation_info_.pMappedData;
+    bool need_unmap = false;
+    if (mapped == nullptr) {
+        VK_CHECK_RESULT(vmaMapMemory(allocator, allocation_, &mapped));
+        need_unmap = true;
+    }
+
+    std::memcpy(static_cast<std::byte *>(mapped) + byte_offset, cpu_data, static_cast<size_t>(size));
+
+    if ((memory_property_flags_ & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0) {
         VkDeviceSize flush_size = size;
-        if ((memory_property_flags_ & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0) {
+        if ((memory_property_flags_ & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0) {
             const VkDeviceSize atom_size = device_->device_limits().nonCoherentAtomSize;
             VkDeviceSize range_end = byte_offset + size;
             if (range_end < memory_allocation_size_) {
@@ -64,58 +73,60 @@ void VulkanBuffer::load_from_cpu(const void *cpu_data, VkDeviceSize byte_offset,
             } else {
                 range_end = memory_allocation_size_;
             }
-            map_size = range_end - byte_offset;
-            flush_size = map_size;
+            flush_size = range_end - byte_offset;
         }
+        flush(flush_size, byte_offset);
+    }
 
-        VK_CHECK_RESULT(vkMapMemory(device_->logicalDevice(), memory_, byte_offset, map_size, 0, &mapped_));
-        memcpy(mapped_, cpu_data, size);
-        if ((memory_property_flags_ & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0)
-            flush(flush_size, byte_offset);
-
-        if (mapped_) {
-            vkUnmapMemory(device_->logicalDevice(), memory_);
-            mapped_ = nullptr;
-        }
+    if (need_unmap) {
+        vmaUnmapMemory(allocator, allocation_);
     }
 }
 
 VkResult VulkanBuffer::bind(VkDeviceSize offset)
 {
-    return vkBindBufferMemory(device_->logicalDevice(), vulkan_buffer_, memory_, offset);
+    (void)offset;
+    // vmaCreateBuffer already binds memory at allocation offset 0.
+    return VK_SUCCESS;
 }
 
 VkResult VulkanBuffer::flush(VkDeviceSize size, VkDeviceSize offset) {
-    if (mapped_ == nullptr) {
-        return VK_ERROR_MEMORY_MAP_FAILED;
+    VmaAllocator allocator = VulkanDriver::instance().allocator();
+    if (allocator == VK_NULL_HANDLE || allocation_ == VK_NULL_HANDLE) {
+        return VK_ERROR_UNKNOWN;
     }
-
     if (size == VK_WHOLE_SIZE) {
         size = memory_allocation_size_ - offset;
     }
-
-    VkMappedMemoryRange range = {};
-    range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-    range.memory = memory_;
-    range.offset = offset;
-    range.size = size;
-
-    return vkFlushMappedMemoryRanges(device_->logicalDevice(), 1, &range);
+    return vmaFlushAllocation(allocator, allocation_, offset, size);
 }
 
 void VulkanBuffer::map() noexcept {
-    if (mapped_ == nullptr) {
-        VK_CHECK_RESULT(vkMapMemory(device_->logicalDevice(), memory_, 0, memory_allocation_size_, 0, &mapped_));
+    if (mapped_ != nullptr) {
+        return;
     }
+    if (allocation_info_.pMappedData != nullptr) {
+        mapped_ = allocation_info_.pMappedData;
+        return;
+    }
+    VmaAllocator allocator = VulkanDriver::instance().allocator();
+    VK_CHECK_RESULT(vmaMapMemory(allocator, allocation_, &mapped_));
 }
 
 void VulkanBuffer::unmap() noexcept {
-    if (mapped_) {
-        vkUnmapMemory(device_->logicalDevice(), memory_);
-        mapped_ = nullptr;
+    if (mapped_ == nullptr) {
+        return;
     }
+    // Persistently mapped allocations must not be unmapped via vmaUnmapMemory.
+    if (allocation_info_.pMappedData != nullptr) {
+        mapped_ = nullptr;
+        return;
+    }
+    VmaAllocator allocator = VulkanDriver::instance().allocator();
+    if (allocator != VK_NULL_HANDLE && allocation_ != VK_NULL_HANDLE) {
+        vmaUnmapMemory(allocator, allocation_);
+    }
+    mapped_ = nullptr;
 }
 
 }// namespace ocarina
-
-
