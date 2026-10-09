@@ -20,7 +20,7 @@ VulkanInstance::VulkanInstance(const InstanceCreation& instanceCreation) {
     appInfo.apiVersion = std::min(get_supported_vulkan_version(), VK_API_VERSION_1_3);//VK_API_VERSION_1_1;
     validation_ = instanceCreation.validation;
 
-    std::vector<const char *> instanceExtensions = {VK_KHR_SURFACE_EXTENSION_NAME};
+    ocarina_vector<const char *> instanceExtensions = {VK_KHR_SURFACE_EXTENSION_NAME};
 
     // Enable surface extensions depending on os
 #if defined(_WIN32)
@@ -49,7 +49,7 @@ VulkanInstance::VulkanInstance(const InstanceCreation& instanceCreation) {
     // Get extensions supported by the instance and store for later use
     uint32_t extCount = 0;
     vkEnumerateInstanceExtensionProperties(nullptr, &extCount, nullptr);
-    std::vector<VkExtensionProperties> extensions(extCount);
+    ocarina_vector<VkExtensionProperties> extensions(extCount);
     if (extCount > 0) {
         if (vkEnumerateInstanceExtensionProperties(nullptr, &extCount, &extensions.front()) == VK_SUCCESS) {
             for (VkExtensionProperties &extension : extensions) {
@@ -86,7 +86,7 @@ VulkanInstance::VulkanInstance(const InstanceCreation& instanceCreation) {
         // Check if this layer is available at instance level
         uint32_t instanceLayerCount;
         vkEnumerateInstanceLayerProperties(&instanceLayerCount, nullptr);
-        std::vector<VkLayerProperties> instanceLayerProperties(instanceLayerCount);
+        ocarina_vector<VkLayerProperties> instanceLayerProperties(instanceLayerCount);
         vkEnumerateInstanceLayerProperties(&instanceLayerCount, instanceLayerProperties.data());
         bool validationLayerPresent = false;
         for (VkLayerProperties &layer : instanceLayerProperties) {

@@ -16,27 +16,27 @@ struct element_impl {
 };
 
 template<typename T>
-struct element_impl<vector<T>> {
+struct element_impl<ocarina_vector<T>> {
     using type = T;
 };
 
 template<typename T>
-struct element_impl<list<T>> {
+struct element_impl<ocarina_list<T>> {
     using type = T;
 };
 
 template<typename T>
-struct element_impl<std::stack<T>> {
+struct element_impl<ocarina_stack<T>> {
     using type = T;
 };
 
 template<typename T>
-struct element_impl<std::deque<T>> {
+struct element_impl<ocarina_deque<T>> {
     using type = T;
 };
 
 template<typename T>
-struct element_impl<std::queue<T>> {
+struct element_impl<ocarina_queue<T>> {
     using type = T;
 };
 

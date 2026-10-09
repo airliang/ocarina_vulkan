@@ -4,13 +4,13 @@
 #include "core/stl.h"
 #include "core/concepts.h"
 #include "core/thread_safe_queue.h"
+#include "mesh_cpu_memory.h"
 #include "rhi/graphics_descriptions.h"
 #include "rhi/resources/texture_sampler.h"
 #include "rhi/vertex_buffer.h"
 #include "ext/enkiTS/src/TaskScheduler.h"
 #include <atomic>
 #include <memory>
-#include <vector>
 
 namespace ocarina {
 
@@ -49,7 +49,8 @@ struct TextureGPUResourceRequest : GPUResourceRequest {
 
     GPUResourceRequestType kind = GPUResourceRequestType::TextureFromData;
     /// Owned pixel bytes for TextureFromData (moved into the GPU thread).
-    std::vector<uint8_t> pixel_data;
+    ocarina_vector<uint8_t> pixel_data{
+        ocarina_pool_allocator<uint8_t>("TextureGPUResourceRequest.pixel_data")};
     /// Pre-allocated bindless slot (InvalidUI32 for non-bindless render targets).
     uint32_t bindless_index = InvalidUI32;
     Texture* texture_ = nullptr;
@@ -61,12 +62,12 @@ struct TextureGPUResourceRequest : GPUResourceRequest {
 /// Mesh geometry upload into MeshBufferAllocator pages (GPU copy on this thread).
 /// Geometry is written onto @p mesh; Mesh becomes GPU_Ready after upload.
 struct MeshGPUResourceRequest : GPUResourceRequest {
-    std::vector<Vector3> positions;
-    std::vector<Vector3> normals;
-    std::vector<Vector4> tangents;
-    std::vector<Vector2> uvs;
-    std::vector<Vector4> colors;
-    std::vector<uint16_t> indices;
+    MeshPositions positions = make_mesh_positions();
+    MeshNormals normals = make_mesh_normals();
+    MeshTangents tangents = make_mesh_tangents();
+    MeshUvs uvs = make_mesh_uvs();
+    MeshColors colors = make_mesh_colors();
+    MeshIndices indices = make_mesh_indices();
 
     Mesh* mesh = nullptr;
 
@@ -80,7 +81,8 @@ struct MeshGPUResourceRequest : GPUResourceRequest {
 struct CubemapGPUResourceRequest : GPUResourceRequest {
     explicit CubemapGPUResourceRequest(Device* device, Cubemap* cubemap);
 
-    std::vector<uint8_t> pixel_data;
+    ocarina_vector<uint8_t> pixel_data{
+        ocarina_pool_allocator<uint8_t>("CubemapGPUResourceRequest.pixel_data")};
     Cubemap* cubemap_ = nullptr;
 
     [[nodiscard]] GPUResourceRequestType type() const noexcept override {

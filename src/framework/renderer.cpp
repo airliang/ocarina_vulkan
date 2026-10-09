@@ -6,7 +6,7 @@
 #include "gpu_resource_thread.h"
 #include "scene.h"
 #include "entity_component_system.h"
-#include "primitive.h"
+#include "render_component.h"
 #include "material.h"
 #include "fullscreen_triangle.h"
 #include "camera.h"
@@ -153,15 +153,12 @@ void Renderer::set_scene(Scene* scene) noexcept {
 
 void Renderer::update_entity_render_component(uint32_t entity_index) {
     EntityComponentSystem& ecs = EntityComponentSystem::instance();
-    if (entity_index >= ecs.primitive_count()) {
+    RenderComponent* render = ecs.try_render_component(entity_index);
+    TransformComponent* transform = ecs.try_transform_component(entity_index);
+    if (render == nullptr || transform == nullptr) {
         return;
     }
-
-    Primitive& primitive = ecs.primitive(entity_index);
-    RenderComponent& render_component = ecs.render_component(entity_index);
-    TransformComponent& transform = ecs.transform_component(entity_index);
-    primitive.initialize_render_component(device_, render_component, transform);
-    primitive.update_push_constants(transform);
+    render->update(device_, *transform, entity_index);
 }
 
 void Renderer::update_visible_render_components() {
@@ -185,12 +182,12 @@ void Renderer::populate_render_pass_queues(RHIRenderPass* render_pass, PassGroup
     EntityComponentSystem& ecs = EntityComponentSystem::instance();
 
     auto add_entity_draw_call = [&](uint32_t entity_index) {
-        if (entity_index >= ecs.primitive_count()) {
+        RenderComponent* render = ecs.try_render_component(entity_index);
+        if (render == nullptr) {
             return;
         }
 
-        Primitive& primitive = ecs.primitive(entity_index);
-        Material* material = primitive.get_material();
+        Material* material = render->get_material();
         if (material == nullptr) {
             return;
         }
@@ -244,11 +241,12 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
         uint32_t bound_index_page = InvalidUI32;
 
         for (uint32_t entity_index : queue.second->draw_call_items) {
-            if (entity_index >= ecs.render_component_count()) {
+            RenderComponent* item_ptr = ecs.try_render_component(entity_index);
+            if (item_ptr == nullptr) {
                 continue;
             }
 
-            RenderComponent& item = ecs.render_component(entity_index);
+            RenderComponent& item = *item_ptr;
             Mesh* mesh = ResourceManager::instance().get_mesh(item.mesh_id);
             if (mesh == nullptr ||
                 mesh->gpu_resource_state() != GPUResourceState::GPU_Ready) {
@@ -266,8 +264,7 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
                 continue;
             }
 
-            Primitive& primitive = ecs.primitive(entity_index);
-            Material* material = primitive.get_material();
+            Material* material = item.get_material();
             if (material != nullptr && !material->is_renderable()) {
                 continue;
             }

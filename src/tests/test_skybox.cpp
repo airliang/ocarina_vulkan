@@ -73,7 +73,7 @@ int main(int argc, char *argv[]) {
         &renderer.task_scheduler(),
         &device,
         [&skybox_material, &skybox_cubemap, shader_vert_abs, shader_frag_abs, cubemap_dir](Device* device) {
-            std::set<string> options;
+            ocarina_set<string> options;
             ResourceManager& resources = ResourceManager::instance();
             ShaderProgram* program = resources.create_shader_program(
                 device, shader_vert_abs, shader_frag_abs, options, options);

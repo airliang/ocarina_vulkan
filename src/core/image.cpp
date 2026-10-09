@@ -20,8 +20,30 @@
 
 namespace ocarina {
 
+namespace {
+
+constexpr const char* kImagePixelPool = "Image::pixel";
+
+template<typename T = std::byte>
+T* alloc_image_pixels(size_t count) noexcept {
+    TracyMemoryPoolScope scope(kImagePixelPool);
+    return allocate<T>(count);
+}
+
+}// namespace
+
 ImageView::ImageView(ocarina::PixelStorage pixel_storage, const std::byte *pixel, ocarina::uint2 res)
     : ImageBase(pixel_storage, res), pixel_(pixel) {}
+
+void ImagePixelDeleter::operator()(const std::byte* p) const noexcept {
+    if (p == nullptr) {
+        return;
+    }
+    TracyMemoryPoolScope scope(kImagePixelPool);
+    deallocate(const_cast<std::byte*>(p));
+}
+
+Image::~Image() = default;
 
 Image::Image(PixelStorage pixel_storage, const std::byte *pixel, uint2 res, const fs::path &path)
     : ImageBase(pixel_storage, res),
@@ -45,6 +67,9 @@ Image::Image(Image &&other) noexcept
 }
 
 Image &Image::operator=(Image &&rhs) noexcept {
+    if (this == &rhs) {
+        return *this;
+    }
     (*(ImageBase *)this) = std::forward<ImageBase>(rhs);
     std::swap(this->pixel_, rhs.pixel_);
     std::swap(this->path_, rhs.path_);
@@ -54,7 +79,7 @@ Image &Image::operator=(Image &&rhs) noexcept {
 Image Image::pure_color(float4 color, ColorSpace color_space, uint2 res) {
     auto pixel_count = res.x * res.y;
     auto pixel_size = PixelStorageImpl<float4>::pixel_size * pixel_count;
-    auto pixel = new_array<std::byte>(pixel_size);
+    auto pixel = alloc_image_pixels<std::byte>(pixel_size);
     auto dest = (float4 *)pixel;
     if (color_space == ColorSpace::LINEAR) {
         for (auto i = 0; i < pixel_count; ++i) {
@@ -72,7 +97,7 @@ Image Image::pure_color(float4 color, ColorSpace color_space, uint2 res) {
 
 Image Image::create_empty(ocarina::PixelStorage pixel_format, ocarina::uint2 res) {
     size_t size_in_bytes = pixel_size(pixel_format) * res.x * res.y;
-    auto pixel = new_array<std::byte>(size_in_bytes);
+    auto pixel = alloc_image_pixels<std::byte>(size_in_bytes);
     return {pixel_format, pixel, res};
 }
 
@@ -101,7 +126,7 @@ Image Image::load_hdr(const fs::path &path, ColorSpace color_space, float3 scale
     PixelStorage pixel_storage = detail::PixelStorageImpl<float4>::storage;
     int pixel_size = detail::PixelStorageImpl<float4>::pixel_size;
     size_t size_in_bytes = pixel_num * pixel_size;
-    auto pixel = new_array(size_in_bytes);
+    auto pixel = alloc_image_pixels(size_in_bytes);
     float *src = rgb;
     auto dest = (float *)pixel;
     float4 average = make_float4(0.f);
@@ -174,7 +199,7 @@ Image Image::load_exr(const fs::path &fn, ColorSpace color_space, float3 scale) 
         case 1: {
             using PixelType = float;
             PixelStorage pixel_storage = detail::PixelStorageImpl<PixelType>::storage;
-            PixelType *pixel = new_array<PixelType>(pixel_num);
+            PixelType *pixel = alloc_image_pixels<PixelType>(pixel_num);
             float average = 0;
             if (color_space == SRGB) {
                 for (int i = 0; i < pixel_num; ++i) {
@@ -196,7 +221,7 @@ Image Image::load_exr(const fs::path &fn, ColorSpace color_space, float3 scale) 
         case 2: {
             using PixelType = float2;
             PixelStorage pixel_storage = detail::PixelStorageImpl<PixelType>::storage;
-            PixelType *pixel = new_array<PixelType>(pixel_num);
+            PixelType *pixel = alloc_image_pixels<PixelType>(pixel_num);
             float2 average = make_float2(0.f);
             if (color_space == SRGB) {
                 for (int i = 0; i < pixel_num; ++i) {
@@ -221,7 +246,7 @@ Image Image::load_exr(const fs::path &fn, ColorSpace color_space, float3 scale) 
         }
         case 3: {
             PixelStorage pixel_storage = detail::PixelStorageImpl<float4>::storage;
-            float4 *pixel = new_array<float4>(pixel_num);
+            float4 *pixel = alloc_image_pixels<float4>(pixel_num);
             float4 average = make_float4(0.f);
             if (color_space == SRGB) {
                 for (int i = 0; i < pixel_num; ++i) {
@@ -250,7 +275,7 @@ Image Image::load_exr(const fs::path &fn, ColorSpace color_space, float3 scale) 
         }
         case 4: {
             PixelStorage pixel_storage = detail::PixelStorageImpl<float4>::storage;
-            float4 *pixel = new_array<float4>(pixel_num);
+            float4 *pixel = alloc_image_pixels<float4>(pixel_num);
             float4 average = make_float4(0.f);
             if (color_space == SRGB) {
                 for (int i = 0; i < pixel_num; ++i) {
@@ -296,7 +321,7 @@ Image Image::load_other(const fs::path &path, ColorSpace color_space, float3 sca
     size_t pixel_num = w * h;
     size_t size_in_bytes = pixel_size * pixel_num;
     uint2 resolution = make_uint2(w, h);
-    auto pixel = new_array<std::byte>(size_in_bytes);
+    auto pixel = alloc_image_pixels<std::byte>(size_in_bytes);
     uint8_t *src = rgba;
     auto dest = (uint32_t *)pixel;
     float4 average = make_float4(0.f);
@@ -356,7 +381,7 @@ void Image::save_exr(const fs::path &fn, PixelStorage pixel_storage,
     header.pixel_types = pixel_types.data();
     header.requested_pixel_types = pixel_types.data();
 
-    std::vector<float> images;
+    ocarina_vector<float> images;
     images.resize(c * count);
     image_ptr[0] = images.data();
     image_ptr[1] = image_ptr[0] + count;
@@ -463,7 +488,7 @@ Image::convert_to_32bit(PixelStorage pixel_storage, const std::byte *ptr, uint2 
     switch (pixel_storage) {
         case PixelStorage::BYTE1: {
             using TargetType = float;
-            pixel = new_array<std::byte>(pixel_num * sizeof(TargetType));
+            pixel = alloc_image_pixels<std::byte>(pixel_num * sizeof(TargetType));
             auto src = (uint8_t *)ptr;
             auto dest = (TargetType *)pixel;
             for (int i = 0; i < pixel_num; ++i, ++dest) {
@@ -474,7 +499,7 @@ Image::convert_to_32bit(PixelStorage pixel_storage, const std::byte *ptr, uint2 
         }
         case PixelStorage::BYTE2: {
             using TargetType = float2;
-            pixel = new_array(pixel_num * sizeof(TargetType));
+            pixel = alloc_image_pixels(pixel_num * sizeof(TargetType));
             auto src = (uint8_t *)ptr;
             auto dest = (TargetType *)pixel;
             for (int i = 0; i < pixel_num; ++i, ++dest, src += 2) {
@@ -485,7 +510,7 @@ Image::convert_to_32bit(PixelStorage pixel_storage, const std::byte *ptr, uint2 
         }
         case PixelStorage::BYTE4: {
             using TargetType = float4;
-            pixel = new_array(pixel_num * sizeof(TargetType));
+            pixel = alloc_image_pixels(pixel_num * sizeof(TargetType));
             auto src = (uint8_t *)ptr;
             auto dest = (TargetType *)pixel;
             for (int i = 0; i < pixel_num; ++i, ++dest, src += 4) {
@@ -511,7 +536,7 @@ Image::convert_to_8bit(PixelStorage pixel_storage, const std::byte *ptr, uint2 r
     switch (pixel_storage) {
         case PixelStorage::FLOAT1: {
             using TargetType = uint8_t;
-            pixel = new_array(pixel_num * sizeof(TargetType));
+            pixel = alloc_image_pixels(pixel_num * sizeof(TargetType));
             auto dest = (TargetType *)pixel;
             auto src = (float *)ptr;
             for (int i = 0; i < pixel_num; ++i, ++dest, ++src) {
@@ -522,7 +547,7 @@ Image::convert_to_8bit(PixelStorage pixel_storage, const std::byte *ptr, uint2 r
         }
         case PixelStorage::FLOAT2: {
             using TargetType = uint16_t;
-            pixel = new_array(pixel_num * sizeof(TargetType));
+            pixel = alloc_image_pixels(pixel_num * sizeof(TargetType));
             auto dest = (TargetType *)pixel;
             auto src = (float *)pixel;
             for (int i = 0; i < pixel_num; ++i, dest += 2, src += 2) {
@@ -534,7 +559,7 @@ Image::convert_to_8bit(PixelStorage pixel_storage, const std::byte *ptr, uint2 r
         }
         case PixelStorage::FLOAT4: {
             using TargetType = uint32_t;
-            pixel = new_array(pixel_num * sizeof(TargetType));
+            pixel = alloc_image_pixels(pixel_num * sizeof(TargetType));
             auto dest = (TargetType *)pixel;
             auto src = (float4 *)ptr;
             for (int i = 0; i < pixel_num; ++i, ++dest, ++src) {

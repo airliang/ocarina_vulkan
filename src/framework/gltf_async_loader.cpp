@@ -10,12 +10,13 @@
 #include "core/hash.h"
 #include "core/image.h"
 #include "transform.h"
-#include "primitive.h"
+#include "render_component.h"
 #include "mesh.h"
 #include "material.h"
 #include "math/basic_types.h"
 #include "scene.h"
 #include "global_gpu_storage.h"
+#include "mesh_cpu_memory.h"
 #include "bounding_box.h"
 #include "resource_manager.h"
 #include "rhi/shader_program_key.h"
@@ -61,14 +62,14 @@ float4x4 node_local_transform(const tinygltf::Node& node) {
     return transform.mat4x4();
 }
 
-uint32_t position_vertex_count(const std::vector<Vector3>& positions) {
+uint32_t position_vertex_count(const MeshPositions& positions) {
     return static_cast<uint32_t>(positions.size());
 }
 
 struct GltfPixelSource {
     PixelStorage format = PixelStorage::BYTE4;
     const void* data = nullptr;
-    std::vector<uint8_t> owned;
+    ocarina_vector<uint8_t> owned;
     uint32_t width = 0;
     uint32_t height = 0;
 };
@@ -376,20 +377,20 @@ void GltfAsyncLoader::load_gltf_node(
             }
 
             // Enter the scene only after CPU mesh + material are fully prepared.
-            Primitive& prim = scene_.emplace_primitive();
+            const uint32_t scene_entity_index = scene_.emplace_renderable();
 
             float3 translation;
             quaternion rotation;
             float3 scale;
             decompose(world_transform, &translation, &rotation, &scale);
-            const uint32_t scene_primitive_index = static_cast<uint32_t>(scene_.primitive_count() - 1);
-            scene_.transform_component(scene_primitive_index).set_position(translation);
-            scene_.transform_component(scene_primitive_index).set_rotation(rotation);
-            scene_.transform_component(scene_primitive_index).set_scale(scale);
+            scene_.transform_component(scene_entity_index).set_position(translation);
+            scene_.transform_component(scene_entity_index).set_rotation(rotation);
+            scene_.transform_component(scene_entity_index).set_scale(scale);
 
-            prim.set_mesh(mesh_obj);
+            RenderComponent& render = scene_.render_component(scene_entity_index);
+            render.set_mesh(mesh_obj);
             if (material != nullptr) {
-                prim.set_material(material);
+                render.set_material(material);
             }
 
             if (progress_listener_ != nullptr) {
@@ -438,11 +439,11 @@ BoundingBox GltfAsyncLoader::append_primitive_geometry(
     const uint64_t geometry_key = make_geometry_key(primitive);
     BoundingBox local_bounds;
 
-    std::vector<Vector3> positions;
-    std::vector<Vector3> normals;
-    std::vector<Vector4> tangents;
-    std::vector<Vector2> uvs;
-    std::vector<Vector4> colors;
+    MeshPositions positions = make_mesh_positions();
+    MeshNormals normals = make_mesh_normals();
+    MeshTangents tangents = make_mesh_tangents();
+    MeshUvs uvs = make_mesh_uvs();
+    MeshColors colors = make_mesh_colors();
     bool has_normals = false;
     bool has_tangents = false;
     bool has_uvs = false;
@@ -533,7 +534,7 @@ BoundingBox GltfAsyncLoader::append_primitive_geometry(
         colors.clear();
     }
 
-    std::vector<uint16_t> indices;
+    MeshIndices indices = make_mesh_indices();
     if (primitive.indices >= 0 && primitive.indices < static_cast<int>(model.accessors.size())) {
         const tinygltf::Accessor& accessor = model.accessors[primitive.indices];
         if (accessor.bufferView >= 0 && accessor.bufferView < static_cast<int>(model.bufferViews.size())) {

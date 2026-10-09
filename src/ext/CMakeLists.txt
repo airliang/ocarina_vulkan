@@ -64,20 +64,21 @@ if(WIN32)
 endif()
 
 # Tracy profiler — https://github.com/wolfpld/tracy
-if(OCARINA_ENABLE_TRACY)
-    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tracy/CMakeLists.txt")
-        message(FATAL_ERROR
-            "OCARINA_ENABLE_TRACY is ON but Tracy sources are missing.\n"
-            "Run: git submodule update --init src/ext/tracy\n"
-            "Or see src/ext/tracy/INTEGRATION.md for manual setup.")
-    endif()
-
+# Enable/disable instrumentation via OCARINA_ENABLE_TRACY in src/core/ocarina_config.h
+# (not a CMake option — avoids reconfigure when toggling).
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tracy/CMakeLists.txt")
     set(TRACY_ENABLE ON CACHE BOOL "" FORCE)
     set(TRACY_STATIC OFF CACHE BOOL "" FORCE)
     add_subdirectory(tracy EXCLUDE_FROM_ALL)
     set_target_properties(TracyClient PROPERTIES FOLDER "ext/tracy")
     target_link_libraries(ocarina-ext INTERFACE Tracy::TracyClient)
-    target_compile_definitions(ocarina-ext INTERFACE OCARINA_ENABLE_TRACY=1)
+    # Report mimalloc/EASTL heap traffic in Tracy's Default memory plot.
+    target_link_libraries(EASTL PRIVATE Tracy::TracyClient)
+else()
+    message(WARNING
+        "Tracy sources missing under src/ext/tracy.\n"
+        "Run: git submodule update --init src/ext/tracy\n"
+        "OCARINA_ENABLE_TRACY in ocarina_config.h will no-op without TracyClient.")
 endif()
 
 cmake_policy(SET CMP0148 NEW)

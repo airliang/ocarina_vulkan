@@ -5,10 +5,16 @@
 #include <EASTL/allocator.h>
 #include <EASTL/internal/config.h>
 
+#include "core/ocarina_config.h"
+
 #ifdef EASTL_MIMALLOC_ENABLED
 #include <mimalloc.h>
 #else
 #include <cstdlib>
+#endif
+
+#if defined(OCARINA_ENABLE_TRACY) && OCARINA_ENABLE_TRACY
+#include <tracy/Tracy.hpp>
 #endif
 
 namespace eastl
@@ -22,7 +28,49 @@ namespace eastl
 			static allocator* pa = &a;
 			return pa;
 		}
-	} // namespace internal
+
+		inline const char*& TracyMemoryPoolRef() noexcept
+		{
+			static thread_local const char* pool = nullptr;
+			return pool;
+		}
+
+		// Callstacks help attribute Default-pool blocks; named pools show as separate Memory series.
+		constexpr int kTracyAllocCallstackDepth = 32;
+
+		inline void tracy_alloc(void* ptr, size_t size) noexcept
+		{
+#if defined(OCARINA_ENABLE_TRACY) && OCARINA_ENABLE_TRACY
+			if (ptr == nullptr || size == 0) {
+				return;
+			}
+			if (const char* pool = TracyMemoryPoolRef()) {
+				TracyAllocNS(ptr, size, kTracyAllocCallstackDepth, pool);
+			} else {
+				TracyAllocS(ptr, size, kTracyAllocCallstackDepth);
+			}
+#else
+			(void)ptr;
+			(void)size;
+#endif
+		}
+
+		inline void tracy_free(void* ptr) noexcept
+		{
+#if defined(OCARINA_ENABLE_TRACY) && OCARINA_ENABLE_TRACY
+			if (ptr == nullptr) {
+				return;
+			}
+			if (const char* pool = TracyMemoryPoolRef()) {
+				TracyFreeNS(ptr, kTracyAllocCallstackDepth, pool);
+			} else {
+				TracyFreeS(ptr, kTracyAllocCallstackDepth);
+			}
+#else
+			(void)ptr;
+#endif
+		}
+	} // namespace detail
 
 	EASTL_API allocator* GetDefaultAllocator()
 	{
@@ -36,14 +84,26 @@ namespace eastl
 		return pPrevAllocator;
 	}
 
+	EASTL_API void SetTracyMemoryPool(const char* pool_name) noexcept
+	{
+		detail::TracyMemoryPoolRef() = pool_name;
+	}
+
+	EASTL_API const char* GetTracyMemoryPool() noexcept
+	{
+		return detail::TracyMemoryPoolRef();
+	}
+
 
 	void* allocator::allocate(size_t n, int /* flags */)
 	{
 #ifdef EASTL_MIMALLOC_ENABLED
-		return mi_malloc(n);
+		void* ptr = mi_malloc(n);
 #else
-		return malloc(n);
+		void* ptr = malloc(n);
 #endif
+		detail::tracy_alloc(ptr, n);
+		return ptr;
 	}
 
 
@@ -55,15 +115,18 @@ namespace eastl
 		}
 
 #ifdef EASTL_MIMALLOC_ENABLED
-		return mi_aligned_alloc(alignment, n);
+		void* ptr = mi_aligned_alloc(alignment, n);
 #else
-		return aligned_alloc(alignment, n);
+		void* ptr = aligned_alloc(alignment, n);
 #endif
+		detail::tracy_alloc(ptr, n);
+		return ptr;
 	}
 
 
 	void allocator::deallocate(void* p, size_t)
 	{
+		detail::tracy_free(p);
 #ifdef EASTL_MIMALLOC_ENABLED
 		mi_free(p);
 #else

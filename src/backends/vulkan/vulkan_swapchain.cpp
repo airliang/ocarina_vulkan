@@ -96,7 +96,7 @@ void VulkanSwapchain::create_swapchain(const SwapChainCreation &creation, Vulkan
     // Find a supported composite alpha format (not all devices support alpha opaque)
     VkCompositeAlphaFlagBitsKHR compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     // Simply select the first composite alpha format available
-    std::vector<VkCompositeAlphaFlagBitsKHR> compositeAlphaFlags = {
+    ocarina_vector<VkCompositeAlphaFlagBitsKHR> compositeAlphaFlags = {
         VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
         VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
         VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
@@ -224,7 +224,7 @@ void VulkanSwapchain::setup_backbuffers(const VkSwapchainCreateInfoKHR &swapChai
     uint32_t imageCount = 0;
     vkGetSwapchainImagesKHR(device, swapchain_, &imageCount, nullptr);
 
-    std::vector<VkImage> images;
+    ocarina_vector<VkImage> images;
     images.resize(imageCount);
     vkGetSwapchainImagesKHR(device, swapchain_, &imageCount, &images.front());
 
@@ -336,7 +336,7 @@ VkPresentModeKHR VulkanSwapchain::get_preferred_presentmode(VkPhysicalDevice phy
         return selectedMode;
     }
 
-    std::vector<VkPresentModeKHR> presentModes(presentModeCount);
+    ocarina_vector<VkPresentModeKHR> presentModes(presentModeCount);
     vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, &presentModes.front());
 
     if (!vsync) {
@@ -370,7 +370,7 @@ VkFormat VulkanSwapchain::get_preferred_colorformat(ColorSpace colorSpace)
     VK_CHECK_RESULT(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface_, &formatCount, nullptr));
     assert(formatCount > 0);
 
-    std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
+    ocarina_vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
     VK_CHECK_RESULT(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface_, &formatCount, surfaceFormats.data()));
     VkColorSpaceKHR vulkanColorSpace = colorspace_vulkan(colorSpace);
     for (uint32_t i = 0; i < formatCount; ++i)

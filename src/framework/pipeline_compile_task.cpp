@@ -147,7 +147,7 @@ void PipelineCompileTaskPool::Release(PipelineCompileTask* task) {
 
 void PipelineCompileTaskPool::reclaim() noexcept {
     std::lock_guard<std::mutex> lock(mutex_);
-    std::deque<PipelineCompileTask*> still_running;
+    ocarina_deque<PipelineCompileTask*> still_running;
     while (!pending_release_.empty()) {
         PipelineCompileTask* task = pending_release_.front();
         pending_release_.pop_front();

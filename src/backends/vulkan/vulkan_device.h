@@ -30,10 +30,10 @@ private:
     /** @brief Memory types and heaps of the physical device */
     VkPhysicalDeviceMemoryProperties m_deviceMemoryProperties{};
     /** @brief Queue family properties of the physical device */
-    std::vector<VkQueueFamilyProperties> m_queueFamilyProperties;
+    ocarina_vector<VkQueueFamilyProperties> m_queueFamilyProperties;
     /** @brief List of extensions supported by the device */
-    std::vector<std::string> m_supportedExtensions;
-    std::vector<const char *> m_enableExtensions;
+    ocarina_vector<std::string> m_supportedExtensions;
+    ocarina_vector<const char *> m_enableExtensions;
 
 public:
     explicit VulkanDevice(RHIContext *file_manager, const ocarina::InstanceCreation &instance_creation);
@@ -77,14 +77,14 @@ public:
         TextureUsageFlags usage,
         uint32_t mip_levels = 1) noexcept override;
     void destroy_cubemap(handle_ty handle) noexcept override;
-    [[nodiscard]] handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string>& options) noexcept override;
+    [[nodiscard]] handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const ocarina_set<string>& options) noexcept override;
     [[nodiscard]] handle_ty create_shader_from_program(ShaderProgram* program, ShaderType stage) noexcept override;
     [[nodiscard]] std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>
     create_shader_descriptor_set_layouts(ShaderProgram* program) noexcept override;
     [[nodiscard]] DescriptorSetLayout* create_frame_descriptor_set_layout(
         span<const ShaderVariableBinding> bindings) noexcept override;
     void release_shader_program(ShaderProgram* program) noexcept override;
-    [[nodiscard]] handle_ty find_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string>& options) noexcept override;
+    [[nodiscard]] handle_ty find_shader_from_file(const std::string &file_name, ShaderType shader_type, const ocarina_set<string>& options) noexcept override;
     void destroy_shader(handle_ty handle) noexcept override;
     void shutdown();
     /// Create surface + swapchain after VmaAllocator exists on VulkanDriver.
@@ -178,7 +178,7 @@ public:
     uint32_t queueIndicesInFamily_[(uint32_t)QueueType::NumQueueType] = {};
 
     //uint32_t queueFamilyIndexPerQueue_[(uint32_t)QueueType::NumQueueType];
-    std::vector<VkQueueFamilyProperties> queueFamilyProperties_;
+    ocarina_vector<VkQueueFamilyProperties> queueFamilyProperties_;
     uint32_t queueFamilyCount_ = 0;
     VkPhysicalDeviceDescriptorIndexingFeaturesEXT indexing_features_{};
     VkPhysicalDeviceVulkan12Features vulkan12_features_{};

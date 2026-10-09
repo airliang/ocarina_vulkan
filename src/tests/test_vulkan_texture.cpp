@@ -16,7 +16,7 @@
 #include "framework/imgui_renderer.h"
 #include "framework/framework_ui.h"
 #include "framework/renderer.h"
-#include "framework/primitive.h"
+#include "framework/render_component.h"
 #include "framework/scene.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/renderpass.h"
@@ -49,7 +49,8 @@ int main(int argc, char *argv[]) {
     Device device = file_manager.create_device("vulkan", instanceCreation);
 
     Scene scene;
-    Primitive& quad = scene.emplace_primitive();
+    const uint32_t quad_scene_index = scene.emplace_renderable();
+    RenderComponent& quad = scene.render_component(quad_scene_index);
     Material* material = nullptr;
     Mesh* quad_mesh = nullptr;
     TextureHandle texture_handle{};
@@ -69,7 +70,7 @@ int main(int argc, char *argv[]) {
         &renderer.task_scheduler(),
         &device,
         [&material, &quad_mesh, &texture_handle, shader_vert_abs, shader_frag_abs, texture_path](Device* device) {
-        std::set<string> options;
+        ocarina_set<string> options;
         ResourceManager& resources = ResourceManager::instance();
         ShaderProgram* program = resources.create_shader_program(
             device, shader_vert_abs, shader_frag_abs, options, options);
@@ -85,7 +86,7 @@ int main(int argc, char *argv[]) {
         quad_mesh = ResourceManager::instance().create_mesh("quad");
     });
 
-    auto setup_quad = [&](Primitive& quad) {
+    auto setup_quad = [&](RenderComponent& quad) {
         quad.set_mesh(quad_mesh);
         quad.set_material(material);
         material->set_property(hash64("albedo"), texture_handle);
@@ -102,14 +103,14 @@ int main(int argc, char *argv[]) {
 
     uint64_t model_matrix_name_id = hash64("modelMatrix");
     uint64_t model_matrix_inverse_name_id = hash64("modelMatrixInverse");
-    auto update_push_constant = [&](Primitive& primitive, TransformComponent& transform) {
+    auto update_push_constant = [&](RenderComponent& render, TransformComponent& transform) {
         const float4x4 world_matrix = transform.get_world_matrix();
         const float4x4 world_matrix_inverse = inverse(world_matrix);
-        primitive.set_push_constant_variable(
+        render.set_push_constant_variable(
             model_matrix_name_id,
             reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix)),
             sizeof(world_matrix));
-        primitive.set_push_constant_variable(
+        render.set_push_constant_variable(
             model_matrix_inverse_name_id,
             reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix_inverse)),
             sizeof(world_matrix_inverse));
@@ -146,9 +147,7 @@ int main(int argc, char *argv[]) {
     });
 
     renderer.set_async_loader(&async_loader, nullptr, [&]() {
-        quad.set_geometry_data_setup(&device, [&](Primitive& quad) {
-            setup_quad(quad);
-        });
+        setup_quad(quad);
 
         imgui_renderer.set_frame_callback([&]() {
             display_frame_info(*window->widgets());

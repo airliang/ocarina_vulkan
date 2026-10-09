@@ -17,9 +17,8 @@
 #include "framework/framework_ui.h"
 #include "framework/renderer.h"
 #include "framework/pass_group_id.h"
-#include "framework/primitive.h"
+#include "framework/render_component.h"
 #include "framework/scene.h"
-#include "framework/entity_component_system.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/renderpass.h"
 #include "rhi/rendertarget.h"
@@ -71,11 +70,13 @@ int main(int argc, char *argv[]) {
     instanceCreation.windowHeight = window_size.y;
     Device device = file_manager.create_device("vulkan", instanceCreation);
 
-    EntityComponentSystem& ecs = EntityComponentSystem::instance();
-    const uint32_t triangle_entity_index = ecs.emplace_primitive();
-
     Scene scene;
-    Primitive& quad = scene.emplace_primitive();
+    const uint32_t triangle_scene_index = scene.emplace_renderable();
+    const uint32_t quad_scene_index = scene.emplace_renderable();
+    RenderComponent& triangle = scene.render_component(triangle_scene_index);
+    RenderComponent& quad = scene.render_component(quad_scene_index);
+    const uint32_t triangle_entity_index = scene.entity_index(triangle_scene_index);
+    const uint32_t quad_entity_index = scene.entity_index(quad_scene_index);
 
     Material* triangle_material = nullptr;
     Material* quad_material = nullptr;
@@ -111,7 +112,7 @@ int main(int argc, char *argv[]) {
         &renderer.task_scheduler(),
         &device,
         [&, triangle_vert_abs, triangle_frag_abs, texture_vert_abs, texture_frag_abs](Device* load_device) {
-        std::set<string> options;
+        ocarina_set<string> options;
         ResourceManager& resources = ResourceManager::instance();
         ShaderProgram* triangle_program = resources.create_shader_program(
             load_device, triangle_vert_abs, triangle_frag_abs, options, options);
@@ -122,14 +123,14 @@ int main(int argc, char *argv[]) {
         quad_mesh = ResourceManager::instance().create_mesh("quad");
     });
 
-    auto setup_offscreen_triangle = [&](Primitive& primitive) {
-        primitive.set_mesh(triangle_mesh);
-        primitive.set_material(triangle_material);
+    auto setup_offscreen_triangle = [&](RenderComponent& render) {
+        render.set_mesh(triangle_mesh);
+        render.set_material(triangle_material);
     };
 
-    auto setup_quad = [&](Primitive& primitive) {
-        primitive.set_mesh(quad_mesh);
-        primitive.set_material(quad_material);
+    auto setup_quad = [&](RenderComponent& render) {
+        render.set_mesh(quad_mesh);
+        render.set_material(quad_material);
         quad_material->set_property(hash64("albedo"), TextureHandle{InvalidUI32, offscreen_color});
         quad_material->add_sampler(hash64("sampler_albedo"), *offscreen_color->get_sampler_pointer());
     };
@@ -159,9 +160,15 @@ int main(int argc, char *argv[]) {
 
     renderer.set_scene(&scene);
     renderer.set_camera(&camera);
+    // Offscreen draws the triangle; swapchain draws the textured quad that samples it.
     renderer.set_render_pass_primitive_filter([&](uint32_t entity_index, RHIRenderPass* render_pass) {
-        (void)entity_index;
-        return render_pass == swapchain_pass;
+        if (render_pass == offscreen_pass) {
+            return entity_index == triangle_entity_index;
+        }
+        if (render_pass == swapchain_pass) {
+            return entity_index == quad_entity_index;
+        }
+        return false;
     });
 
     // Pass groups: Offscreen RT first, then UI/swapchain (opaque present + ImGui).
@@ -189,43 +196,28 @@ int main(int argc, char *argv[]) {
         triangle_mesh = create_triangle_mesh();
         ResourceManager::instance().add_mesh("offscreen_triangle", triangle_mesh);
 
-        Primitive& triangle = ecs.primitive(triangle_entity_index);
-
-        triangle.set_update_push_constant_function([&](Primitive& primitive, TransformComponent& transform) {
-            primitive.set_push_constant_variable(
+        triangle.set_update_push_constant_function([&](RenderComponent& render, TransformComponent& transform) {
+            render.set_push_constant_variable(
                 model_matrix_name_id,
                 reinterpret_cast<std::byte*>(const_cast<void*>(static_cast<const void*>(&transform.get_world_matrix()))),
                 sizeof(transform.get_world_matrix()));
         });
 
-        quad.set_update_push_constant_function([&](Primitive& primitive, TransformComponent& transform) {
+        quad.set_update_push_constant_function([&](RenderComponent& render, TransformComponent& transform) {
             const float4x4 world_matrix = transform.get_world_matrix();
             const float4x4 world_matrix_inverse = inverse(world_matrix);
-            primitive.set_push_constant_variable(
+            render.set_push_constant_variable(
                 model_matrix_name_id,
                 reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix)),
                 sizeof(world_matrix));
-            primitive.set_push_constant_variable(
+            render.set_push_constant_variable(
                 model_matrix_inverse_name_id,
                 reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix_inverse)),
                 sizeof(world_matrix_inverse));
         });
 
-        triangle.set_geometry_data_setup(&device, [&](Primitive& primitive) {
-            setup_offscreen_triangle(primitive);
-        });
-
-        quad.set_geometry_data_setup(&device, [&](Primitive& primitive) {
-            setup_quad(primitive);
-        });
-
-        triangle.update_render_component(
-            &device,
-            ecs.render_component(triangle_entity_index),
-            ecs.transform_component(triangle_entity_index));
-        offscreen_pass->add_draw_call(
-            triangle_entity_index,
-            triangle_material->get_pipeline_state());
+        setup_offscreen_triangle(triangle);
+        setup_quad(quad);
 
         imgui_renderer.set_frame_callback([&]() {
             display_frame_info(*window->widgets());

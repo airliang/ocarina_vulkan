@@ -17,7 +17,7 @@ namespace ocarina {
     std::string_view filename,
     ShaderType shader_type,
     std::string_view entry_point,
-    const std::set<std::string>& options) noexcept {
+    const ocarina_set<std::string>& options) noexcept {
     uint64_t options_hash = Hash64::default_seed;
     for (const std::string& option : options) {
         options_hash = detail::hash64(option, options_hash);
@@ -40,9 +40,9 @@ struct ShaderProgramKey {
     std::string vertex_shader_file;
     std::string pixel_shader_file;
     std::string compute_shader_file;
-    std::set<std::string> vertex_options;
-    std::set<std::string> pixel_options;
-    std::set<std::string> compute_options;
+    ocarina_set<std::string> vertex_options;
+    ocarina_set<std::string> pixel_options;
+    ocarina_set<std::string> compute_options;
     std::string entry_point = "main";
 
     [[nodiscard]] bool is_graphics() const noexcept {

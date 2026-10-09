@@ -95,7 +95,7 @@ public:
             TextureUsageFlags usage,
             uint32_t mip_levels = 1) noexcept = 0;
         virtual void destroy_cubemap(handle_ty handle) noexcept = 0;
-        [[nodiscard]] virtual handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept = 0;
+        [[nodiscard]] virtual handle_ty create_shader_from_file(const std::string &file_name, ShaderType shader_type, const ocarina_set<string> &options) noexcept = 0;
         [[nodiscard]] virtual handle_ty create_shader_from_program(ShaderProgram* program, ShaderType stage) noexcept = 0;
         /// Create descriptor set layouts from ShaderProgram merged reflection (no shader module required).
         /// Does not assign them onto the program — callers use ShaderProgram::create_descriptor_set_layouts.
@@ -106,7 +106,7 @@ public:
             span<const ShaderVariableBinding> bindings) noexcept = 0;
         virtual void release_shader_program(ShaderProgram* program) noexcept {}
         /// Cache lookup only; returns 0 / InvalidUI64 when the module is not loaded yet.
-        [[nodiscard]] virtual handle_ty find_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept {
+        [[nodiscard]] virtual handle_ty find_shader_from_file(const std::string &file_name, ShaderType shader_type, const ocarina_set<string> &options) noexcept {
             (void)file_name;
             (void)shader_type;
             (void)options;
@@ -228,7 +228,7 @@ public:
     [[nodiscard]] handle_ty create_shader_from_file(
         const std::string &file_name,
         ShaderType shader_type,
-        const std::set<std::string> &options) {
+        const ocarina_set<std::string> &options) {
         return impl_->create_shader_from_file(file_name, shader_type, options);
     }
 
@@ -251,7 +251,7 @@ public:
     [[nodiscard]] handle_ty find_shader_from_file(
         const std::string &file_name,
         ShaderType shader_type,
-        const std::set<std::string> &options) {
+        const ocarina_set<std::string> &options) {
         return impl_->find_shader_from_file(file_name, shader_type, options);
     }
 

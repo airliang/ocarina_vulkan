@@ -622,7 +622,7 @@ void VulkanCommandBuffer::copy_buffer_to_texture(
     auto* src = reinterpret_cast<VulkanBuffer*>(src_buffer);
     auto* dst = reinterpret_cast<VulkanTexture*>(dst_texture);
 
-    std::vector<VkBufferImageCopy> vk_regions(region_count);
+    ocarina_vector<VkBufferImageCopy> vk_regions(region_count);
     for (uint32_t i = 0; i < region_count; ++i) {
         const BufferTextureCopy& region = regions[i];
         VkBufferImageCopy& vk_region = vk_regions[i];
@@ -656,7 +656,7 @@ void VulkanCommandBuffer::copy_buffer_to_cubemap(
     auto* src = reinterpret_cast<VulkanBuffer*>(src_buffer);
     auto* dst = reinterpret_cast<VulkanCubemap*>(dst_cubemap);
 
-    std::vector<VkBufferImageCopy> vk_regions(region_count);
+    ocarina_vector<VkBufferImageCopy> vk_regions(region_count);
     for (uint32_t i = 0; i < region_count; ++i) {
         const BufferTextureCopy& region = regions[i];
         VkBufferImageCopy& vk_region = vk_regions[i];

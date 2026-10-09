@@ -34,10 +34,10 @@ public:
 
     [[nodiscard]] virtual bool get_uniform_buffer_members(
         const char* buffer_name,
-        std::vector<UniformBufferMember>& members,
+        ocarina_vector<UniformBufferMember>& members,
         uint32_t& buffer_size) const {
         if (program_ != nullptr) {
-            std::vector<ShaderProgram::UniformBufferMember> program_members;
+            ocarina_vector<ShaderProgram::UniformBufferMember> program_members;
             if (program_->get_uniform_buffer_members(buffer_name, program_members, buffer_size)) {
                 members.clear();
                 members.reserve(program_members.size());
@@ -60,10 +60,10 @@ public:
 
     [[nodiscard]] virtual bool get_struct_members(
         const char* struct_name,
-        std::vector<UniformBufferMember>& members,
+        ocarina_vector<UniformBufferMember>& members,
         uint32_t& struct_size) const {
         if (program_ != nullptr) {
-            std::vector<ShaderProgram::UniformBufferMember> program_members;
+            ocarina_vector<ShaderProgram::UniformBufferMember> program_members;
             if (program_->get_struct_members(struct_name, program_members, struct_size)) {
                 members.clear();
                 members.reserve(program_members.size());
@@ -97,7 +97,7 @@ public:
         return kEmpty;
     }
 
-    virtual void collect_push_constant_ranges(std::vector<PushConstantRange>& ranges) const {
+    virtual void collect_push_constant_ranges(ocarina_vector<PushConstantRange>& ranges) const {
         if (program_ != nullptr) {
             program_->collect_push_constant_ranges(ranges);
         } else {

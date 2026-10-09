@@ -38,9 +38,11 @@ void TextureGPUResourceRequest::process() {
                 texture,
                 pixel_data.data(),
                 pixel_data.size());
+            pixel_data.clear();
+            pixel_data.shrink_to_fit();
         } else {
             const uint3 res = texture->resolution();
-            std::vector<uint4> white(
+            ocarina_vector<uint4> white(
                 static_cast<size_t>(res.x) * res.y * res.z,
                 uint4(0, 0, 0, 255));
             upload_value = uploader.upload_texture_cpu_pixels(
@@ -93,6 +95,19 @@ void MeshGPUResourceRequest::process() {
     const MeshGeometrySlice slice = GlobalGPUStorage::instance().upload_geometry(input);
     mesh->set_geometry_slice(slice);
     mesh->set_gpu_resource_state(GPUResourceState::GPU_Ready);
+
+    positions.clear();
+    normals.clear();
+    tangents.clear();
+    uvs.clear();
+    colors.clear();
+    indices.clear();
+    positions.shrink_to_fit();
+    normals.shrink_to_fit();
+    tangents.shrink_to_fit();
+    uvs.shrink_to_fit();
+    colors.shrink_to_fit();
+    indices.shrink_to_fit();
 }
 
 CubemapGPUResourceRequest::CubemapGPUResourceRequest(Device* device, Cubemap* cubemap)
@@ -116,6 +131,8 @@ void CubemapGPUResourceRequest::process() {
             cubemap_,
             pixel_data.data(),
             pixel_data.size());
+        pixel_data.clear();
+        pixel_data.shrink_to_fit();
     }
     cubemap_->set_upload_complete_value(upload_value);
     cubemap_->set_gpu_resource_state(GPUResourceState::GPU_Ready);

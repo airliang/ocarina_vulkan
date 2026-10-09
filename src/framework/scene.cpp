@@ -2,6 +2,7 @@
 #include "camera.h"
 #include "entity_component_system.h"
 #include "mesh.h"
+#include "resource_manager.h"
 #include "simd_frustum_cull.h"
 #include <algorithm>
 #include <numeric>
@@ -10,8 +11,10 @@ namespace ocarina {
 
 namespace {
 
-[[nodiscard]] BoundingBox get_primitive_world_bounds(Primitive& primitive, const TransformComponent& transform) {
-    Mesh* mesh = primitive.get_mesh();
+[[nodiscard]] BoundingBox get_renderable_world_bounds(
+    const RenderComponent& render,
+    const TransformComponent& transform) {
+    Mesh* mesh = render.get_mesh();
     if (mesh == nullptr || !mesh->has_local_bounds()) {
         return {};
     }
@@ -22,19 +25,24 @@ namespace {
     return lhs * rhs;
 }
 
-[[nodiscard]] BoundingBox compute_bounds_for_range(
-    const std::vector<uint32_t>& entity_indices,
-    uint32_t begin,
-    uint32_t end,
-    const std::vector<BoundingBox>& entity_bounds) {
-    BoundingBox bounds;
-    for (uint32_t index = begin; index < end; ++index) {
-        bounds.merge(entity_bounds[entity_indices[index]]);
-    }
-    return bounds;
+} // namespace
+
+uint32_t Scene::emplace_entity() {
+    grid_built_ = false;
+    const uint32_t entity_index = EntityComponentSystem::instance().create_entity();
+    entity_indices_.push_back(entity_index);
+    return static_cast<uint32_t>(entity_indices_.size() - 1);
 }
 
-}// namespace
+uint32_t Scene::emplace_renderable() {
+    grid_built_ = false;
+    EntityComponentSystem& ecs = EntityComponentSystem::instance();
+    const uint32_t entity_index = ecs.create_entity();
+    ecs.add_transform_component(entity_index);
+    ecs.add_render_component(entity_index);
+    entity_indices_.push_back(entity_index);
+    return static_cast<uint32_t>(entity_indices_.size() - 1);
+}
 
 void Scene::clear_entities() {
     entity_indices_.clear();
@@ -51,15 +59,15 @@ void Scene::clear_entities() {
 
 BoundingBox Scene::compute_entity_bounds(uint32_t entity_index) const {
     EntityComponentSystem& ecs = EntityComponentSystem::instance();
-    if (entity_index >= ecs.primitive_count()) {
+    const RenderComponent* render = ecs.try_render_component(entity_index);
+    const TransformComponent* transform = ecs.try_transform_component(entity_index);
+    if (render == nullptr || transform == nullptr) {
         return {};
     }
-    return get_primitive_world_bounds(
-        ecs.primitive(entity_index),
-        ecs.transform_component(entity_index));
+    return get_renderable_world_bounds(*render, *transform);
 }
 
-BoundingBox Scene::compute_bounds(const std::vector<uint32_t>& entity_indices) const {
+BoundingBox Scene::compute_bounds(const ocarina_vector<uint32_t>& entity_indices) const {
     BoundingBox bounds;
     for (uint32_t entity_index : entity_indices) {
         bounds.merge(compute_entity_bounds(entity_index));
@@ -94,13 +102,13 @@ void Scene::build_grid(float cell_size_meters) {
         return {cx, cz};
     };
 
-    // First pass: compute grid extents (XZ) from entity centers.
     for (uint32_t scene_index = 0; scene_index < entity_indices_.size(); ++scene_index) {
         const uint32_t entity_index = entity_indices_[scene_index];
         const BoundingBox bounds = compute_entity_bounds(entity_index);
+        const TransformComponent* transform = ecs.try_transform_component(entity_index);
         const float3 center = bounds.valid
             ? bounds.center()
-            : ecs.transform_component(entity_index).get_position();
+            : (transform != nullptr ? transform->get_position() : float3{});
         const auto [cx, cz] = to_cell(center);
         min_cell_x = std::min(min_cell_x, cx);
         min_cell_z = std::min(min_cell_z, cz);
@@ -129,16 +137,16 @@ void Scene::build_grid(float cell_size_meters) {
         return iz * grid_dim_x_ + ix;
     };
 
-    // Second pass: count entities per cell and build per-cell bounds.
-    std::vector<uint32_t> cell_counts(grid_cells_.size(), 0u);
-    std::vector<BoundingBox> cell_bounds(grid_cells_.size());
-    std::vector<uint32_t> entity_cell_ids(entity_indices_.size());
+    ocarina_vector<uint32_t> cell_counts(grid_cells_.size(), 0u);
+    ocarina_vector<BoundingBox> cell_bounds(grid_cells_.size());
+    ocarina_vector<uint32_t> entity_cell_ids(entity_indices_.size());
     for (uint32_t scene_index = 0; scene_index < entity_indices_.size(); ++scene_index) {
         const uint32_t entity_index = entity_indices_[scene_index];
         const BoundingBox bounds = compute_entity_bounds(entity_index);
+        const TransformComponent* transform = ecs.try_transform_component(entity_index);
         const float3 center = bounds.valid
             ? bounds.center()
-            : ecs.transform_component(entity_index).get_position();
+            : (transform != nullptr ? transform->get_position() : float3{});
         const auto [cx, cz] = to_cell(center);
         const uint32_t flat = cell_index(cx, cz);
         entity_cell_ids[scene_index] = flat;
@@ -146,7 +154,6 @@ void Scene::build_grid(float cell_size_meters) {
         cell_bounds[flat].merge(bounds);
     }
 
-    // Compute per-cell ranges (prefix sums) into the reordered entity_indices_ array.
     uint32_t running = 0;
     for (uint32_t flat = 0; flat < static_cast<uint32_t>(grid_cells_.size()); ++flat) {
         SceneGridCell& cell = grid_cells_[flat];
@@ -156,12 +163,11 @@ void Scene::build_grid(float cell_size_meters) {
         running += cell.entity_count;
     }
 
-    // Third pass: reorder entity_indices_ so entities are grouped by cell.
-    std::vector<uint32_t> write_cursor(grid_cells_.size(), 0u);
+    ocarina_vector<uint32_t> write_cursor(grid_cells_.size(), 0u);
     for (uint32_t flat = 0; flat < static_cast<uint32_t>(grid_cells_.size()); ++flat) {
         write_cursor[flat] = grid_cells_[flat].first_entity_index;
     }
-    std::vector<uint32_t> reordered(entity_indices_.size());
+    ocarina_vector<uint32_t> reordered(entity_indices_.size());
     for (uint32_t scene_index = 0; scene_index < static_cast<uint32_t>(entity_indices_.size()); ++scene_index) {
         const uint32_t flat = entity_cell_ids[scene_index];
         const uint32_t dst = write_cursor[flat]++;
@@ -185,7 +191,6 @@ void Scene::cull_grids(const Frustum& frustum) {
 
     ensure_visible_cell_capacity();
 
-    // Pass 1: CullCellsSIMD. Pack visible cell flat indices into visible_cell_indices_ using visible_cell_count_.
     const uint32_t cell_count = static_cast<uint32_t>(grid_cells_.size());
     uint32_t cell_index_i = 0;
 
@@ -212,7 +217,6 @@ void Scene::cull_grids(const Frustum& frustum) {
             }
 
             if (!cell.bounds.valid) {
-                // No bounds: conservatively treat as visible.
                 valid_mask_f[lane] = -1.0f;
                 min_x[lane] = min_y[lane] = min_z[lane] = 0.0f;
                 max_x[lane] = max_y[lane] = max_z[lane] = 0.0f;

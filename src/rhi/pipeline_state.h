@@ -263,7 +263,7 @@ struct PushConstantRange {
     uint16_t size = 0;
     uint8_t shader_stage = 0;
     string name;
-    std::unordered_map<uint64_t, PushConstantVariable> variables;
+    ocarina_unordered_map<uint64_t, PushConstantVariable> variables;
 };
 
 struct PipelineLayoutPushConstantRange {

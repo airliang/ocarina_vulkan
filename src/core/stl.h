@@ -129,12 +129,13 @@ inline void delete_with_allocator(T *p, bool use_ea = true) noexcept {
 
 template<typename T = std::byte>
 OC_NODISCARD T *new_array(size_t num) noexcept {
-    return new T[num];
+    // Route through EASTL/mimalloc so Tracy Default (or active named pool) sees the block.
+    return allocate<T>(num);
 }
 
 template<typename T>
 void delete_array(T *ptr) noexcept {
-    delete[] ptr;
+    deallocate(ptr);
 }
 
 // io
@@ -265,20 +266,10 @@ inline size_t substr_count(string_view str, string_view target) noexcept {
     return ret;
 }
 
-// range and container
+// range and container (sequential/associative containers → ocarina_* in ocarina_containers.h)
 using std::array;
-using std::deque;
-using std::list;
-using std::map;
-using std::multimap;
 using std::optional;
-using std::queue;
-using std::set;
 using std::span;
-using std::stack;
-using std::unordered_map;
-using std::unordered_set;
-using std::vector;
 
 #if 1
 // tuple
@@ -507,3 +498,5 @@ template<typename T>
 using DCSP = deep_copy_shared_ptr<T>;
 
 }// namespace ocarina
+
+#include "ocarina_containers.h"

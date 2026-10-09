@@ -1,51 +1,7 @@
 #include "vertex_buffer.h"
 #include "device.h"
-#include "command_buffer.h"
-#include "fence.h"
-#include "core/logging.h"
 
 namespace ocarina {
-
-namespace {
-
-void upload_buffer_oneshot(
-    Device::Impl *device,
-    Buffer *dst,
-    const void *data,
-    size_t size_in_byte,
-    size_t dst_offset) {
-    if (device == nullptr || dst == nullptr || data == nullptr || size_in_byte == 0) {
-        return;
-    }
-
-    const handle_ty staging_handle = device->create_buffer(
-        size_in_byte,
-        GraphicBufferBindFlags::CopySrc,
-        "vertex_oneshot_staging");
-    Buffer *staging = reinterpret_cast<Buffer *>(staging_handle);
-    if (staging == nullptr) {
-        return;
-    }
-    staging->copy_from_immediately(data, static_cast<uint32_t>(size_in_byte));
-
-    CommandBuffer cmd = device->get_command_buffer(QueueType::Copy);
-    cmd.begin();
-    cmd.copy_buffer(
-        staging_handle,
-        reinterpret_cast<handle_ty>(dst),
-        0,
-        dst_offset,
-        size_in_byte);
-    cmd.end();
-
-    Fence fence = device->create_fence();
-    cmd.submit_to_queue(QueueType::Copy, &fence);
-    fence.wait();
-    device->release_command_buffer(cmd);
-    device->destroy_buffer(staging_handle);
-}
-
-}// namespace
 
 VertexBuffer::VertexBuffer(Device::Impl *device)
     : RHIResource(device, Tag::BUFFER, 0) {}
@@ -99,16 +55,6 @@ void VertexBuffer::add_vertex_stream(
     dirty_ = true;
 }
 
-void VertexBuffer::upload_data() {
-    for (auto &stream : vertex_streams_) {
-        if (stream.data) {
-            upload_attribute_data(stream.type, stream.data, stream.offset);
-        }
-    }
-    dirty_ = false;
-    set_gpu_resource_state(GPUResourceState::GPU_Ready);
-}
-
 void VertexBuffer::allocate_stream_capacity(
     VertexAttributeType::Enum type,
     uint32_t capacity,
@@ -136,54 +82,6 @@ void VertexBuffer::allocate_stream_capacity(
         byte_size,
         GraphicBufferBindFlags::VertexBuffer));
     set_gpu_resource_state(GPUResourceState::GPU_Visible);
-}
-
-void VertexBuffer::upload_attribute_range(
-    VertexAttributeType::Enum type,
-    const void *data,
-    uint32_t vertex_offset,
-    uint32_t vertex_count) {
-    if (data == nullptr || vertex_count == 0 || device_ == nullptr) {
-        return;
-    }
-
-    VertexStream *stream = get_vertex_stream(type);
-    if (stream == nullptr || stream->buffer == nullptr || stream->stride == 0) {
-        return;
-    }
-    OC_ASSERT(vertex_offset + vertex_count <= stream->count);
-
-    const uint64_t byte_size = static_cast<uint64_t>(vertex_count) * stream->stride;
-    const uint64_t dst_offset = static_cast<uint64_t>(vertex_offset) * stream->stride;
-    upload_buffer_oneshot(device_, stream->buffer, data, byte_size, dst_offset);
-}
-
-void VertexBuffer::upload_attribute_data(
-    VertexAttributeType::Enum type,
-    const void *data,
-    uint64_t offset) {
-    (void)data;
-    if (device_ == nullptr) {
-        return;
-    }
-
-    VertexStream *stream = get_vertex_stream(type);
-    if (stream == nullptr || stream->data == nullptr) {
-        return;
-    }
-
-    if (stream->buffer == nullptr) {
-        stream->buffer = reinterpret_cast<Buffer *>(device_->create_gpu_buffer(
-            stream->get_size(),
-            GraphicBufferBindFlags::VertexBuffer));
-    }
-
-    upload_buffer_oneshot(
-        device_,
-        stream->buffer,
-        stream->data,
-        stream->get_size(),
-        offset);
 }
 
 }// namespace ocarina

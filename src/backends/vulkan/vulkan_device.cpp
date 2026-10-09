@@ -4,7 +4,7 @@
 
 #include "vulkan_device.h"
 #include "rhi/shader_program.h"
-#include "vulkan_frame_sync_config.h"
+#include "vulkan_config.h"
 #include "rhi/context.h"
 #include "rhi/imgui_creation.h"
 #include "util.h"
@@ -201,7 +201,7 @@ void VulkanDevice::release_shader_program(ShaderProgram* program) noexcept {
     VulkanDriver::instance().release_program_shaders(program);
 }
 
-handle_ty VulkanDevice::create_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept {
+handle_ty VulkanDevice::create_shader_from_file(const std::string &file_name, ShaderType shader_type, const ocarina_set<string> &options) noexcept {
     if (shader_type != ShaderType::ComputeShader) {
         return 0;
     }
@@ -215,7 +215,7 @@ handle_ty VulkanDevice::create_shader_from_file(const std::string &file_name, Sh
     return create_shader_from_program(program, ShaderType::ComputeShader);
 }
 
-handle_ty VulkanDevice::find_shader_from_file(const std::string &file_name, ShaderType shader_type, const std::set<string> &options) noexcept {
+handle_ty VulkanDevice::find_shader_from_file(const std::string &file_name, ShaderType shader_type, const ocarina_set<string> &options) noexcept {
     (void)file_name;
     (void)shader_type;
     (void)options;
@@ -280,7 +280,7 @@ void VulkanDevice::init_vulkan()
         return;
     }
     // Enumerate devices
-    std::vector<VkPhysicalDevice> physicalDevices(gpuCount);
+    ocarina_vector<VkPhysicalDevice> physicalDevices(gpuCount);
     VkResult err = vkEnumeratePhysicalDevices(m_instance.instance(), &gpuCount, physicalDevices.data());
     if (err) {
         OC_ERROR_FORMAT("Could not enumerate physical devices : {}\n", errorString(err));
@@ -327,7 +327,7 @@ void VulkanDevice::init_vulkan()
     uint32_t extCount = 0;
     VK_CHECK_RESULT(vkEnumerateDeviceExtensionProperties(physicalDevice_, nullptr, &extCount, nullptr));
     if (extCount > 0) {
-        std::vector<VkExtensionProperties> extensions(extCount);
+        ocarina_vector<VkExtensionProperties> extensions(extCount);
         if (vkEnumerateDeviceExtensionProperties(physicalDevice_, nullptr, &extCount, &extensions.front()) == VK_SUCCESS) {
             for (auto ext : extensions) 
             {
@@ -460,8 +460,8 @@ void VulkanDevice::create_logical_device()
         ++family_queue_counts[unique_slot];
     }
 
-    std::vector<VkDeviceQueueCreateInfo> queues(unique_family_count);
-    std::vector<std::vector<float>> priorities(unique_family_count);
+    ocarina_vector<VkDeviceQueueCreateInfo> queues(unique_family_count);
+    ocarina_vector<ocarina_vector<float>> priorities(unique_family_count);
     for (uint32_t u = 0; u < unique_family_count; ++u) {
         const uint32_t queue_count = family_queue_counts[u];
         priorities[u].assign(queue_count, 0.0f);

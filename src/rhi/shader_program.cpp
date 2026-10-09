@@ -222,8 +222,8 @@ void ShaderProgram::dispatch_for_extent(
 ShaderProgram* ShaderProgram::compile_graphics_from_HLSL(
     const std::string& vertex_shader_file,
     const std::string& pixel_shader_file,
-    const std::set<std::string>& vertex_options,
-    const std::set<std::string>& pixel_options,
+    const ocarina_set<std::string>& vertex_options,
+    const ocarina_set<std::string>& pixel_options,
     const std::string& entry_point) {
 
     CompiledShader vertex_compiled{};
@@ -274,7 +274,7 @@ ShaderProgram* ShaderProgram::compile_graphics_from_HLSL(
 
 ShaderProgram* ShaderProgram::compile_compute_from_HLSL(
     const std::string& compute_shader_file,
-    const std::set<std::string>& options,
+    const ocarina_set<std::string>& options,
     const std::string& entry_point) {
 
     CompiledShader compiled{};
@@ -330,7 +330,7 @@ void ShaderProgram::merge_stage_reflection(
     uint32_t stage_flags) {
     (void)shader_type;
 
-    std::unordered_map<uint32_t, size_t> binding_index_by_key;
+    ocarina_unordered_map<uint32_t, size_t> binding_index_by_key;
     binding_index_by_key.reserve(variables_.size() + reflection.shader_resources.size());
 
     for (size_t i = 0; i < variables_.size(); ++i) {
@@ -453,7 +453,7 @@ void ShaderProgram::build_vertex_attributes(const ShaderReflection& reflection) 
 
 bool ShaderProgram::get_uniform_buffer_members(
     const char* buffer_name,
-    std::vector<UniformBufferMember>& members,
+    ocarina_vector<UniformBufferMember>& members,
     uint32_t& buffer_size) const {
     members.clear();
     buffer_size = 0;
@@ -486,7 +486,7 @@ bool ShaderProgram::get_uniform_buffer_members(
 
 bool ShaderProgram::get_struct_members(
     const char* struct_name,
-    std::vector<UniformBufferMember>& members,
+    ocarina_vector<UniformBufferMember>& members,
     uint32_t& struct_size) const {
     members.clear();
     struct_size = 0;
@@ -525,7 +525,7 @@ bool ShaderProgram::has_descriptor_binding(const char* binding_name) const {
     return false;
 }
 
-void ShaderProgram::collect_push_constant_ranges(std::vector<PushConstantRange>& ranges) const {
+void ShaderProgram::collect_push_constant_ranges(ocarina_vector<PushConstantRange>& ranges) const {
     for (const ShaderPushConstant& pc : push_constants_) {
         if (pc.size == 0) {
             continue;
@@ -585,7 +585,7 @@ bool ShaderProgram::get_shader_vertex_inputs(
         return true;
     }
 
-    std::vector<size_t> attribute_order(vertex_attributes_.size());
+    ocarina_vector<size_t> attribute_order(vertex_attributes_.size());
     std::iota(attribute_order.begin(), attribute_order.end(), size_t{0});
     std::sort(attribute_order.begin(), attribute_order.end(), [this](size_t lhs, size_t rhs) {
         return vertex_attributes_[lhs].location < vertex_attributes_[rhs].location;

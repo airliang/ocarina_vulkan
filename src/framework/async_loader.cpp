@@ -34,7 +34,7 @@ void AsyncLoader::run_pipeline_compile_tasks() noexcept {
         progress_listener_->set_phase("Compiling pipelines");
     }
 
-    std::vector<PipelineCompileTask*> submitted;
+    ocarina_vector<PipelineCompileTask*> submitted;
     submitted.reserve(pso_requests_.size());
     for (PSORequest& request : pso_requests_) {
         if (request.render_pass == nullptr) {

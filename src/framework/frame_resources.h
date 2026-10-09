@@ -180,7 +180,7 @@ private:
     /// Single engine-owned FRAME descriptor set (set 0).
     DescriptorSet* global_descriptor_set_ = nullptr;
     /// Binding-name aliases that all resolve to `global_descriptor_set_`.
-    std::unordered_map<uint64_t, DescriptorSet*> global_descriptor_sets_by_name_;
+    ocarina_unordered_map<uint64_t, DescriptorSet*> global_descriptor_sets_by_name_;
 
     struct PendingBindlessUpdate {
         uint32_t index = InvalidUI32;

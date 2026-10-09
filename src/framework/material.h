@@ -205,7 +205,7 @@ public:
         return material_params_buffer_name_id_;
     }
 
-    [[nodiscard]] const std::vector<MaterialProperty>& material_properties() const noexcept {
+    [[nodiscard]] const ocarina_vector<MaterialProperty>& material_properties() const noexcept {
         return material_properties_;
     }
 
@@ -235,7 +235,7 @@ private:
     struct OwnedUniformBuffer {
         uint32_t size = 0;
         TypedBuffer<std::byte> buffer{};
-        std::vector<uint8_t> cpu_data{};
+        ocarina_vector<uint8_t> cpu_data{};
         bool descriptor_bound = false;
         bool dirty = false;
     };
@@ -250,14 +250,14 @@ private:
     void add_uniform_buffer_property(
         const char* binding_name,
         uint32_t buffer_size,
-        const std::vector<RHIShader::UniformBufferMember>& members,
+        const ocarina_vector<RHIShader::UniformBufferMember>& members,
         bool create_owned_buffer,
         uint8_t binding = 0,
         uint8_t descriptor_set = 0);
     void apply_reflected_members(
         uint64_t buffer_name_id,
         uint32_t buffer_size,
-        const std::vector<RHIShader::UniformBufferMember>& members);
+        const ocarina_vector<RHIShader::UniformBufferMember>& members);
     void ensure_uniform_buffer_gpus();
     void upload_owned_uniform_buffer(uint64_t name_id, OwnedUniformBuffer& ubo);
     void queue_uniform_buffer_update();
@@ -277,15 +277,15 @@ private:
     uint64_t material_params_buffer_name_id_ = 0;
     uint32_t material_params_byte_size_ = 0;
 
-    std::vector<MaterialProperty> material_properties_;
-    std::unordered_map<uint64_t, size_t> material_property_indices_;
-    std::unordered_map<uint64_t, OwnedUniformBuffer> uniform_buffers_;
+    ocarina_vector<MaterialProperty> material_properties_;
+    ocarina_unordered_map<uint64_t, size_t> material_property_indices_;
+    ocarina_unordered_map<uint64_t, OwnedUniformBuffer> uniform_buffers_;
 
     DescriptorSet* material_descriptor_set_ = nullptr;
     uint32_t material_descriptor_set_index_ = InvalidUI32;
 
-    std::unordered_map<uint64_t, TextureHandle> texture_handles_;
-    std::unordered_map<uint64_t, Cubemap*> cubemap_handles_;
+    ocarina_unordered_map<uint64_t, TextureHandle> texture_handles_;
+    ocarina_unordered_map<uint64_t, Cubemap*> cubemap_handles_;
 
     bool in_update_queue_ = false;
 

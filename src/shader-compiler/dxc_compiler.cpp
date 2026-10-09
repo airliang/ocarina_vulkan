@@ -75,7 +75,7 @@ public:
     ULONG STDMETHODCALLTYPE AddRef(void) override { return 0; }
     ULONG STDMETHODCALLTYPE Release(void) override { return 0; }
 
-    std::vector<std::string> IncludedFiles;
+    ocarina_vector<std::string> IncludedFiles;
     IDxcUtils* pUtils;
     std::string shader_file_directory;
 };
@@ -87,7 +87,7 @@ bool DXCCompiler::compile_hlsl_spriv(const CompileInput &input, CompileResult &r
     DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(dxc_utils.ReleaseAndGetAddressOf()));
     DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(dxc_compiler.ReleaseAndGetAddressOf()));
 
-    std::vector<LPCWSTR> args;
+    ocarina_vector<LPCWSTR> args;
     args.push_back(DXC_ARG_PACK_MATRIX_COLUMN_MAJOR);
     args.push_back(L"-HV");
     args.push_back(L"2021");
@@ -101,7 +101,7 @@ bool DXCCompiler::compile_hlsl_spriv(const CompileInput &input, CompileResult &r
     }
 
     // Keep wide strings alive until Compile returns (args stores LPCWSTR pointers).
-    std::vector<std::wstring> owned_wstrings;
+    ocarina_vector<std::wstring> owned_wstrings;
     owned_wstrings.reserve(2 + input.include_paths.size() + input.macros.size());
 
     std::string file_dir = get_file_directory(input.full_file_path);
@@ -186,7 +186,7 @@ bool DXCCompiler::compile_hlsl_spriv(const CompileInput &input, CompileResult &r
     return result.spriv_codes.size() > 0;
 }
 
-void DXCCompiler::run_spriv_reflection(const std::vector<uint32_t> &spriv, ShaderType shader_type, ShaderReflection &shader_reflection) {
+void DXCCompiler::run_spriv_reflection(const ocarina_vector<uint32_t> &spriv, ShaderType shader_type, ShaderReflection &shader_reflection) {
     const void *shader_data = static_cast<const void*>(spriv.data());
     uint32_t shader_data_size = spriv.size() * sizeof(uint32_t);
 

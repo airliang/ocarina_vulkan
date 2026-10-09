@@ -110,6 +110,24 @@ namespace eastl
 	EASTL_API allocator* GetDefaultAllocator();
 	EASTL_API allocator* SetDefaultAllocator(allocator* pAllocator);
 
+	/// Tracy named memory pool (string literal). When set, allocate/deallocate
+	/// report TracyAllocN/TracyFreeN instead of the Default pool.
+	EASTL_API void SetTracyMemoryPool(const char* pool_name) noexcept;
+	EASTL_API const char* GetTracyMemoryPool() noexcept;
+
+	struct TracyMemoryPoolScope
+	{
+		const char* mPrev;
+		explicit TracyMemoryPoolScope(const char* pool_name) noexcept
+			: mPrev(GetTracyMemoryPool())
+		{
+			SetTracyMemoryPool(pool_name);
+		}
+		~TracyMemoryPoolScope() noexcept { SetTracyMemoryPool(mPrev); }
+		TracyMemoryPoolScope(const TracyMemoryPoolScope&) = delete;
+		TracyMemoryPoolScope& operator=(const TracyMemoryPoolScope&) = delete;
+	};
+
 
 	/// get_default_allocator
 	///

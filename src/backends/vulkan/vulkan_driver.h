@@ -1,5 +1,5 @@
 #pragma once
-#include "vulkan_frame_sync_config.h"
+#include "vulkan_config.h"
 #include "core/header.h"
 #include "core/concepts.h"
 #include "core/stl.h"
@@ -8,7 +8,6 @@
 #include "vulkan_pipeline.h"
 #include <vk_mem_alloc.h>
 #include <array>
-#include <mutex>
 #include <queue>
 
 namespace ocarina {
@@ -209,11 +208,14 @@ private:
     /** @brief Command pools per queue family (graphics / compute / copy) */
     std::array<VkCommandPool, (size_t)QueueType::NumQueueType> command_pools_ = {};
     // Command buffers used for rendering
-    //std::vector<VkCommandBuffer> draw_cmd_buffers_;
+    //ocarina_vector<VkCommandBuffer> draw_cmd_buffers_;
 
-    using CommandBufferPoolPerQueue = std::array<std::queue<VulkanCommandBuffer*>, (size_t)QueueType::NumQueueType>;
-    std::vector<CommandBufferPoolPerQueue> command_buffer_pools_;
-    std::mutex command_buffer_pool_mutex_;
+    /// Graphics/Compute only — keyed by in-flight frame slot (render thread).
+    using CommandBufferPoolPerQueue = std::array<ocarina_queue<VulkanCommandBuffer*>, (size_t)QueueType::NumQueueType>;
+    ocarina_vector<CommandBufferPoolPerQueue> command_buffer_pools_;
+    /// Dedicated Copy CB — uploads are serialized on GPUResourceThread, not frame-ringed.
+    VulkanCommandBuffer* copy_command_buffer_ = nullptr;
+    bool copy_command_buffer_in_use_ = false;
     // Swapchain image index from the latest acquire
     uint32_t current_buffer_ = 0;
     // True after a successful begin_frame acquire; end_frame presents only then.
@@ -221,7 +223,7 @@ private:
     // Ring index for per-frame CPU/GPU sync (fences, semaphores, command-buffer pools)
     uint32_t current_frame_ = 0;
     uint32_t frames_in_flight_ = 0;
-    std::vector<FrameSync> frame_sync_;
+    ocarina_vector<FrameSync> frame_sync_;
 
     OCARINA_VULKAN_FRAME_SYNC_TIMELINE_ONLY(FrameTimelineSync frame_timeline_sync_;)
 
@@ -232,20 +234,20 @@ private:
     double gpu_timestamp_period_ns_ = 0.0;
     double gpu_frame_time_ms_ = 0.0;
     // Tracks whether a frame-slot has valid timestamp data to read.
-    std::vector<uint8_t> gpu_timestamp_written_;
+    ocarina_vector<uint8_t> gpu_timestamp_written_;
 
     VkRenderPass renderpass_framebuffer{VK_NULL_HANDLE};
     //VkFormat depth_stencil_format;
-    std::vector<VkFramebuffer> frame_buffers;
+    ocarina_vector<VkFramebuffer> frame_buffers;
 
-    std::vector<VulkanRenderPass *> render_passes_;
-    std::unordered_map<uint64_t, VkSampler> samplers_;
+    ocarina_vector<VulkanRenderPass *> render_passes_;
+    ocarina_unordered_map<uint64_t, VkSampler> samplers_;
 
     VulkanTexture *internal_textures_[INTERNAL_TEXTURE_COUNT] = {nullptr};
     VkDescriptorPool imgui_descriptorpool_ = VK_NULL_HANDLE;
 
-    std::list<VkSemaphore> timeline_semaphore_pool_;
-    std::list<VkSemaphore> binary_semaphore_pool_;
+    ocarina_list<VkSemaphore> timeline_semaphore_pool_;
+    ocarina_list<VkSemaphore> binary_semaphore_pool_;
 
     VmaAllocator allocator_ = VK_NULL_HANDLE;
 };

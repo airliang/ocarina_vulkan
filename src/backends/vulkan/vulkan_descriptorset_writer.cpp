@@ -148,7 +148,7 @@ void VulkanDescriptorSetWriter::build(VulkanDevice *device) {
     if (writes_.empty() || device == nullptr) {
         return;
     }
-    std::vector<VkWriteDescriptorSet> writes;
+    ocarina_vector<VkWriteDescriptorSet> writes;
 
     for (auto &write : writes_) {
         writes.push_back(write);

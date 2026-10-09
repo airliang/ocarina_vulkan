@@ -86,7 +86,7 @@ void ShaderParameters::init_from_reflection() {
                 property.kind = PropertyKind::UniformBuffer;
                 property.uniform_buffer_name_id = name_id;
 
-                std::vector<ShaderProgram::UniformBufferMember> members;
+                ocarina_vector<ShaderProgram::UniformBufferMember> members;
                 uint32_t buffer_size = 0;
                 if (shader_program_->get_uniform_buffer_members(binding.name, members, buffer_size)
                     && buffer_size > 0) {

@@ -14,7 +14,7 @@
 #include "framework/framework_ui.h"
 #include "framework/renderer.h"
 #include "framework/pass_group_id.h"
-#include "framework/primitive.h"
+#include "framework/render_component.h"
 #include "framework/scene.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/renderpass.h"
@@ -64,7 +64,8 @@ int main(int argc, char *argv[]) {
     Device device = file_manager.create_device("vulkan", instanceCreation);
 
     Scene scene;
-    Primitive& triangle = scene.emplace_primitive();
+    const uint32_t triangle_scene_index = scene.emplace_renderable();
+    RenderComponent& triangle = scene.render_component(triangle_scene_index);
     Material* material = nullptr;
     Mesh* triangle_mesh = nullptr;
 
@@ -79,7 +80,7 @@ int main(int argc, char *argv[]) {
         &renderer.task_scheduler(),
         &device,
         [&material, &triangle_mesh, shader_vert, shader_frag](Device* device) {
-        std::set<string> options;
+        ocarina_set<string> options;
         ResourceManager& resources = ResourceManager::instance();
         ShaderProgram* program = resources.create_shader_program(
             device, shader_vert, shader_frag, options, options);
@@ -88,7 +89,7 @@ int main(int argc, char *argv[]) {
         ResourceManager::instance().add_mesh("triangle", triangle_mesh);
     });
 
-    auto setup_triangle = [&](Primitive& triangle) {
+    auto setup_triangle = [&](RenderComponent& triangle) {
         triangle.set_mesh(triangle_mesh);
         triangle.set_material(material);
     };
@@ -100,8 +101,8 @@ int main(int argc, char *argv[]) {
     camera.set_target({0.0f, 0.0f, 0.0f});
 
     uint64_t model_matrix_name_id = hash64("modelMatrix");
-    auto update_push_constant = [&](Primitive& primitive, TransformComponent& transform) {
-        primitive.set_push_constant_variable(
+    auto update_push_constant = [&](RenderComponent& render, TransformComponent& transform) {
+        render.set_push_constant_variable(
             model_matrix_name_id,
             reinterpret_cast<std::byte*>(const_cast<void*>(static_cast<const void*>(&transform.get_world_matrix()))),
             sizeof(transform.get_world_matrix()));
@@ -138,9 +139,7 @@ int main(int argc, char *argv[]) {
     });
 
     renderer.set_async_loader(&async_loader, nullptr, [&]() {
-        triangle.set_geometry_data_setup(&device, [&](Primitive& triangle) {
-            setup_triangle(triangle);
-        });
+        setup_triangle(triangle);
 
         imgui_renderer.set_frame_callback([&]() {
             display_frame_info(*window->widgets());

@@ -61,13 +61,7 @@ if(AUTO_LOCATE_VULKAN)
         ${CMAKE_SOURCE_DIR}/src/ext/imgui/backends/imgui_impl_vulkan.cpp)
     # imgui_impl_vulkan is compiled into this MODULE; do not treat it as dllimport.
     target_compile_definitions(ocarina-backend-vulkan PRIVATE "IMGUI_IMPL_API=")
-
-    option(OCARINA_VULKAN_FRAME_SYNC_TIMELINE "Use Vulkan timeline semaphores for per-frame GPU sync" ON)
-    if(OCARINA_VULKAN_FRAME_SYNC_TIMELINE)
-        target_compile_definitions(ocarina-backend-vulkan PRIVATE OCARINA_VULKAN_FRAME_SYNC_TIMELINE=1)
-    else()
-        target_compile_definitions(ocarina-backend-vulkan PRIVATE OCARINA_VULKAN_FRAME_SYNC_TIMELINE=0)
-    endif()
+    # OCARINA_VULKAN_FRAME_SYNC_TIMELINE defaults to 1 in vulkan_config.h
 else()
 	message(STATUS "Attempting to locate Vulkan SDK using manual path......")
 	set(VULKAN_SDK "C:/VulkanSDK")

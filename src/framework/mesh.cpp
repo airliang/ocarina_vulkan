@@ -1,5 +1,6 @@
 #include "mesh.h"
 #include "global_gpu_storage.h"
+#include "mesh_cpu_memory.h"
 #include "resource_manager.h"
 #include <cmath>
 
@@ -20,10 +21,10 @@ namespace {
 constexpr float kPi = 3.14159265358979323846f;
 
 void append_vertex(
-    std::vector<Vector3>& positions,
-    std::vector<Vector3>& normals,
-    std::vector<Vector2>& uvs,
-    std::vector<Vector4>& colors,
+    MeshPositions& positions,
+    MeshNormals& normals,
+    MeshUvs& uvs,
+    MeshColors& colors,
     const Vector3& position,
     const Vector3& normal,
     const Vector2& uv) {
@@ -34,11 +35,11 @@ void append_vertex(
 }
 
 void add_face(
-    std::vector<Vector3>& positions,
-    std::vector<Vector3>& normals,
-    std::vector<Vector2>& uvs,
-    std::vector<Vector4>& colors,
-    std::vector<uint16_t>& indices,
+    MeshPositions& positions,
+    MeshNormals& normals,
+    MeshUvs& uvs,
+    MeshColors& colors,
+    MeshIndices& indices,
     const Vector3& v0,
     const Vector3& v1,
     const Vector3& v2,
@@ -122,11 +123,11 @@ Quad::~Quad() {
 Cube::Cube() {
     constexpr float half_extent = 0.5f;
 
-    std::vector<Vector3> positions;
-    std::vector<Vector3> normals;
-    std::vector<Vector2> uvs;
-    std::vector<Vector4> colors;
-    std::vector<uint16_t> indices;
+    MeshPositions positions = make_mesh_positions();
+    MeshNormals normals = make_mesh_normals();
+    MeshUvs uvs = make_mesh_uvs();
+    MeshColors colors = make_mesh_colors();
+    MeshIndices indices = make_mesh_indices();
     positions.reserve(24);
     normals.reserve(24);
     uvs.reserve(24);
@@ -191,11 +192,11 @@ Cube::~Cube() {
 }
 
 Sphere::Sphere(uint32_t slice_count, uint32_t stack_count) {
-    std::vector<Vector3> positions;
-    std::vector<Vector3> normals;
-    std::vector<Vector2> uvs;
-    std::vector<Vector4> colors;
-    std::vector<uint16_t> indices;
+    MeshPositions positions = make_mesh_positions();
+    MeshNormals normals = make_mesh_normals();
+    MeshUvs uvs = make_mesh_uvs();
+    MeshColors colors = make_mesh_colors();
+    MeshIndices indices = make_mesh_indices();
 
     for (uint32_t stack = 0; stack <= stack_count; ++stack) {
         const float v = static_cast<float>(stack) / static_cast<float>(stack_count);

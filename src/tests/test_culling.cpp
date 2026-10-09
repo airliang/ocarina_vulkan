@@ -9,7 +9,7 @@
 #include "framework/imgui_renderer.h"
 #include "framework/framework_ui.h"
 #include "framework/renderer.h"
-#include "framework/primitive.h"
+#include "framework/render_component.h"
 #include "framework/camera.h"
 #include "framework/resource_manager.h"
 #include "framework/material.h"
@@ -98,7 +98,7 @@ int main(int argc, char* argv[]) {
         &renderer.task_scheduler(),
         &device,
         [&, shader_vert_abs, shader_frag_abs](Device* load_device) {
-        std::set<string> options;
+        ocarina_set<string> options;
         ResourceManager& resources = ResourceManager::instance();
         ShaderProgram* program = resources.create_shader_program(
             load_device, shader_vert_abs, shader_frag_abs, options, options);
@@ -114,14 +114,14 @@ int main(int argc, char* argv[]) {
         for (uint32_t height = 0; height < kGridCount; ++height) {
             for (uint32_t row = 0; row < kGridCount; ++row) {
                 for (uint32_t col = 0; col < kGridCount; ++col) {
-                    Primitive& primitive = scene->emplace_primitive();
-                    const uint32_t primitive_index = scene->primitive_count() - 1;
+                    const uint32_t primitive_index = scene->emplace_renderable();
                     scene->transform_component(primitive_index).set_position(make_float3(
                         static_cast<float>(col) * kGridSpacing,
                         static_cast<float>(height) * kGridSpacing,
                         static_cast<float>(row) * kGridSpacing));
-                    primitive.set_mesh(cube_mesh);
-                    primitive.set_material(material);
+                    RenderComponent& render = scene->render_component(primitive_index);
+                    render.set_mesh(cube_mesh);
+                    render.set_material(material);
                 }
             }
         }
@@ -139,14 +139,14 @@ int main(int argc, char* argv[]) {
 
     const uint64_t model_matrix_name_id = hash64("modelMatrix");
     const uint64_t model_matrix_inverse_name_id = hash64("modelMatrixInverse");
-    auto update_push_constant = [&](Primitive& primitive, TransformComponent& transform) {
+    auto update_push_constant = [&](RenderComponent& render, TransformComponent& transform) {
         const float4x4 world_matrix = transform.get_world_matrix();
         const float4x4 world_matrix_inverse = inverse(world_matrix);
-        primitive.set_push_constant_variable(
+        render.set_push_constant_variable(
             model_matrix_name_id,
             reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix)),
             sizeof(world_matrix));
-        primitive.set_push_constant_variable(
+        render.set_push_constant_variable(
             model_matrix_inverse_name_id,
             reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix_inverse)),
             sizeof(world_matrix_inverse));
@@ -212,11 +212,7 @@ int main(int argc, char* argv[]) {
         }
 
         for (uint32_t index = 0; index < scene->primitive_count(); ++index) {
-            Primitive& primitive = scene->primitive(index);
-            primitive.set_update_push_constant_function(update_push_constant);
-            primitive.set_geometry_data_setup(&device, [&](Primitive& prim) {
-                (void)prim;
-            });
+            scene->render_component(index).set_update_push_constant_function(update_push_constant);
         }
         renderer.set_scene(scene);
 

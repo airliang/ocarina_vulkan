@@ -65,7 +65,7 @@ void ResourceManager::cleanup() {
     cubemaps_.clear();
 
     // Any remaining registered buffers (e.g. FrameResources forgot to release).
-    std::unordered_map<handle_ty, Buffer*> remaining_buffers;
+    ocarina_unordered_map<handle_ty, Buffer*> remaining_buffers;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         remaining_buffers.swap(buffers_);
@@ -131,8 +131,8 @@ uint64_t ResourceManager::make_texture_key(
 ShaderProgramKey ResourceManager::make_graphics_program_key(
     const std::string& vertex_shader_file,
     const std::string& pixel_shader_file,
-    const std::set<std::string>& vertex_options,
-    const std::set<std::string>& pixel_options,
+    const ocarina_set<std::string>& vertex_options,
+    const ocarina_set<std::string>& pixel_options,
     const std::string& entry_point) {
     ShaderProgramKey key;
     key.vertex_shader_file = vertex_shader_file;
@@ -145,7 +145,7 @@ ShaderProgramKey ResourceManager::make_graphics_program_key(
 
 ShaderProgramKey ResourceManager::make_compute_program_key(
     const std::string& compute_shader_file,
-    const std::set<std::string>& options,
+    const ocarina_set<std::string>& options,
     const std::string& entry_point) {
     ShaderProgramKey key;
     key.compute_shader_file = compute_shader_file;
@@ -158,8 +158,8 @@ ShaderProgram* ResourceManager::create_shader_program(
     Device* device,
     const std::string& vertex_shader_file,
     const std::string& pixel_shader_file,
-    const std::set<std::string>& vertex_options,
-    const std::set<std::string>& pixel_options,
+    const ocarina_set<std::string>& vertex_options,
+    const ocarina_set<std::string>& pixel_options,
     const std::string& entry_point) {
     const ShaderProgramKey key = make_graphics_program_key(
         vertex_shader_file,
@@ -205,8 +205,8 @@ ShaderProgram* ResourceManager::create_shader_program(
 ShaderProgram* ResourceManager::get_shader_program(
     const std::string& vertex_shader_file,
     const std::string& pixel_shader_file,
-    const std::set<std::string>& vertex_options,
-    const std::set<std::string>& pixel_options,
+    const ocarina_set<std::string>& vertex_options,
+    const ocarina_set<std::string>& pixel_options,
     const std::string& entry_point) const noexcept {
     const ShaderProgramKey key = make_graphics_program_key(
         vertex_shader_file,
@@ -222,7 +222,7 @@ ShaderProgram* ResourceManager::get_shader_program(
 ShaderProgram* ResourceManager::create_compute_shader_program(
     Device* device,
     const std::string& compute_shader_file,
-    const std::set<std::string>& options,
+    const ocarina_set<std::string>& options,
     const std::string& entry_point) {
     const ShaderProgramKey key = make_compute_program_key(compute_shader_file, options, entry_point);
     {
@@ -260,7 +260,7 @@ ShaderProgram* ResourceManager::create_compute_shader_program(
 
 ShaderProgram* ResourceManager::get_compute_shader_program(
     const std::string& compute_shader_file,
-    const std::set<std::string>& options,
+    const ocarina_set<std::string>& options,
     const std::string& entry_point) const noexcept {
     const ShaderProgramKey key = make_compute_program_key(compute_shader_file, options, entry_point);
     std::lock_guard<std::mutex> lock(mutex_);
@@ -471,7 +471,6 @@ TextureHandle ResourceManager::create_texture(
     if (src != nullptr && byte_count > 0) {
         request->pixel_data.assign(src, src + byte_count);
     }
-
     GPUResourceThread::instance().enqueue(std::move(request));
     return handle;
 }
@@ -529,7 +528,6 @@ TextureHandle ResourceManager::create_texture(
         const auto* src = static_cast<const uint8_t*>(data);
         request->pixel_data.assign(src, src + byte_count);
     }
-
     GPUResourceThread::instance().enqueue(std::move(request));
     return handle;
 }
@@ -640,7 +638,6 @@ void ResourceManager::upload_cubemap_faces(
         }
         offset += face_bytes;
     }
-
     GPUResourceThread::instance().enqueue(std::move(request));
 }
 

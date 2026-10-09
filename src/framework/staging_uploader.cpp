@@ -17,10 +17,10 @@ namespace ocarina {
 namespace {
 
 struct CpuMipChain {
-    std::vector<uint8_t> pixels;
-    std::vector<uint32_t> level_offsets;
-    std::vector<uint32_t> level_widths;
-    std::vector<uint32_t> level_heights;
+    ocarina_vector<uint8_t> pixels;
+    ocarina_vector<uint32_t> level_offsets;
+    ocarina_vector<uint32_t> level_widths;
+    ocarina_vector<uint32_t> level_heights;
 };
 
 size_t mip_level_byte_size(uint32_t width, uint32_t height, uint32_t channels) {
@@ -341,7 +341,7 @@ uint64_t StagingUploader::upload_texture_cpu_pixels(
     const CpuMipChain chain = build_cpu_mip_chain(
         data, res.x, res.y, mip_levels, format, impl->is_srgb());
 
-    std::vector<BufferTextureCopy> regions(chain.level_offsets.size());
+    ocarina_vector<BufferTextureCopy> regions(chain.level_offsets.size());
     for (size_t i = 0; i < chain.level_offsets.size(); ++i) {
         BufferTextureCopy &region = regions[i];
         region.buffer_offset = chain.level_offsets[i];
@@ -380,8 +380,8 @@ uint64_t StagingUploader::upload_cubemap_faces(
 
     const void *upload_pixels = packed_face_pixels;
     size_t upload_bytes = face_bytes * 6;
-    std::vector<BufferTextureCopy> regions;
-    std::vector<uint8_t> packed_mips;
+    ocarina_vector<BufferTextureCopy> regions;
+    ocarina_vector<uint8_t> packed_mips;
 
     if (mip_levels <= 1) {
         regions.resize(6);

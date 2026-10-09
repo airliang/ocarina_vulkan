@@ -70,7 +70,7 @@ public:
         complete_callback_ = std::move(complete_callback);
     }
 
-    void set_pso_requests(std::vector<PSORequest> requests) noexcept
+    void set_pso_requests(ocarina_vector<PSORequest> requests) noexcept
     {
         pso_requests_ = std::move(requests);
     }
@@ -103,7 +103,7 @@ protected:
 
     enki::TaskScheduler* scheduler_ = nullptr;
     Device* device_ = nullptr;
-    std::vector<PSORequest> pso_requests_;
+    ocarina_vector<PSORequest> pso_requests_;
     RHIRenderPass* target_render_pass_ = nullptr;
     LoadingProgressListener* progress_listener_ = nullptr;
 

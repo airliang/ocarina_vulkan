@@ -39,11 +39,11 @@ public:
     void update_bindless_sampler_at_index(uint32_t index, VkSampler sampler);
 
 private:
-    std::unordered_map<uint64_t, VulkanDescriptor*> descriptors_;
-    std::vector<VkWriteDescriptorSet> writes_;
+    ocarina_unordered_map<uint64_t, VulkanDescriptor*> descriptors_;
+    ocarina_vector<VkWriteDescriptorSet> writes_;
     /// Keeps VkDescriptorBufferInfo alive across vkUpdateDescriptorSets.
-    std::vector<VkDescriptorBufferInfo> buffer_infos_;
-    std::vector<VkDescriptorImageInfo> image_infos_;
+    ocarina_vector<VkDescriptorBufferInfo> buffer_infos_;
+    ocarina_vector<VkDescriptorImageInfo> image_infos_;
     VulkanDescriptorSet *descriptor_set_ = nullptr;
     VulkanDevice *device_ = nullptr;
     VulkanDescriptorImage *bindless_textures_descriptor_ = nullptr;

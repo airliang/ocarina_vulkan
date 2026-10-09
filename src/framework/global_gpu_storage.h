@@ -3,6 +3,7 @@
 #include "core/header.h"
 #include "core/concepts.h"
 #include "mesh_buffer_allocator.h"
+#include "mesh_cpu_memory.h"
 
 namespace ocarina {
 
@@ -13,12 +14,12 @@ class IndexBuffer;
 
 /// Owned mesh attribute arrays (moved into GPUResourceRequest).
 struct OwnedMeshGeometry {
-    std::vector<Vector3> positions;
-    std::vector<Vector3> normals;
-    std::vector<Vector4> tangents;
-    std::vector<Vector2> uvs;
-    std::vector<Vector4> colors;
-    std::vector<uint16_t> indices;
+    MeshPositions positions = make_mesh_positions();
+    MeshNormals normals = make_mesh_normals();
+    MeshTangents tangents = make_mesh_tangents();
+    MeshUvs uvs = make_mesh_uvs();
+    MeshColors colors = make_mesh_colors();
+    MeshIndices indices = make_mesh_indices();
 };
 
 /// Facade over MeshBufferAllocator for mesh GPU uploads.
@@ -29,14 +30,14 @@ public:
     void initialize(Device* device);
     void cleanup();
 
-    /// Enqueue mesh upload onto the GPU resource thread.
-    void upload_mesh(OwnedMeshGeometry&& geometry, Mesh* mesh);
-
-    /// Allocate + upload immediately (GPU resource thread only, or when thread is not running).
     [[nodiscard]] MeshGeometrySlice upload_geometry(const MeshGeometryInput& input);
+    void upload_mesh(OwnedMeshGeometry&& geometry, Mesh* mesh);
 
     [[nodiscard]] VertexBuffer* vertex_buffer(uint32_t page_index) const;
     [[nodiscard]] IndexBuffer* index_buffer(uint32_t page_index) const;
+
+    [[nodiscard]] Device* device() const noexcept { return device_; }
+    [[nodiscard]] MeshBufferAllocator& allocator() noexcept { return allocator_; }
 
 private:
     GlobalGPUStorage() = default;

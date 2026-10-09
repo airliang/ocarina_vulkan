@@ -90,7 +90,7 @@ void record_pass_group(
     Device* device,
     CommandBuffer& cmd,
     PassGroupId group_id,
-    const std::list<RHIRenderPass*>& render_passes,
+    const ocarina_list<RHIRenderPass*>& render_passes,
     const RenderPassGUICallback& render_gui) noexcept
 {
     for (RHIRenderPass* render_pass : render_passes) {

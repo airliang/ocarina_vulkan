@@ -16,8 +16,8 @@ class ShaderProgram;
 struct PSORequest {
     std::string vertex_shader_path;
     std::string pixel_shader_path;
-    std::set<string> vertex_options;
-    std::set<string> pixel_options;
+    ocarina_set<string> vertex_options;
+    ocarina_set<string> pixel_options;
 
     ShaderProgram* shader_program = nullptr;
 
@@ -33,8 +33,8 @@ struct PSORequest {
         std::string vertex_path,
         std::string pixel_path,
         RHIRenderPass* render_pass,
-        std::set<string> vertex_options = {},
-        std::set<string> pixel_options = {}) {
+        ocarina_set<string> vertex_options = {},
+        ocarina_set<string> pixel_options = {}) {
         PSORequest request;
         request.vertex_shader_path = std::move(vertex_path);
         request.pixel_shader_path = std::move(pixel_path);

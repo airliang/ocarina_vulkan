@@ -68,9 +68,9 @@ public:
 
 private:
     std::mutex mutex_;
-    std::vector<PipelineCompileTask*> owned_;
-    std::deque<PipelineCompileTask*> free_;
-    std::deque<PipelineCompileTask*> pending_release_;
+    ocarina_vector<PipelineCompileTask*> owned_;
+    ocarina_deque<PipelineCompileTask*> free_;
+    ocarina_deque<PipelineCompileTask*> pending_release_;
 };
 
 }// namespace ocarina

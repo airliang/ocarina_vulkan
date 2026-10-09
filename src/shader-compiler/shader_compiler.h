@@ -10,7 +10,7 @@
 namespace ocarina {
 
 struct CompiledShader {
-    std::vector<uint32_t> spirv;
+    ocarina_vector<uint32_t> spirv;
     ShaderReflection reflection;
     /// Identity of this stage compile (filename + type + entry + options).
     uint64_t shader_hash = 0;
@@ -25,7 +25,7 @@ bool compile_hlsl_to_spirv_and_reflect(
     const std::string &entry_point,
     CompiledShader &out,
     bool rebuild_shaders = false,
-    const std::set<std::string> &options = {});
+    const ocarina_set<std::string> &options = {});
 
 } // namespace ocarina
 

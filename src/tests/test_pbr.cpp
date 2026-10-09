@@ -32,7 +32,7 @@
 #include "framework/frame_resources.h"
 #include "framework/pass_group_id.h"
 #include "framework/bindless_texture_registry.h"
-#include "framework/primitive.h"
+#include "framework/render_component.h"
 #include "rhi/shader_program.h"
 #include "rhi/shader_program_key.h"
 #include "rhi/pipeline_state.h"
@@ -73,7 +73,7 @@ void bind_ibl_to_scene(
         return;
     }
     for (uint32_t index = 0; index < scene.primitive_count(); ++index) {
-        Material* material = scene.primitive(index).get_material();
+        Material* material = scene.render_component(index).get_material();
         if (material == nullptr) {
             continue;
         }
@@ -127,7 +127,7 @@ int main(int argc, char *argv[]) {
     ShaderProgram* brdf_lut_program = nullptr;
     std::unique_ptr<ShaderParameters> irradiance_params;
     std::unique_ptr<ShaderParameters> brdf_lut_params;
-    std::vector<std::unique_ptr<ShaderParameters>> specular_mip_params;
+    ocarina_vector<std::unique_ptr<ShaderParameters>> specular_mip_params;
     Material* skybox_material = nullptr;
     Cubemap* env_cubemap = nullptr;
     Cubemap* irradiance_cubemap = nullptr;
@@ -166,7 +166,7 @@ int main(int argc, char *argv[]) {
         &renderer.task_scheduler(),
         &device,
         [&](Device* load_device) {
-            std::set<string> options;
+            ocarina_set<string> options;
             ResourceManager& resources = ResourceManager::instance();
 
             irradiance_program = resources.create_compute_shader_program(
@@ -445,12 +445,7 @@ int main(int argc, char *argv[]) {
 
     renderer.set_async_loader(&combined_loader, nullptr, [&]() {
         Scene& scene = gltf_loader.get_scene();
-        for (uint32_t index = 0; index < scene.primitive_count(); ++index) {
-            Primitive& primitive = scene.primitive(index);
-            primitive.set_geometry_data_setup(&device, [&](Primitive& prim) {
-                (void)prim;
-            });
-        }
+        (void)device;
         bind_ibl_to_scene(scene, irradiance_cubemap, specular_cubemap, ibl_sampler);
         renderer.set_scene(&scene);
         renderer.set_skybox_material(skybox_material);

@@ -35,7 +35,7 @@ public:
 
 private:
     mutable std::mutex mutex_;
-    std::list<T> list_;
+    ocarina_list<T> list_;
 };
 
 }// namespace ocarina

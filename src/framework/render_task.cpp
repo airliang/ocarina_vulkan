@@ -80,7 +80,7 @@ void RenderTask::execute_default_render_path() {
     CommandBuffer cmd = device->get_command_buffer();
     cmd.begin();
 
-    // std::map iterates PassGroupId in numeric order (Offscreen → … → UI).
+    // ocarina_map iterates PassGroupId in numeric order (Offscreen → … → UI).
     for (auto& [group_id, record_task] : renderer_.render_pass_tasks_) {
         if (record_task.empty()) {
             continue;

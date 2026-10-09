@@ -80,7 +80,7 @@ private:
     VulkanDevice *device_ = nullptr;
     VkImage image_ = VK_NULL_HANDLE;
     VkImageView image_view_ = VK_NULL_HANDLE;
-    std::vector<VkImageView> storage_mip_views_;
+    ocarina_vector<VkImageView> storage_mip_views_;
     VmaAllocation allocation_ = VK_NULL_HANDLE;
     VkSampler sampler_ = VK_NULL_HANDLE;
     VkImageLayout image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;

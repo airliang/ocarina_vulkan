@@ -15,7 +15,7 @@ class Texture;
 struct InstanceCreation {
     const char *applicationName;
     bool validation = true;
-    std::vector<const char *> instanceExtentions;
+    ocarina_vector<const char *> instanceExtentions;
     uint64_t windowHandle = InvalidUI64;
     /// Drawable size in pixels. Must be non-zero before creating a Vulkan device.
     uint32_t windowWidth = 0;

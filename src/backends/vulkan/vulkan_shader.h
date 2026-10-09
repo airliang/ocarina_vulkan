@@ -22,10 +22,10 @@ class VulkanDescriptorSetLayout;
 class DescriptorSetLayout;
 
 struct VulkanVertexStreamBinding {
-    std::vector<VertexAttributeType::Enum> attribute_types_;
-    std::vector<VkDeviceSize> offsets_;
-    std::vector<VkVertexInputBindingDescription> binding_descriptions_;
-    std::vector<VkVertexInputAttributeDescription> attribute_descriptions_;
+    ocarina_vector<VertexAttributeType::Enum> attribute_types_;
+    ocarina_vector<VkDeviceSize> offsets_;
+    ocarina_vector<VkVertexInputBindingDescription> binding_descriptions_;
+    ocarina_vector<VkVertexInputAttributeDescription> attribute_descriptions_;
 };
 
 /// GPU-side Vulkan shader module linked to a parent ShaderProgram.
@@ -78,7 +78,7 @@ public:
         }
     }
 
-    [[nodiscard]] const std::vector<ShaderPushConstant>& get_push_constants() const { return push_constants_; }
+    [[nodiscard]] const ocarina_vector<ShaderPushConstant>& get_push_constants() const { return push_constants_; }
 
     [[nodiscard]] uint32_t get_shader_variables_count() const { return static_cast<uint32_t>(variables_.size()); }
 
@@ -98,8 +98,8 @@ private:
     std::string entry_;
     VulkanDevice* device_ = nullptr;
     VkShaderStageFlagBits stage_;
-    std::vector<ShaderVariableBinding> variables_;
-    std::vector<ShaderPushConstant> push_constants_;
+    ocarina_vector<ShaderVariableBinding> variables_;
+    ocarina_vector<ShaderPushConstant> push_constants_;
     VulkanVertexStreamBinding vertex_stream_binding_;
 };
 
@@ -144,9 +144,9 @@ private:
 
     mutable std::mutex mutex_;
     /// Keyed by compute_shader_stage_hash (file + type + entry + options).
-    std::unordered_map<uint64_t, CachedProgramShader> program_shaders_;
-    std::unordered_map<handle_ty, VulkanShader*> shaders_;
-    std::map<handle_ty, VulkanShaderEntry> vulkan_shader_entries_;
+    ocarina_unordered_map<uint64_t, CachedProgramShader> program_shaders_;
+    ocarina_unordered_map<handle_ty, VulkanShader*> shaders_;
+    ocarina_map<handle_ty, VulkanShaderEntry> vulkan_shader_entries_;
 };
 
 } // namespace ocarina

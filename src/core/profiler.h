@@ -47,6 +47,7 @@ namespace ocarina {
 #define OC_PROFILE_LOCKABLE(type, var, name) TracyLockable(type, var, name)
 #define OC_PROFILE_LOCK_MARK(var) LockMark(var)
 #define PROFILE_SCOPE() ZoneScoped
+#define OC_TRACY_MEMORY_ENABLED 1
 
 #else
 
@@ -66,7 +67,7 @@ namespace ocarina {
 #define OC_PROFILE_LOCKABLE(type, var, name) type var
 #define OC_PROFILE_LOCK_MARK(var) ((void)0)
 #define PROFILE_SCOPE() ocarina::Timer timer(__FUNCTION__)
+#define OC_TRACY_MEMORY_ENABLED 0
 
 #endif
-
 

@@ -80,7 +80,7 @@ private:
     //VkDevice device_ = VK_NULL_HANDLE;
     VulkanDevice *vulkan_device_ = nullptr;
     //uint32_t imageCount_ = 0;
-    std::vector<SwapChainBuffer> backbuffers_;
+    ocarina_vector<SwapChainBuffer> backbuffers_;
     VkFormat color_format_{VK_FORMAT_R8G8B8A8_UNORM};
     uint2 resolution_{};
     VkFormat depth_format_{VK_FORMAT_D24_UNORM_S8_UINT};

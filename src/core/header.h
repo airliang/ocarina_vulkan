@@ -11,6 +11,7 @@
 #include <tuple>
 #include <type_traits>
 #include "macro_map.h"
+#include "ocarina_config.h"
 #include "oc_windows.h"
 
 #ifdef OC_AST_EXPORT_DLL

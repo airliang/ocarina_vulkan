@@ -227,8 +227,8 @@ bool VulkanDescriptorSetLayout::build_layout()
         layout_ = VK_NULL_HANDLE;
     }
 
-    std::vector<VkDescriptorSetLayoutBinding> layout_bindings;
-    std::vector<VkDescriptorBindingFlags> binding_flags;
+    ocarina_vector<VkDescriptorSetLayoutBinding> layout_bindings;
+    ocarina_vector<VkDescriptorBindingFlags> binding_flags;
     uint32_t binding_flag = 0;
     layout_bindings.reserve(bindings_.size());
     for (auto& it : bindings_)
@@ -264,7 +264,7 @@ bool VulkanDescriptorSetLayout::build_layout()
         break;
     }
 
-    std::unordered_map<VkDescriptorType, uint32_t> type_totals;
+    ocarina_unordered_map<VkDescriptorType, uint32_t> type_totals;
     for (const ShaderVariableBinding& binding : bindings_) {
         const uint32_t per_set_count = binding.is_bindless
             ? get_vulkan_bindless_resource_max_count(binding.type)
@@ -273,7 +273,7 @@ bool VulkanDescriptorSetLayout::build_layout()
         type_totals[to_vulkan_descriptor_type(binding.type)] += per_set_count * set_count;
     }
 
-    std::vector<VkDescriptorPoolSize> pool_sizes;
+    ocarina_vector<VkDescriptorPoolSize> pool_sizes;
     pool_sizes.reserve(type_totals.size());
     for (const auto& entry : type_totals) {
         pool_sizes.push_back({

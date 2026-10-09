@@ -323,12 +323,32 @@ void VulkanDriver::create_command_buffers()
         frames_in_flight_ = 1;
     }
     command_buffer_pools_.resize(frames_in_flight_);
+
+    if (copy_command_buffer_ == nullptr) {
+        VkCommandBufferAllocateInfo allocate_info{};
+        allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocate_info.commandPool = command_pools_[(size_t)QueueType::Copy];
+        allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocate_info.commandBufferCount = 1;
+        VkCommandBuffer cmd = VK_NULL_HANDLE;
+        VK_CHECK_RESULT(vkAllocateCommandBuffers(device(), &allocate_info, &cmd));
+        copy_command_buffer_ = ocarina::new_with_allocator<VulkanCommandBuffer>(
+            vulkan_device_,
+            command_pools_[(size_t)QueueType::Copy],
+            cmd,
+            QueueType::Copy);
+        copy_command_buffer_in_use_ = false;
+    }
+
     create_frame_sync();
 }
 
 void VulkanDriver::release_command_buffers() {
     for (auto& per_queue_pools : command_buffer_pools_) {
         for (size_t q = 0; q < (size_t)QueueType::NumQueueType; ++q) {
+            if (q == (size_t)QueueType::Copy) {
+                continue;
+            }
             auto& pool = per_queue_pools[q];
             while (!pool.empty()) {
                 auto cmd_buffer = pool.front();
@@ -338,6 +358,12 @@ void VulkanDriver::release_command_buffers() {
         }
     }
     command_buffer_pools_.clear();
+
+    if (copy_command_buffer_ != nullptr) {
+        ocarina::delete_with_allocator<VulkanCommandBuffer>(copy_command_buffer_);
+        copy_command_buffer_ = nullptr;
+        copy_command_buffer_in_use_ = false;
+    }
 }
 
 void VulkanDriver::create_allocator()
@@ -849,7 +875,7 @@ void VulkanDriver::create_internal_textures() {
             vulkan_device_, 4, 4, 1, PixelStorage::BYTE4, texture_view, sampler, uint4(255, 255, 255, 255), nullptr);
 
         // One-shot staging upload (driver init is outside GPUResourceThread).
-        std::vector<uint4> white_pixels(4 * 4, uint4(255, 255, 255, 255));
+        ocarina_vector<uint4> white_pixels(4 * 4, uint4(255, 255, 255, 255));
         const size_t byte_size = white_pixels.size() * sizeof(uint4);
         const handle_ty staging_handle = vulkan_device_->create_buffer(
             byte_size,
@@ -914,8 +940,14 @@ VkDescriptorPool VulkanDriver::get_imgui_descriptor_pool()
 }
 
 VulkanCommandBuffer* VulkanDriver::get_command_buffer(QueueType queue_type) {
-    std::lock_guard<std::mutex> lock(command_buffer_pool_mutex_);
+    if (queue_type == QueueType::Copy) {
+        OC_ASSERT(copy_command_buffer_ != nullptr);
+        OC_ASSERT(!copy_command_buffer_in_use_);
+        copy_command_buffer_in_use_ = true;
+        return copy_command_buffer_;
+    }
 
+    // Graphics/Compute: render-thread frame ring only (no mutex).
     const uint32_t slot = frame_slot();
     auto& pool = command_buffer_pools_[slot][(size_t)queue_type];
     if (pool.empty()) {
@@ -926,7 +958,8 @@ VulkanCommandBuffer* VulkanDriver::get_command_buffer(QueueType queue_type) {
         allocateInfo.commandBufferCount = 1;
         VkCommandBuffer cmd_buffer = VK_NULL_HANDLE;
         VK_CHECK_RESULT(vkAllocateCommandBuffers(device(), &allocateInfo, &cmd_buffer));
-        return ocarina::new_with_allocator<ocarina::VulkanCommandBuffer>(vulkan_device_, command_pools_[(size_t)queue_type], cmd_buffer, queue_type);
+        return ocarina::new_with_allocator<ocarina::VulkanCommandBuffer>(
+            vulkan_device_, command_pools_[(size_t)queue_type], cmd_buffer, queue_type);
     }
 
     VulkanCommandBuffer* cmd_buffer = pool.front();
@@ -936,8 +969,19 @@ VulkanCommandBuffer* VulkanDriver::get_command_buffer(QueueType queue_type) {
 
 void VulkanDriver::release_command_buffer(VulkanCommandBuffer* cmd_buffer)
 {
-    std::lock_guard<std::mutex> lock(command_buffer_pool_mutex_);
+    if (cmd_buffer == nullptr) {
+        return;
+    }
+
     cmd_buffer->reset();
+
+    if (cmd_buffer->queue_type() == QueueType::Copy) {
+        OC_ASSERT(cmd_buffer == copy_command_buffer_);
+        OC_ASSERT(copy_command_buffer_in_use_);
+        copy_command_buffer_in_use_ = false;
+        return;
+    }
+
     command_buffer_pools_[frame_slot()][(size_t)cmd_buffer->queue_type()].push(cmd_buffer);
 }
 

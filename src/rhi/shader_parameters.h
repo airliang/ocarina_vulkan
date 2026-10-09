@@ -108,7 +108,7 @@ private:
     struct OwnedUniformBuffer {
         uint32_t size = 0;
         TypedBuffer<std::byte> buffer{};
-        std::vector<uint8_t> cpu_data{};
+        ocarina_vector<uint8_t> cpu_data{};
         bool descriptor_bound = false;
         bool dirty = false;
         /// When true, an external UBO binding is staged; skip owned CPU upload path.
@@ -147,10 +147,10 @@ private:
     Device* device_ = nullptr;
     ShaderProgram* shader_program_ = nullptr;
 
-    std::vector<Property> properties_;
-    std::unordered_map<uint64_t, size_t> property_indices_;
-    std::unordered_map<uint64_t, OwnedUniformBuffer> uniform_buffers_;
-    std::unordered_map<uint64_t, CachedDescriptorValue> cached_descriptor_values_;
+    ocarina_vector<Property> properties_;
+    ocarina_unordered_map<uint64_t, size_t> property_indices_;
+    ocarina_unordered_map<uint64_t, OwnedUniformBuffer> uniform_buffers_;
+    ocarina_unordered_map<uint64_t, CachedDescriptorValue> cached_descriptor_values_;
 
     std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_layouts_ = {};
     std::array<DescriptorSet*, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_sets_ = {};

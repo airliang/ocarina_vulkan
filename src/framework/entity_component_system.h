@@ -1,10 +1,10 @@
-
 #pragma once
+
 #include "core/concepts.h"
 #include "core/stl.h"
 #include "math.h"
 #include "math/basic_types.h"
-#include "primitive.h"
+#include "sparse_component_pool.h"
 #include "render_component.h"
 #include "transform_component.h"
 #include "light_component.h"
@@ -34,13 +34,15 @@ struct alignas(16) MaterialParams {
     uint32_t normalSamplerIndex = 0;
     uint32_t metallicRoughnessIndex = 0xffffffffu;
     uint32_t metallicRoughnessSamplerIndex = 0;
-    float padding[3] = { 0.f, 0.f, 0.f };
+    float padding[3] = {0.f, 0.f, 0.f};
 };
 
 static_assert(sizeof(MaterialParams) == 64);
 static_assert(offsetof(MaterialParams, roughness) == 16);
 static_assert(offsetof(MaterialParams, metallicRoughnessSamplerIndex) == 48);
 
+/// Index-based ECS: entities are IDs; components live in per-type sparse pools.
+/// GPU transforms stay dense, sized to max live entity index (holes allowed).
 class EntityComponentSystem : public concepts::Noncopyable {
 public:
     static constexpr size_t kDefaultGpuTransformCapacity = 1024;
@@ -48,165 +50,113 @@ public:
 
     static EntityComponentSystem& instance() noexcept;
 
-    template<typename... Args>
-    uint32_t emplace_primitive(Args&&... args) {
-        std::lock_guard<std::mutex> lock(components_mutex_);
-        const uint32_t entity_index = static_cast<uint32_t>(primitives_.size());
-        render_components_.emplace_back();
-        transform_components_.emplace_back();
-        primitives_.emplace_back(OC_FORWARD(args)...);
-        primitives_.back().set_entity_index(entity_index);
-        ensure_gpu_transform_capacity(primitives_.size());
-        mark_gpu_transforms_dirty();
-        return entity_index;
+    /// Allocate a new entity index (reuses free slots). Does not add components.
+    [[nodiscard]] uint32_t create_entity();
+
+    /// Destroy entity and remove all of its components.
+    void destroy_entity(uint32_t entity_index);
+
+    [[nodiscard]] bool is_alive(uint32_t entity_index) const noexcept;
+
+    /// Number of currently alive entities.
+    [[nodiscard]] uint32_t alive_entity_count() const noexcept { return alive_count_; }
+
+    /// Highest entity index ever allocated + 1 (capacity of the densified GPU transform table).
+    [[nodiscard]] uint32_t entity_index_capacity() const noexcept {
+        return static_cast<uint32_t>(entities_.size());
     }
 
-    uint32_t emplace_primitive(Primitive&& primitive) {
-        std::lock_guard<std::mutex> lock(components_mutex_);
-        const uint32_t entity_index = static_cast<uint32_t>(primitives_.size());
-        render_components_.emplace_back();
-        transform_components_.emplace_back();
-        primitives_.push_back(std::move(primitive));
-        primitives_.back().set_entity_index(entity_index);
-        ensure_gpu_transform_capacity(primitives_.size());
-        mark_gpu_transforms_dirty();
-        return entity_index;
+    // --- Render ---
+    RenderComponent& add_render_component(uint32_t entity_index);
+    bool remove_render_component(uint32_t entity_index);
+    [[nodiscard]] bool has_render_component(uint32_t entity_index) const noexcept;
+    [[nodiscard]] RenderComponent* try_render_component(uint32_t entity_index) noexcept;
+    [[nodiscard]] const RenderComponent* try_render_component(uint32_t entity_index) const noexcept;
+    [[nodiscard]] RenderComponent& render_component(uint32_t entity_index);
+    [[nodiscard]] const RenderComponent& render_component(uint32_t entity_index) const;
+    [[nodiscard]] SparseComponentPool<RenderComponent>& render_components() noexcept {
+        return render_components_;
     }
-
-    void resize_render_components(size_t count) {
-        std::lock_guard<std::mutex> lock(components_mutex_);
-        render_components_.resize(count);
+    [[nodiscard]] const SparseComponentPool<RenderComponent>& render_components() const noexcept {
+        return render_components_;
     }
+    [[nodiscard]] size_t render_component_count() const noexcept { return render_components_.size(); }
 
-    void resize_transform_components(size_t count) {
-        std::lock_guard<std::mutex> lock(components_mutex_);
-        transform_components_.resize(count);
-        ensure_gpu_transform_capacity(count);
-        mark_gpu_transforms_dirty();
+    // --- Transform ---
+    TransformComponent& add_transform_component(uint32_t entity_index);
+    bool remove_transform_component(uint32_t entity_index);
+    [[nodiscard]] bool has_transform_component(uint32_t entity_index) const noexcept;
+    [[nodiscard]] TransformComponent* try_transform_component(uint32_t entity_index) noexcept;
+    [[nodiscard]] const TransformComponent* try_transform_component(uint32_t entity_index) const noexcept;
+    [[nodiscard]] TransformComponent& transform_component(uint32_t entity_index);
+    [[nodiscard]] const TransformComponent& transform_component(uint32_t entity_index) const;
+    [[nodiscard]] SparseComponentPool<TransformComponent>& transform_components() noexcept {
+        return transform_components_;
     }
-
-    void resize_light_components(size_t count) {
-        std::lock_guard<std::mutex> lock(components_mutex_);
-        light_components_.resize(count);
+    [[nodiscard]] const SparseComponentPool<TransformComponent>& transform_components() const noexcept {
+        return transform_components_;
     }
-
-    void resize(size_t count) {
-        resize_render_components(count);
-        resize_transform_components(count);
-        resize_light_components(count);
-    }
-
-    [[nodiscard]] size_t render_component_count() const noexcept {
-        return render_components_.size();
-    }
-
     [[nodiscard]] size_t transform_component_count() const noexcept {
         return transform_components_.size();
     }
 
-    [[nodiscard]] size_t light_component_count() const noexcept {
-        return light_components_.size();
-    }
-
-    [[nodiscard]] uint32_t primitive_count() const noexcept {
-        return static_cast<uint32_t>(primitives_.size());
-    }
-
-    [[nodiscard]] RenderComponent& render_component(uint32_t entity_index) {
-        return render_components_[entity_index];
-    }
-
-    [[nodiscard]] const RenderComponent& render_component(uint32_t entity_index) const {
-        return render_components_[entity_index];
-    }
-
-    [[nodiscard]] TransformComponent& transform_component(uint32_t entity_index) {
-        return transform_components_[entity_index];
-    }
-
-    [[nodiscard]] const TransformComponent& transform_component(uint32_t entity_index) const {
-        return transform_components_[entity_index];
-    }
-
-    [[nodiscard]] LightComponent& light_component(uint32_t entity_index) {
-        return light_components_[entity_index];
-    }
-
-    [[nodiscard]] const LightComponent& light_component(uint32_t entity_index) const {
-        return light_components_[entity_index];
-    }
-
-    [[nodiscard]] Primitive& primitive(uint32_t entity_index) {
-        return primitives_[entity_index];
-    }
-
-    [[nodiscard]] const Primitive& primitive(uint32_t entity_index) const {
-        return primitives_[entity_index];
-    }
-
-    [[nodiscard]] std::vector<RenderComponent>& render_components() noexcept {
-        return render_components_;
-    }
-
-    [[nodiscard]] const std::vector<RenderComponent>& render_components() const noexcept {
-        return render_components_;
-    }
-
-    [[nodiscard]] std::vector<TransformComponent>& transform_components() noexcept {
-        return transform_components_;
-    }
-
-    [[nodiscard]] const std::vector<TransformComponent>& transform_components() const noexcept {
-        return transform_components_;
-    }
-
-    [[nodiscard]] std::vector<LightComponent>& light_components() noexcept {
+    // --- Light (optional) ---
+    LightComponent& add_light_component(uint32_t entity_index);
+    bool remove_light_component(uint32_t entity_index);
+    [[nodiscard]] bool has_light_component(uint32_t entity_index) const noexcept;
+    [[nodiscard]] LightComponent* try_light_component(uint32_t entity_index) noexcept;
+    [[nodiscard]] const LightComponent* try_light_component(uint32_t entity_index) const noexcept;
+    [[nodiscard]] LightComponent& light_component(uint32_t entity_index);
+    [[nodiscard]] const LightComponent& light_component(uint32_t entity_index) const;
+    [[nodiscard]] SparseComponentPool<LightComponent>& light_components() noexcept {
         return light_components_;
     }
-
-    [[nodiscard]] const std::vector<LightComponent>& light_components() const noexcept {
+    [[nodiscard]] const SparseComponentPool<LightComponent>& light_components() const noexcept {
         return light_components_;
     }
+    [[nodiscard]] size_t light_component_count() const noexcept { return light_components_.size(); }
 
-    [[nodiscard]] std::vector<Primitive>& primitives() noexcept {
-        return primitives_;
-    }
-
-    [[nodiscard]] const std::vector<Primitive>& primitives() const noexcept {
-        return primitives_;
-    }
-
-    /// Dense CPU array for `StructuredBuffer<Transform> transforms` (index == entity index).
-    [[nodiscard]] std::vector<GPUTransform>& gpu_transforms() noexcept { return gpu_transforms_; }
-    [[nodiscard]] const std::vector<GPUTransform>& gpu_transforms() const noexcept {
+    /// Dense CPU array for `StructuredBuffer<Transform> g_transforms` (index == entity index).
+    [[nodiscard]] ocarina_vector<GPUTransform>& gpu_transforms() noexcept { return gpu_transforms_; }
+    [[nodiscard]] const ocarina_vector<GPUTransform>& gpu_transforms() const noexcept {
         return gpu_transforms_;
     }
 
-    [[nodiscard]] size_t gpu_transform_count() const noexcept {
-        return transform_components_.size();
-    }
+    [[nodiscard]] size_t gpu_transform_count() const noexcept { return gpu_transforms_.size(); }
 
     void mark_gpu_transforms_dirty() noexcept { gpu_transforms_dirty_ = true; }
     [[nodiscard]] bool gpu_transforms_dirty() const noexcept { return gpu_transforms_dirty_; }
     void clear_gpu_transforms_dirty() noexcept { gpu_transforms_dirty_ = false; }
 
-    /// Refresh CPU GPUTransform slots from TransformComponents; sets dirty if any slot changed.
+    /// Refresh CPU GPUTransform slots from entities that have TransformComponent.
     void sync_gpu_transforms();
 
+    void clear();
+
 private:
+    struct EntitySlot {
+        uint32_t generation = 0;
+        bool alive = false;
+    };
+
     EntityComponentSystem();
 
-    void ensure_gpu_transform_capacity(size_t entity_count);
+    void ensure_gpu_transform_capacity(size_t entity_index_exclusive);
 
-    std::vector<Primitive> primitives_;
-    std::vector<RenderComponent> render_components_;
-    std::vector<TransformComponent> transform_components_;
-    std::vector<LightComponent> light_components_;
+    ocarina_vector<EntitySlot> entities_{ocarina_pool_allocator<EntitySlot>("ECS.EntitySlot.entities")};
+    ocarina_vector<uint32_t> free_list_{ocarina_pool_allocator<uint32_t>("ECS.EntitySlot.free_list")};
+    uint32_t alive_count_ = 0;
 
-    std::vector<GPUTransform> gpu_transforms_;
-    std::vector<uint32_t> gpu_transform_versions_;
+    SparseComponentPool<RenderComponent> render_components_;
+    SparseComponentPool<TransformComponent> transform_components_;
+    SparseComponentPool<LightComponent> light_components_;
+
+    ocarina_vector<GPUTransform> gpu_transforms_{
+        ocarina_pool_allocator<GPUTransform>("ECS.GPUTransform.gpu_transforms")};
+    ocarina_vector<uint32_t> gpu_transform_versions_{
+        ocarina_pool_allocator<uint32_t>("ECS.GPUTransform.gpu_transform_versions")};
     bool gpu_transforms_dirty_ = true;
-    mutable std::mutex components_mutex_;
+    mutable std::recursive_mutex components_mutex_;
 };
 
 }// namespace ocarina

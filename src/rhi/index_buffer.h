@@ -21,7 +21,7 @@ public:
         uint32_t indices_count,
         bool bit16 = true);
 
-    void set_indices(std::vector<uint16_t>&& indices) {
+    void set_indices(ocarina_vector<uint16_t>&& indices) {
         indices_ = std::move(indices);
     }
 
@@ -38,19 +38,14 @@ public:
         return reinterpret_cast<handle_ty>(buffer_);
     }
 
-    /// Upload index data to GPU (creates/replaces the device buffer).
-    void upload_indices(const void* data, uint32_t indices_count);
-
     /// Pre-allocate a fixed-capacity GPU index buffer (no CPU upload).
+    /// GPU copies go through StagingUploader on GPUResourceThread.
     void allocate_capacity(uint32_t max_indices);
-    /// Upload a contiguous index range into an allocated buffer.
-    void upload_indices_range(const void* data, uint32_t index_offset, uint32_t index_count);
 
 protected:
     void release_buffer();
-    void load_from_cpu(const void* cpu_data, uint32_t num_bytes);
 
-    std::vector<uint16_t> indices_;
+    ocarina_vector<uint16_t> indices_;
     bool bit16_ = true;
     Buffer* buffer_ = nullptr;
     uint32_t capacity_indices_ = 0;

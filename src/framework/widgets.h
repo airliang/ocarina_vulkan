@@ -20,7 +20,7 @@ struct FileDialogFilter {
     std::string ext;
 };
 
-using FileDialogFilterVec = std::vector<FileDialogFilter>;
+using FileDialogFilterVec = ocarina_vector<FileDialogFilter>;
 
 #if defined(_WIN32)
 bool open_file_dialog_win32(std::filesystem::path &path, const FileDialogFilterVec &filters) noexcept;
@@ -325,7 +325,7 @@ public:
     virtual bool is_item_hovered() noexcept = 0;
     virtual float2 mouse_pos() noexcept = 0;
 
-    bool combo(const string &label, int *current_item, const vector<const char *> &items) noexcept {
+    bool combo(const string &label, int *current_item, const ocarina_vector<const char *> &items) noexcept {
         return combo(label, current_item, items.data(), items.size());
     }
 

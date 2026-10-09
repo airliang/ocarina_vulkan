@@ -96,7 +96,7 @@ int main(int argc, char *argv[]) {
         &renderer.task_scheduler(),
         &device,
         [&, compute_abs, fullscreen_vert_abs, display_frag_abs](Device* load_device) {
-            std::set<string> options;
+            ocarina_set<string> options;
             ResourceManager& resources = ResourceManager::instance();
 
             compute_program = resources.create_compute_shader_program(

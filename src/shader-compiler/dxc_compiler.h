@@ -16,14 +16,14 @@ struct CompileInput {
     std::string hlsl;
     std::string entry;
     std::string full_file_path;
-    std::vector<std::string> macros;
-    std::vector<std::string> include_paths;
+    ocarina_vector<std::string> macros;
+    ocarina_vector<std::string> include_paths;
     ShaderType shader_type;
     bool output_pdbs;
 };
 
 struct CompileResult {
-    std::vector<uint32_t> spriv_codes;
+    ocarina_vector<uint32_t> spriv_codes;
     std::string error;
 };
 
@@ -31,7 +31,7 @@ class DXCCompiler : public concepts::Noncopyable {
 public:
     static bool compile_hlsl_spriv(const CompileInput& input, CompileResult& result);
     static void run_spriv_reflection(
-        const std::vector<uint32_t>& spriv,
+        const ocarina_vector<uint32_t>& spriv,
         ShaderType shader_type,
         ShaderReflection& shader_reflection);
 

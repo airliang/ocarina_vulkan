@@ -30,7 +30,7 @@ public:
 
     void configure(
         const Scene* scene,
-        const std::vector<uint32_t>* visible_cell_indices,
+        const ocarina_vector<uint32_t>* visible_cell_indices,
         uint32_t visible_cell_count,
         const Frustum* frustum,
         size_t max_cells_per_batch) {
@@ -43,11 +43,11 @@ public:
         m_MinRange = static_cast<uint32_t>(max_cells_per_batch_);
     }
 
-    void set_visible_entity_indices(const std::vector<uint32_t>& indices) {
+    void set_visible_entity_indices(const ocarina_vector<uint32_t>& indices) {
         visible_entity_indices_ = indices;
     }
 
-    void set_visible_entity_indices(const std::vector<uint32_t>& indices, uint32_t count) {
+    void set_visible_entity_indices(const ocarina_vector<uint32_t>& indices, uint32_t count) {
         visible_entity_indices_.assign(indices.begin(), indices.begin() + count);
     }
 
@@ -60,7 +60,7 @@ public:
         visible_entity_indices_.assign(cull_batch_results_.begin(), cull_batch_results_.begin() + count);
     }
 
-    [[nodiscard]] const std::vector<uint32_t>& visible_entity_indices() const noexcept {
+    [[nodiscard]] const ocarina_vector<uint32_t>& visible_entity_indices() const noexcept {
         return visible_entity_indices_;
     }
 
@@ -78,9 +78,8 @@ public:
         }
 
         EntityComponentSystem& ecs = EntityComponentSystem::instance();
-        const uint32_t ecs_primitive_count = ecs.primitive_count();
-        const std::vector<uint32_t>& scene_entities = scene_->entity_indices();
-        const std::vector<SceneGridCell>& cells = scene_->grid_cells();
+        const ocarina_vector<uint32_t>& scene_entities = scene_->entity_indices();
+        const ocarina_vector<SceneGridCell>& cells = scene_->grid_cells();
 
         const uint32_t end_cell = range.end;
         uint32_t cell_i = range.start;
@@ -117,15 +116,15 @@ public:
 
                 for (int lane = 0; lane < 4; ++lane) {
                     valid_mask_f[lane] = 0.0f;
-                    if (entity_index[lane] >= ecs_primitive_count) {
+                    RenderComponent* render = ecs.try_render_component(entity_index[lane]);
+                    TransformComponent* transform = ecs.try_transform_component(entity_index[lane]);
+                    if (render == nullptr || transform == nullptr) {
                         min_x[lane] = min_y[lane] = min_z[lane] = 0.0f;
                         max_x[lane] = max_y[lane] = max_z[lane] = 0.0f;
                         continue;
                     }
 
-                    Primitive& primitive = ecs.primitive(entity_index[lane]);
-                    TransformComponent& transform = ecs.transform_component(entity_index[lane]);
-                    Mesh* mesh = primitive.get_mesh();
+                    Mesh* mesh = render->get_mesh();
                     if (mesh == nullptr || !mesh->has_local_bounds()) {
                         valid_mask_f[lane] = -1.0f;
                         min_x[lane] = min_y[lane] = min_z[lane] = 0.0f;
@@ -133,7 +132,8 @@ public:
                         continue;
                     }
 
-                    const BoundingBox world_bounds = mesh->get_local_bounds().transformed(transform.get_world_matrix());
+                    const BoundingBox world_bounds =
+                        mesh->get_local_bounds().transformed(transform->get_world_matrix());
                     if (!world_bounds.valid) {
                         valid_mask_f[lane] = -1.0f;
                         min_x[lane] = min_y[lane] = min_z[lane] = 0.0f;
@@ -160,7 +160,7 @@ public:
                     _mm_load_ps(valid_mask_f));
 
                 for (int lane = 0; lane < 4; ++lane) {
-                    if (entity_index[lane] >= ecs_primitive_count) {
+                    if (!ecs.has_render_component(entity_index[lane])) {
                         continue;
                     }
                     if ((visible_mask & (1u << lane)) == 0u) {
@@ -173,16 +173,17 @@ public:
 
             for (; i < end; ++i) {
                 const uint32_t entity_index = scene_entities[i];
-                if (entity_index >= ecs_primitive_count) {
+                RenderComponent* render = ecs.try_render_component(entity_index);
+                TransformComponent* transform = ecs.try_transform_component(entity_index);
+                if (render == nullptr || transform == nullptr) {
                     continue;
                 }
 
-                Primitive& primitive = ecs.primitive(entity_index);
-                TransformComponent& transform = ecs.transform_component(entity_index);
-                Mesh* mesh = primitive.get_mesh();
+                Mesh* mesh = render->get_mesh();
                 bool is_visible = true;
                 if (mesh != nullptr && mesh->has_local_bounds()) {
-                    const BoundingBox world_bounds = mesh->get_local_bounds().transformed(transform.get_world_matrix());
+                    const BoundingBox world_bounds =
+                        mesh->get_local_bounds().transformed(transform->get_world_matrix());
                     if (world_bounds.valid) {
                         is_visible = world_bounds.intersects(*frustum_);
                     }
@@ -200,13 +201,13 @@ public:
 
 private:
     const Scene* scene_ = nullptr;
-    const std::vector<uint32_t>* visible_cell_indices_ = nullptr;
+    const ocarina_vector<uint32_t>* visible_cell_indices_ = nullptr;
     uint32_t visible_cell_count_ = 0;
     const Frustum* frustum_ = nullptr;
     size_t max_cells_per_batch_ = 1;
 
-    std::vector<uint32_t> cull_batch_results_;
-    std::vector<uint32_t> visible_entity_indices_;
+    ocarina_vector<uint32_t> cull_batch_results_;
+    ocarina_vector<uint32_t> visible_entity_indices_;
     std::atomic<uint32_t> visible_counts_{0};
     uint64_t execute_thread_id_ = 0;
 };

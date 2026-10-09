@@ -23,13 +23,13 @@
 namespace enki { class TaskScheduler; struct ITaskSet; }
 
 namespace ocarina {
-class Primitive;
 class RHIRenderPass;
 class Device;
 class Scene;
 class Camera;
 class Material;
 class ShaderParameters;
+class RenderComponent;
 
 
 class Renderer : public concepts::Noncopyable {
@@ -41,7 +41,7 @@ public:
     ~Renderer();
 
     using RenderCallback = ocarina::function<void(double)>;
-    using UpdateDescriptorPerObjectCallback = ocarina::function<void(Primitive&)>;
+    using UpdateDescriptorPerObjectCallback = ocarina::function<void(RenderComponent&)>;
     using RenderGUIImplCallback = ocarina::function<void(const CommandBuffer& cmd_buffer)>;
     using LoadingGUIImplCallback = ocarina::function<void(const CommandBuffer& cmd_buffer)>;
     using RenderTaskEndCallback = ocarina::function<void()>;
@@ -90,10 +90,10 @@ public:
     [[nodiscard]] const RenderPassTask* find_pass_group(PassGroupId id) const noexcept;
     [[nodiscard]] bool has_pass_group(PassGroupId id) const noexcept;
 
-    [[nodiscard]] const std::map<PassGroupId, RenderPassTask>& pass_groups() const noexcept {
+    [[nodiscard]] const ocarina_map<PassGroupId, RenderPassTask>& pass_groups() const noexcept {
         return render_pass_tasks_;
     }
-    [[nodiscard]] std::map<PassGroupId, RenderPassTask>& pass_groups() noexcept {
+    [[nodiscard]] ocarina_map<PassGroupId, RenderPassTask>& pass_groups() noexcept {
         return render_pass_tasks_;
     }
 
@@ -110,7 +110,7 @@ public:
     [[nodiscard]] EntityComponentSystem& ecs() noexcept { return EntityComponentSystem::instance(); }
     [[nodiscard]] const EntityComponentSystem& ecs() const noexcept { return EntityComponentSystem::instance(); }
 
-    [[nodiscard]] const std::vector<uint32_t>& visible_entity_indices() const noexcept {
+    [[nodiscard]] const ocarina_vector<uint32_t>& visible_entity_indices() const noexcept {
         return primitive_cull_task_.visible_entity_indices();
     }
 
@@ -176,7 +176,7 @@ private:
     float4 clear_color = {0, 0, 0, 1};
 
     RenderTask render_task_;
-    std::map<PassGroupId, RenderPassTask> render_pass_tasks_;
+    ocarina_map<PassGroupId, RenderPassTask> render_pass_tasks_;
 
 protected:
     Device* device_ = nullptr;

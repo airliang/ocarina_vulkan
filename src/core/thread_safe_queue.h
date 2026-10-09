@@ -63,7 +63,7 @@ public:
 private:
     mutable std::mutex mutex_;
     std::condition_variable cv_;
-    std::queue<T> queue_;
+    ocarina_queue<T> queue_;
 };
 
 }// namespace ocarina

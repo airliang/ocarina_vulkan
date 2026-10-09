@@ -35,7 +35,7 @@ std::string get_spv_path_for_shader_hash(
     return directory_of(shader_file_path) + shader_stage_hash_hex(shader_hash) + ".spv";
 }
 
-bool load_spirv_from_file(const std::string &spv_path, std::vector<uint32_t> &spirv_code) {
+bool load_spirv_from_file(const std::string &spv_path, ocarina_vector<uint32_t> &spirv_code) {
     std::ifstream input(spv_path, std::ios::binary);
     if (!input.is_open()) {
         return false;
@@ -53,7 +53,7 @@ bool load_spirv_from_file(const std::string &spv_path, std::vector<uint32_t> &sp
     return input.good();
 }
 
-bool save_spirv_to_file(const std::string &spv_path, const std::vector<uint32_t> &spirv_code) {
+bool save_spirv_to_file(const std::string &spv_path, const ocarina_vector<uint32_t> &spirv_code) {
     if (spirv_code.empty()) {
         return false;
     }
@@ -73,7 +73,7 @@ bool save_spirv_to_file(const std::string &spv_path, const std::vector<uint32_t>
 /// Write via a temp file then rename so readers never see a partial .spv.
 bool save_spirv_to_file_atomic(
     const std::string &spv_path,
-    const std::vector<uint32_t> &spirv_code) {
+    const ocarina_vector<uint32_t> &spirv_code) {
     const std::string tmp_path = spv_path + ".tmp";
     if (!save_spirv_to_file(tmp_path, spirv_code)) {
         std::error_code ec;
@@ -95,8 +95,8 @@ bool compile_hlsl_file_to_spirv(
     const std::string &filename,
     ShaderType shader_type,
     const std::string &entry_point,
-    const std::set<std::string> &options,
-    std::vector<uint32_t> &spirv_code) {
+    const ocarina_set<std::string> &options,
+    ocarina_vector<uint32_t> &spirv_code) {
 
     std::ifstream input(filename, std::ios::binary);
     if (!input.is_open()) {
@@ -118,7 +118,7 @@ bool compile_hlsl_file_to_spirv(
         .hlsl = hlsl_source,
         .entry = entry_point,
         .full_file_path = filename,
-        .macros = std::vector<std::string>(options.begin(), options.end()),
+        .macros = ocarina_vector<std::string>(options.begin(), options.end()),
         .shader_type = shader_type,
         .output_pdbs = false,
     };
@@ -154,7 +154,7 @@ bool compile_hlsl_to_spirv_and_reflect(
     const std::string &entry_point,
     CompiledShader &out,
     bool rebuild_shaders,
-    const std::set<std::string> &options) {
+    const ocarina_set<std::string> &options) {
 
     // Guard compile + SPV cache: parallel PipelineCompileTasks share stages
     // (same hash → same .spv path) and DXC is not safe for concurrent use.

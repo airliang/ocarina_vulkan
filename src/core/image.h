@@ -5,6 +5,7 @@
 #pragma once
 
 #include "core/image_base.h"
+#include "core/stl.h"
 
 namespace ocarina {
 
@@ -28,16 +29,21 @@ public:
     T *pixel_ptr() { return reinterpret_cast<T *>(const_cast<std::byte *>(pixel_)); }
 };
 
+struct ImagePixelDeleter {
+    void operator()(const std::byte* p) const noexcept;
+};
+
 class OC_CORE_API Image : public ImageBase {
 private:
     fs::path path_;
-    std::unique_ptr<const std::byte[]> pixel_;
+    std::unique_ptr<const std::byte, ImagePixelDeleter> pixel_;
 
 public:
     using foreach_signature = void(const std::byte *, int, PixelStorage);
 
 public:
     Image() = default;
+    ~Image();
     Image(PixelStorage pixel_storage, const std::byte *pixel, uint2 res, const fs::path &path);
     Image(PixelStorage pixel_storage, const std::byte *pixel, uint2 res);
     Image(Image &&other) noexcept;
@@ -58,6 +64,7 @@ public:
     template<typename T>
     static Image from_data(T *data, uint2 res) {
         size_t size_in_bytes = sizeof(T) * res.x * res.y;
+        TracyMemoryPoolScope scope("Image::pixel");
         auto pixel = allocate(size_in_bytes);
         auto pixel_format = PixelStorageImpl<T>::storage;
         oc_memcpy(pixel, data, size_in_bytes);
@@ -69,7 +76,9 @@ public:
     static Image load_other(const fs::path &fn, ColorSpace color_space,
                             float3 scale = make_float3(1.f));
 
-    void clear() noexcept { pixel_.reset(); }
+    void clear() noexcept {
+        pixel_.reset();
+    }
 
     template<typename Func>
     void for_each_pixel(Func func) const {

@@ -73,19 +73,11 @@ public:
         return dirty_;
     }
 
-    void upload_data();
-
     /// Pre-allocate a GPU attribute stream with capacity (no CPU upload).
+    /// GPU copies go through StagingUploader on GPUResourceThread.
     void allocate_stream_capacity(VertexAttributeType::Enum type, uint32_t capacity, uint32_t stride);
-    /// Upload a contiguous vertex range into an allocated stream (dst offset = vertex_offset * stride).
-    void upload_attribute_range(
-        VertexAttributeType::Enum type,
-        const void* data,
-        uint32_t vertex_offset,
-        uint32_t vertex_count);
 
 protected:
-    void upload_attribute_data(VertexAttributeType::Enum type, const void* data, uint64_t offset = 0);
     void release_stream_buffer(VertexStream& stream);
 
     uint32_t vertex_count_ = 0;

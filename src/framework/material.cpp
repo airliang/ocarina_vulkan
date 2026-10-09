@@ -63,9 +63,9 @@ void collect_non_global_descriptor_set_layouts(
     }
 }
 
-std::vector<RHIShader::UniformBufferMember> to_rhi_uniform_members(
-    const std::vector<ShaderProgram::UniformBufferMember>& members) {
-    std::vector<RHIShader::UniformBufferMember> out;
+ocarina_vector<RHIShader::UniformBufferMember> to_rhi_uniform_members(
+    const ocarina_vector<ShaderProgram::UniformBufferMember>& members) {
+    ocarina_vector<RHIShader::UniformBufferMember> out;
     out.reserve(members.size());
     for (const ShaderProgram::UniformBufferMember& member : members) {
         RHIShader::UniformBufferMember converted;
@@ -110,7 +110,7 @@ void Material::release_gpu_buffers() {
 void Material::apply_reflected_members(
     uint64_t buffer_name_id,
     uint32_t buffer_size,
-    const std::vector<RHIShader::UniformBufferMember>& members) {
+    const ocarina_vector<RHIShader::UniformBufferMember>& members) {
     (void)buffer_size;
     for (const RHIShader::UniformBufferMember& member : members) {
         MaterialProperty property;
@@ -155,7 +155,7 @@ void Material::add_binding_property(
 void Material::add_uniform_buffer_property(
     const char* binding_name,
     uint32_t buffer_size,
-    const std::vector<RHIShader::UniformBufferMember>& members,
+    const ocarina_vector<RHIShader::UniformBufferMember>& members,
     bool create_owned_buffer,
     uint8_t binding,
     uint8_t descriptor_set) {
@@ -215,7 +215,7 @@ void Material::init_material_properties(ShaderProgram* shader_program) {
     material_params_buffer_name_id_ = 0;
     material_params_byte_size_ = 0;
 
-    std::vector<ShaderProgram::UniformBufferMember> members;
+    ocarina_vector<ShaderProgram::UniformBufferMember> members;
     uint32_t buffer_size = 0;
 
     for (const ShaderVariableBinding& binding : shader_program->variables()) {

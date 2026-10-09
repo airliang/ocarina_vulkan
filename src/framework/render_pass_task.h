@@ -46,10 +46,10 @@ public:
     [[nodiscard]] bool empty() const noexcept { return render_passes_.empty(); }
     [[nodiscard]] RHIRenderPass* primary_render_pass() const noexcept;
     [[nodiscard]] RHIRenderPass* swapchain_render_pass() const noexcept;
-    [[nodiscard]] const std::list<RHIRenderPass*>& render_passes() const noexcept {
+    [[nodiscard]] const ocarina_list<RHIRenderPass*>& render_passes() const noexcept {
         return render_passes_;
     }
-    [[nodiscard]] std::list<RHIRenderPass*>& render_passes() noexcept {
+    [[nodiscard]] ocarina_list<RHIRenderPass*>& render_passes() noexcept {
         return render_passes_;
     }
 
@@ -63,7 +63,7 @@ private:
     Device* device_ = nullptr;
     CommandBuffer command_buffer_;
     RenderPassGUICallback render_gui_;
-    std::list<RHIRenderPass*> render_passes_;
+    ocarina_list<RHIRenderPass*> render_passes_;
     uint64_t execute_thread_id_ = 0;
 };
 

@@ -21,14 +21,14 @@ class Texture;
 
 struct DescriptorSetsBinding
 {
-    std::vector<DescriptorSet*> descriptor_sets;
+    ocarina_vector<DescriptorSet*> descriptor_sets;
     uint32_t first_set = 0;
     uint32_t descriptor_set_count = 0;
 };
 
 struct PipelineRenderQueue
 {
-    std::list<uint32_t> draw_call_items;
+    ocarina_list<uint32_t> draw_call_items;
 
     void clear()
     {
@@ -136,7 +136,7 @@ public:
         viewport_ = {0, 0, static_cast<float>(extent.x), static_cast<float>(extent.y)};
     }
 
-    const std::unordered_map<PipelineState, PipelineRenderQueue*, PipelineStateHash>& pipeline_render_queues() const {
+    const ocarina_unordered_map<PipelineState, PipelineRenderQueue*, PipelineStateHash>& pipeline_render_queues() const {
         return pipeline_render_queues_;
     }
 
@@ -156,7 +156,7 @@ protected:
     bool clear_depth_attachment_ = true;
     bool present_swapchain_ = true;
 
-    std::unordered_map<PipelineState, PipelineRenderQueue*, PipelineStateHash> pipeline_render_queues_;
+    ocarina_unordered_map<PipelineState, PipelineRenderQueue*, PipelineStateHash> pipeline_render_queues_;
     GlobalUBO global_ubo_data_ = {};
     handle_ty command_buffer_ = 0;
     ExecuteCallback execute_callback_;

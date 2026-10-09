@@ -66,15 +66,15 @@ struct ShaderReflection {
         uint32_t size = 0;
         uint32_t offset = 0;
         bool is_bindless = false;
-        std::vector<ShaderVariable> shader_variables;
+        ocarina_vector<ShaderVariable> shader_variables;
     };
 
-    std::vector<ShaderResource> shader_resources;
-    std::vector<UniformBuffer> uniform_buffers;
-    std::vector<UniformBuffer> push_constant_buffers;
+    ocarina_vector<ShaderResource> shader_resources;
+    ocarina_vector<UniformBuffer> uniform_buffers;
+    ocarina_vector<UniformBuffer> push_constant_buffers;
     /// Named OpTypeStruct layouts (e.g. per-shader MaterialParams) for CPU mirrors.
-    std::vector<UniformBuffer> named_structs;
-    std::vector<ShaderResource> input_layouts;
+    ocarina_vector<UniformBuffer> named_structs;
+    ocarina_vector<ShaderResource> input_layouts;
 };
 
 } // namespace ocarina

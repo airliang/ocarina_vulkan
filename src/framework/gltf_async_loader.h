@@ -23,7 +23,6 @@ namespace ocarina {
 class Material;
 class Mesh;
 class Texture;
-class Primitive;
 class ShaderProgram;
 
 class GltfAsyncLoader : public AsyncLoader {
@@ -78,9 +77,9 @@ private:
     std::string gltf_parse_error_;
     ShaderProgram* shader_program_ = nullptr;
     ShaderProgram* alpha_blend_shader_program_ = nullptr;
-    std::vector<Mesh*> mesh_storage_;
-    std::unordered_map<int, TextureHandle> image_textures_;
-    std::unordered_map<uint64_t, Mesh*> geometry_meshes_;
+    ocarina_vector<Mesh*> mesh_storage_;
+    ocarina_unordered_map<int, TextureHandle> image_textures_;
+    ocarina_unordered_map<uint64_t, Mesh*> geometry_meshes_;
     Scene scene_;
     bool is_loaded_ = false;
 };

@@ -76,12 +76,12 @@ private:
     PipelineCompileTaskPool task_pool_;
 
     mutable std::mutex cache_mutex_;
-    std::unordered_map<PipelineCacheKey, RHIPipeline*, PipelineCacheKeyHash> pipelines_;
-    std::unordered_map<PipelineLayoutCacheKey, RHIPipelineLayout*, PipelineLayoutCacheKeyHash> pipeline_layouts_;
+    ocarina_unordered_map<PipelineCacheKey, RHIPipeline*, PipelineCacheKeyHash> pipelines_;
+    ocarina_unordered_map<PipelineLayoutCacheKey, RHIPipelineLayout*, PipelineLayoutCacheKeyHash> pipeline_layouts_;
 
     std::mutex pending_mutex_;
-    std::unordered_set<PipelineCacheKey, PipelineCacheKeyHash> pending_keys_;
-    std::unordered_set<PSORequest, PSORequestHash, PSORequestIdentityEqual> pending_requests_;
+    ocarina_unordered_set<PipelineCacheKey, PipelineCacheKeyHash> pending_keys_;
+    ocarina_unordered_set<PSORequest, PSORequestHash, PSORequestIdentityEqual> pending_requests_;
 
     std::atomic<bool> shutdown_requested_{false};
     bool initialized_ = false;

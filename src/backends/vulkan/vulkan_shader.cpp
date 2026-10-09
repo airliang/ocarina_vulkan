@@ -15,7 +15,7 @@ namespace ocarina {
 
 namespace {
 
-const std::vector<uint32_t>* spirv_for_stage(const ShaderProgram* program, ShaderType shader_type) {
+const ocarina_vector<uint32_t>* spirv_for_stage(const ShaderProgram* program, ShaderType shader_type) {
     if (program == nullptr) {
         return nullptr;
     }
@@ -68,7 +68,7 @@ VulkanShader* VulkanShader::create_for_program(
         return nullptr;
     }
 
-    const std::vector<uint32_t>* spirv = spirv_for_stage(program, shader_type);
+    const ocarina_vector<uint32_t>* spirv = spirv_for_stage(program, shader_type);
     if (spirv == nullptr || spirv->empty()) {
         return nullptr;
     }
@@ -123,7 +123,7 @@ void VulkanShader::create_vertex_stream_binding() {
     vertex_stream_binding_.offsets_.resize(attr_count);
     vertex_stream_binding_.attribute_types_.resize(attr_count);
 
-    std::vector<size_t> attribute_order(attr_count);
+    ocarina_vector<size_t> attribute_order(attr_count);
     std::iota(attribute_order.begin(), attribute_order.end(), size_t{0});
     std::sort(attribute_order.begin(), attribute_order.end(), [this](size_t lhs, size_t rhs) {
         return get_vertex_attribute(static_cast<uint32_t>(lhs)).location

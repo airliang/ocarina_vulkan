@@ -145,8 +145,8 @@ private:
     VkDescriptorSetLayout layout_ = VK_NULL_HANDLE;
     //VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
 
-    std::unordered_map<uint64_t, uint32_t> name_to_bindings_;
-    std::vector<ShaderVariableBinding> bindings_;
+    ocarina_unordered_map<uint64_t, uint32_t> name_to_bindings_;
+    ocarina_vector<ShaderVariableBinding> bindings_;
 
     VulkanDevice* device_ = nullptr;
 
@@ -160,7 +160,7 @@ private:
     uint64_t hashkey_ = InvalidUI64;
     bool has_bindless_ = false;
     DescriptorSetUsage usage_ = DescriptorSetUsage::PerInstance;
-    std::vector<VulkanDescriptorSet*> allocated_descriptor_sets_;
+    ocarina_vector<VulkanDescriptorSet*> allocated_descriptor_sets_;
 };
 
 class VulkanDescriptorSet : public DescriptorSet {
@@ -226,7 +226,7 @@ public:
 private :
     VkDescriptorPool descriptor_pool_ = VK_NULL_HANDLE;
     VulkanDevice *device_ = nullptr;
-    std::map<VkDescriptorSetLayout, VkDescriptorSet> descriptor_sets;
+    ocarina_map<VkDescriptorSetLayout, VkDescriptorSet> descriptor_sets;
     DescriptorPoolCreation descriptor_pool_creation_;
 };
 
@@ -245,7 +245,7 @@ public:
     collect_shader_descriptor_set_layouts(ShaderProgram* program);
 
     struct DescriptorLayoutKey {
-        std::vector<ShaderVariableBinding> bindings;
+        ocarina_vector<ShaderVariableBinding> bindings;
 
         // Sort bindings for deterministic comparison
         void normalize() {
@@ -330,7 +330,7 @@ private:
     VulkanDevice *device_ = nullptr;
     VulkanDescriptorSetLayout *frame_descriptor_set_layout_ = nullptr;
 
-    std::unordered_map<uint64_t, VulkanDescriptorSetLayout*> descriptor_set_layouts_;
+    ocarina_unordered_map<uint64_t, VulkanDescriptorSetLayout*> descriptor_set_layouts_;
     std::array<DescriptorLayoutKey, MAX_DESCRIPTOR_SETS_PER_SHADER> cached_descriptor_set_layout_keys_ = {};
     std::mutex layout_mutex_;
 };

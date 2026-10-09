@@ -7,7 +7,7 @@
 #include "framework/imgui_renderer.h"
 #include "framework/framework_ui.h"
 #include "framework/renderer.h"
-#include "framework/primitive.h"
+#include "framework/render_component.h"
 #include "framework/camera.h"
 #include "framework/resource_manager.h"
 #include "framework/material.h"
@@ -75,14 +75,14 @@ int main(int argc, char* argv[]) {
 
     const uint64_t model_matrix_name_id = hash64("modelMatrix");
     const uint64_t model_matrix_inverse_name_id = hash64("modelMatrixInverse");
-    auto update_push_constant = [&](Primitive& primitive, TransformComponent& transform) {
+    auto update_push_constant = [&](RenderComponent& render, TransformComponent& transform) {
         const float4x4 world_matrix = transform.get_world_matrix();
         const float4x4 world_matrix_inverse = inverse(world_matrix);
-        primitive.set_push_constant_variable(
+        render.set_push_constant_variable(
             model_matrix_name_id,
             reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix)),
             sizeof(world_matrix));
-        primitive.set_push_constant_variable(
+        render.set_push_constant_variable(
             model_matrix_inverse_name_id,
             reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix_inverse)),
             sizeof(world_matrix_inverse));
@@ -105,11 +105,7 @@ int main(int argc, char* argv[]) {
     renderer.set_async_loader(&gltf_loader, nullptr, [&]() {
         Scene& scene = gltf_loader.get_scene();
         for (uint32_t index = 0; index < scene.primitive_count(); ++index) {
-            Primitive& primitive = scene.primitive(index);
-            primitive.set_update_push_constant_function(update_push_constant);
-            primitive.set_geometry_data_setup(&device, [&](Primitive& prim) {
-                (void)prim;
-            });
+            scene.render_component(index).set_update_push_constant_function(update_push_constant);
         }
         renderer.set_scene(&scene);
 

@@ -142,7 +142,7 @@ protected:
 
 // Simple vector which supports up to N elements inline, without malloc/free.
 // We use a lot of throwaway vectors all over the place which triggers allocations.
-// This class only implements the subset of std::vector we need in SPIRV-Cross.
+// This class only implements the subset of ocarina_vector we need in SPIRV-Cross.
 // It is *NOT* a drop-in replacement in general projects.
 template <typename T, size_t N = 8>
 class SmallVector : public VectorView<T>

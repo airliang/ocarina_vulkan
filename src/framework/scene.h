@@ -6,9 +6,9 @@
 #include "frustum.h"
 #include "math.h"
 #include "entity_component_system.h"
-#include "primitive.h"
 #include "transform_component.h"
 #include "light_component.h"
+#include "render_component.h"
 #include <utility>
 
 namespace ocarina {
@@ -36,13 +36,13 @@ public:
     Scene(Scene&&) noexcept = default;
     Scene& operator=(Scene&&) noexcept = default;
 
-    template<typename... Args>
-    Primitive& emplace_primitive(Args&&... args) {
-        grid_built_ = false;
-        const uint32_t entity_index = EntityComponentSystem::instance().emplace_primitive(OC_FORWARD(args)...);
-        entity_indices_.push_back(entity_index);
-        return EntityComponentSystem::instance().primitive(entity_index);
-    }
+    /// Create an entity with Transform + Render components and register it in the scene.
+    /// Returns the scene index (into entity_indices_), not the raw ECS entity id.
+    uint32_t emplace_renderable();
+
+    /// Create a bare entity (no components) and register it in the scene.
+    /// Returns the scene index (into entity_indices_), not the raw ECS entity id.
+    uint32_t emplace_entity();
 
     void clear_entities();
 
@@ -56,23 +56,25 @@ public:
     void build_primitive_cull_batch();
 
     void reserve_entities(size_t count) { entity_indices_.reserve(count); }
-    // Backward-compatible alias (some tests call this).
     void reserve_primitives(size_t count) { reserve_entities(count); }
 
     [[nodiscard]] uint32_t entity_index(uint32_t scene_index) const {
         return entity_indices_[scene_index];
     }
 
-    [[nodiscard]] Primitive& primitive(uint32_t scene_index) {
-        return EntityComponentSystem::instance().primitive(entity_indices_[scene_index]);
-    }
-
-    [[nodiscard]] const Primitive& primitive(uint32_t scene_index) const {
-        return EntityComponentSystem::instance().primitive(entity_indices_[scene_index]);
-    }
-
-    [[nodiscard]] uint32_t primitive_count() const noexcept {
+    [[nodiscard]] uint32_t entity_count() const noexcept {
         return static_cast<uint32_t>(entity_indices_.size());
+    }
+
+    /// Alias for UI / cull batch sizing (scene-tracked entities).
+    [[nodiscard]] uint32_t primitive_count() const noexcept { return entity_count(); }
+
+    [[nodiscard]] RenderComponent& render_component(uint32_t scene_index) {
+        return EntityComponentSystem::instance().render_component(entity_indices_[scene_index]);
+    }
+
+    [[nodiscard]] const RenderComponent& render_component(uint32_t scene_index) const {
+        return EntityComponentSystem::instance().render_component(entity_indices_[scene_index]);
     }
 
     [[nodiscard]] TransformComponent& transform_component(uint32_t scene_index) {
@@ -83,27 +85,25 @@ public:
         return EntityComponentSystem::instance().transform_component(entity_indices_[scene_index]);
     }
 
-    [[nodiscard]] LightComponent& light_component(uint32_t scene_index) {
-        return EntityComponentSystem::instance().light_component(entity_indices_[scene_index]);
+    [[nodiscard]] LightComponent* try_light_component(uint32_t scene_index) {
+        return EntityComponentSystem::instance().try_light_component(entity_indices_[scene_index]);
     }
 
-    [[nodiscard]] const LightComponent& light_component(uint32_t scene_index) const {
-        return EntityComponentSystem::instance().light_component(entity_indices_[scene_index]);
+    [[nodiscard]] const LightComponent* try_light_component(uint32_t scene_index) const {
+        return EntityComponentSystem::instance().try_light_component(entity_indices_[scene_index]);
     }
 
-    [[nodiscard]] const std::vector<uint32_t>& entity_indices() const noexcept {
+    [[nodiscard]] const ocarina_vector<uint32_t>& entity_indices() const noexcept {
         return entity_indices_;
     }
 
     [[nodiscard]] bool has_grid() const noexcept { return grid_built_; }
     [[nodiscard]] uint32_t grid_cell_count() const noexcept { return static_cast<uint32_t>(grid_cells_.size()); }
     [[nodiscard]] uint32_t visible_cell_count() const noexcept { return visible_cell_count_; }
-    [[nodiscard]] const std::vector<uint32_t>& visible_cell_indices() const noexcept { return visible_cell_indices_; }
-    // Legacy aliases used by the culling test UI.
+    [[nodiscard]] const ocarina_vector<uint32_t>& visible_cell_indices() const noexcept { return visible_cell_indices_; }
     [[nodiscard]] uint32_t visible_grid_count() const noexcept { return visible_cell_count_; }
-    [[nodiscard]] const std::vector<uint32_t>& visible_grid_indices() const noexcept { return visible_cell_indices_; }
+    [[nodiscard]] const ocarina_vector<uint32_t>& visible_grid_indices() const noexcept { return visible_cell_indices_; }
 
-    // Convert a flat cell index to world cell coordinates (cx, cz).
     [[nodiscard]] std::pair<int32_t, int32_t> grid_cell_coords(uint32_t flat_index) const noexcept {
         if (grid_dim_x_ == 0) {
             return {grid_origin_cell_x_, grid_origin_cell_z_};
@@ -117,20 +117,19 @@ public:
         return flat_index < grid_cells_.size() ? grid_cells_[flat_index].entity_count : 0u;
     }
 
-    [[nodiscard]] const std::vector<SceneGridCell>& grid_cells() const noexcept {
+    [[nodiscard]] const ocarina_vector<SceneGridCell>& grid_cells() const noexcept {
         return grid_cells_;
     }
 
 private:
     [[nodiscard]] BoundingBox compute_entity_bounds(uint32_t entity_index) const;
-    [[nodiscard]] BoundingBox compute_bounds(const std::vector<uint32_t>& entity_indices) const;
+    [[nodiscard]] BoundingBox compute_bounds(const ocarina_vector<uint32_t>& entity_indices) const;
     void ensure_visible_cell_capacity();
 
-    std::vector<uint32_t> entity_indices_;
+    ocarina_vector<uint32_t> entity_indices_;
 
-    // Grid data (XZ plane).
-    std::vector<SceneGridCell> grid_cells_;
-    std::vector<uint32_t> visible_cell_indices_;
+    ocarina_vector<SceneGridCell> grid_cells_;
+    ocarina_vector<uint32_t> visible_cell_indices_;
     uint32_t visible_cell_count_ = 0;
     uint32_t grid_dim_x_ = 0;
     uint32_t grid_dim_z_ = 0;

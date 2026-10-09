@@ -35,24 +35,24 @@ public:
         Device* device,
         const std::string& vertex_shader_file,
         const std::string& pixel_shader_file,
-        const std::set<std::string>& vertex_options,
-        const std::set<std::string>& pixel_options,
+        const ocarina_set<std::string>& vertex_options,
+        const ocarina_set<std::string>& pixel_options,
         const std::string& entry_point = "main");
     [[nodiscard]] ShaderProgram* get_shader_program(
         const std::string& vertex_shader_file,
         const std::string& pixel_shader_file,
-        const std::set<std::string>& vertex_options,
-        const std::set<std::string>& pixel_options,
+        const ocarina_set<std::string>& vertex_options,
+        const ocarina_set<std::string>& pixel_options,
         const std::string& entry_point = "main") const noexcept;
 
     ShaderProgram* create_compute_shader_program(
         Device* device,
         const std::string& compute_shader_file,
-        const std::set<std::string>& options,
+        const ocarina_set<std::string>& options,
         const std::string& entry_point = "main");
     [[nodiscard]] ShaderProgram* get_compute_shader_program(
         const std::string& compute_shader_file,
-        const std::set<std::string>& options,
+        const ocarina_set<std::string>& options,
         const std::string& entry_point = "main") const noexcept;
 
     Material* create_material(Device* device, ShaderProgram* shader_program);
@@ -141,24 +141,24 @@ private:
     static ShaderProgramKey make_graphics_program_key(
         const std::string& vertex_shader_file,
         const std::string& pixel_shader_file,
-        const std::set<std::string>& vertex_options,
-        const std::set<std::string>& pixel_options,
+        const ocarina_set<std::string>& vertex_options,
+        const ocarina_set<std::string>& pixel_options,
         const std::string& entry_point);
     static ShaderProgramKey make_compute_program_key(
         const std::string& compute_shader_file,
-        const std::set<std::string>& options,
+        const ocarina_set<std::string>& options,
         const std::string& entry_point);
 
-    std::unordered_map<uint64_t, Material*> materials_;
-    std::vector<Material*> unique_materials_;
-    std::unordered_map<ShaderProgramKey, ShaderProgram*, HashShaderProgramKeyFunction> shader_programs_;
+    ocarina_unordered_map<uint64_t, Material*> materials_;
+    ocarina_vector<Material*> unique_materials_;
+    ocarina_unordered_map<ShaderProgramKey, ShaderProgram*, HashShaderProgramKeyFunction> shader_programs_;
     Device* cached_device_ = nullptr;
-    std::unordered_map<uint64_t, Mesh*> meshes_;
-    std::vector<Mesh*> meshes_by_id_;
-    std::unordered_map<Mesh*, uint32_t> mesh_to_id_;
-    std::unordered_map<uint64_t, TextureHandle> textures_;
-    std::vector<Cubemap*> cubemaps_;
-    std::unordered_map<handle_ty, Buffer*> buffers_;
+    ocarina_unordered_map<uint64_t, Mesh*> meshes_;
+    ocarina_vector<Mesh*> meshes_by_id_;
+    ocarina_unordered_map<Mesh*, uint32_t> mesh_to_id_;
+    ocarina_unordered_map<uint64_t, TextureHandle> textures_;
+    ocarina_vector<Cubemap*> cubemaps_;
+    ocarina_unordered_map<handle_ty, Buffer*> buffers_;
     mutable std::mutex mutex_;
 };
 

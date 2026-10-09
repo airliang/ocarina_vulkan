@@ -55,9 +55,9 @@ private:
     void release_index_locked(uint32_t index);
 
     mutable std::mutex mutex_;
-    std::vector<Texture*> texture_order_;
-    std::unordered_map<Texture*, uint32_t> texture_to_index_;
-    std::vector<uint32_t> free_indices_;
+    ocarina_vector<Texture*> texture_order_;
+    ocarina_unordered_map<Texture*, uint32_t> texture_to_index_;
+    ocarina_vector<uint32_t> free_indices_;
 };
 
 }// namespace ocarina
