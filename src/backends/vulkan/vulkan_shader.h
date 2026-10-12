@@ -95,7 +95,7 @@ private:
     void create_vertex_stream_binding();
 
     VkShaderModule shader_module_ = VK_NULL_HANDLE;
-    std::string entry_;
+    ocarina_string entry_;
     VulkanDevice* device_ = nullptr;
     VkShaderStageFlagBits stage_;
     ocarina_vector<ShaderVariableBinding> variables_;

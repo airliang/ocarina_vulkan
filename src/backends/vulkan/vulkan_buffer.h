@@ -46,6 +46,8 @@ private:
     
     VkDescriptorBufferInfo descriptor_buffer_info_ = {};
     VkDeviceSize memory_allocation_size_ = 0;
+    /// Tracy Memory pool name used for this VMA allocation (string literal).
+    const char *tracy_memory_pool_ = nullptr;
     VkResult flush(VkDeviceSize size = VK_WHOLE_SIZE, VkDeviceSize offset = 0);
 };
 

@@ -31,7 +31,7 @@ private:
         Impl() = default;
     };
     ocarina::unique_ptr<Impl> impl_;
-    std::string current_backend_;
+    ocarina_string current_backend_;
 public:
     RHIContext &init(const fs::path &path, string_view cache_dir = ".cache");
     virtual ~RHIContext() noexcept;
@@ -52,7 +52,7 @@ public:
     void unload_module(void *handle) noexcept;
     [[nodiscard]] Device create_device(const string &backend_name, const ocarina::InstanceCreation &instance_creation) noexcept;
     [[nodiscard]] Device create_device(const string &backend_name) noexcept;
-    [[nodiscard]] const std::string& current_backend() const noexcept { return current_backend_; }
+    [[nodiscard]] const ocarina_string& current_backend() const noexcept { return current_backend_; }
 private:
     void parse_process_command_line();
 };

@@ -253,8 +253,8 @@ struct PushConstantVariable {
     size_t size = 0;
 };
 
-/// One reflected push-constant block with a fixed-size CPU staging buffer.
-/// Created from shader reflection; not tied to RHIPipelineLayout readiness.
+/// Per-entity push-constant staging buffer (layout/variable names live on ShaderProgram).
+/// Keep this POD-like: no heap members — there is one per renderable entity.
 struct PushConstantRange {
     static constexpr size_t kMaxDataBytes = 128;
 
@@ -262,8 +262,6 @@ struct PushConstantRange {
     uint16_t offset = 0;
     uint16_t size = 0;
     uint8_t shader_stage = 0;
-    string name;
-    ocarina_unordered_map<uint64_t, PushConstantVariable> variables;
 };
 
 struct PipelineLayoutPushConstantRange {

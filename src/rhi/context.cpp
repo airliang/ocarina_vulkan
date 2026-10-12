@@ -41,7 +41,7 @@ bool create_directory_if_necessary(const fs::path &path) {
     return true;
 }
 
-[[nodiscard]] std::string backend_full_name(const string &name) {
+[[nodiscard]] ocarina_string backend_full_name(const string &name) {
     return string(backend_prefix) + name;
 }
 
@@ -63,6 +63,7 @@ RHIContext *RHIContext::s_context = nullptr;
 
 RHIContext &RHIContext::instance() noexcept {
     if (s_context == nullptr) {
+        // Private ctor: allocate via plain new (not make_unique / new_with_allocator).
         s_context = new RHIContext();
         s_context->init(fs::current_path());
         s_context->parse_process_command_line();
@@ -125,10 +126,10 @@ string RHIContext::read_file(const fs::path &fn) {
     fst.open(fn.c_str());
     std::stringstream buffer;
     buffer << fst.rdbuf();
-    return buffer.str();
+    return ocarina::to_ocarina_string(buffer.str());
 }
 
-void RHIContext::write_file(const fs::path &fn, const std::string &text) {
+void RHIContext::write_file(const fs::path &fn, const ocarina_string &text) {
     std::ofstream fs;
     fs.open(fn.c_str());
     fs << text;
@@ -174,7 +175,7 @@ void RHIContext::unload_module(void *handle) noexcept {
     dynamic_module_destroy(handle);
 }
 
-bool RHIContext::unload_module(const std::string &module_name) noexcept {
+bool RHIContext::unload_module(const ocarina_string &module_name) noexcept {
     auto iter = impl_->modules.find(module_name);
     if (iter == impl_->modules.cend()) {
         return false;

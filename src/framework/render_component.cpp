@@ -2,7 +2,6 @@
 #include "material.h"
 #include "mesh.h"
 #include "resource_manager.h"
-#include "transform_component.h"
 #include "rhi/shader_base.h"
 #include "rhi/shader_program.h"
 #include "core/hash.h"
@@ -15,7 +14,6 @@ namespace ocarina {
 void RenderComponent::set_mesh(Mesh* mesh) {
     mesh_id = mesh != nullptr ? mesh->mesh_id() : InvalidUI32;
     initialized = false;
-    last_push_constant_transform_version = InvalidUI32;
 }
 
 void RenderComponent::set_material(Material* new_material) {
@@ -24,7 +22,6 @@ void RenderComponent::set_material(Material* new_material) {
     }
     material = new_material;
     initialized = false;
-    last_push_constant_transform_version = InvalidUI32;
     push_constants.clear();
 }
 
@@ -55,42 +52,57 @@ void RenderComponent::set_push_constant_variable(
     uint64_t name_id,
     const std::byte* data,
     size_t size) {
-    if (data == nullptr || size == 0) {
+    if (data == nullptr || size == 0 || material == nullptr) {
         return;
     }
 
     ensure_push_constants_from_shaders();
 
-    for (PushConstantRange& range : push_constants) {
-        const auto it = range.variables.find(name_id);
-        if (it == range.variables.end()) {
+    ShaderProgram* program = material->get_shader_program();
+    if (program == nullptr) {
+        return;
+    }
+
+    // Variable offsets come from shared shader reflection; only staging bytes live on the entity.
+    for (const ShaderPushConstant& pc : program->push_constants()) {
+        if (pc.size == 0) {
             continue;
         }
 
-        const size_t copy_size = std::min(size, it->second.size);
-        if (it->second.offset + copy_size > range.size
-            || it->second.offset + copy_size > PushConstantRange::kMaxDataBytes) {
-            return;
+        const uint16_t range_offset = static_cast<uint16_t>(pc.offset);
+        const uint16_t range_size = static_cast<uint16_t>(
+            std::min<uint32_t>(pc.size, static_cast<uint32_t>(PushConstantRange::kMaxDataBytes)));
+
+        for (const ShaderReflection::ShaderVariable& variable : pc.shader_variables) {
+            if (hash64(variable.name) != name_id) {
+                continue;
+            }
+
+            for (PushConstantRange& range : push_constants) {
+                if (range.offset != range_offset || range.size != range_size) {
+                    continue;
+                }
+
+                const size_t copy_size = std::min(size, static_cast<size_t>(variable.size));
+                if (variable.offset + copy_size > range.size
+                    || variable.offset + copy_size > PushConstantRange::kMaxDataBytes) {
+                    return;
+                }
+                std::memcpy(range.data.data() + variable.offset, data, copy_size);
+                return;
+            }
         }
-        std::memcpy(range.data.data() + it->second.offset, data, copy_size);
-        return;
     }
 }
 
-void RenderComponent::write_transform_index_push_constant(uint32_t entity_index) {
-    if (entity_index == InvalidUI32) {
-        return;
-    }
-    set_push_constant_variable(
-        hash64("transform_index"),
-        reinterpret_cast<const std::byte*>(&entity_index),
-        sizeof(entity_index));
+void RenderComponent::set_push_constant_variable(
+    const char* name,
+    const std::byte* data,
+    size_t size) {
+    set_push_constant_variable(hash64(name), data, size);
 }
 
-void RenderComponent::initialize(
-    Device* device,
-    TransformComponent& transform,
-    uint32_t entity_index) {
+void RenderComponent::initialize(Device* device) {
     (void)device;
     if (initialized) {
         return;
@@ -105,33 +117,21 @@ void RenderComponent::initialize(
     }
 
     ensure_push_constants_from_shaders();
-    update_push_constants(transform, entity_index);
     initialized = true;
 }
 
-void RenderComponent::update_push_constants(
-    TransformComponent& transform,
-    uint32_t entity_index) {
+void RenderComponent::update_push_constants(uint32_t entity_index) {
     ensure_push_constants_from_shaders();
-    write_transform_index_push_constant(entity_index);
-
-    if (update_push_constant_function == nullptr) {
-        return;
+    if (update_push_constant_function != nullptr) {
+        update_push_constant_function(*this, entity_index);
     }
-    if (initialized && transform.transform_version() == last_push_constant_transform_version) {
-        return;
-    }
-
-    update_push_constant_function(*this, transform);
-    last_push_constant_transform_version = transform.transform_version();
 }
 
-void RenderComponent::update(
-    Device* device,
-    TransformComponent& transform,
-    uint32_t entity_index) {
-    initialize(device, transform, entity_index);
-    update_push_constants(transform, entity_index);
+void RenderComponent::update(Device* device, uint32_t entity_index) {
+    if (!initialized) {
+        initialize(device);
+    }
+    update_push_constants(entity_index);
 }
 
 }// namespace ocarina

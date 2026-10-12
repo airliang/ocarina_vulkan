@@ -13,6 +13,11 @@ inline constexpr const char* kMeshCpuUvsPool = "MeshCPU.uvs";
 inline constexpr const char* kMeshCpuColorsPool = "MeshCPU.colors";
 inline constexpr const char* kMeshCpuIndicesPool = "MeshCPU.indices";
 
+/// CPU bookkeeping for mega-buffer page lists (not the GPU pages themselves).
+/// Mega VB/IB VMA sizes appear in Tracy as GPU.VertexBuffer / GPU.IndexBuffer.
+inline constexpr const char* kMeshVertexPagesPool = "MeshBuffer.VertexPages";
+inline constexpr const char* kMeshIndexPagesPool = "MeshBuffer.IndexPages";
+
 using MeshPositions = ocarina_vector<Vector3>;
 using MeshNormals = ocarina_vector<Vector3>;
 using MeshTangents = ocarina_vector<Vector4>;

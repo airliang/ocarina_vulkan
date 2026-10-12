@@ -52,15 +52,15 @@ public:
         return false;
     }
 
-    const std::string get_name() const { return name_; }
-    void set_name(const std::string &name) {
+    const ocarina_string get_name() const { return name_; }
+    void set_name(const ocarina_string &name) {
         name_ = name;
     }
 
     bool is_global_ubo() const { return is_global_ubo_; }
 
 private:
-    std::string name_;
+    ocarina_string name_;
 
 protected:
     bool is_global_ubo_ = false;

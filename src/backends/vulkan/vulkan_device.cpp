@@ -201,7 +201,7 @@ void VulkanDevice::release_shader_program(ShaderProgram* program) noexcept {
     VulkanDriver::instance().release_program_shaders(program);
 }
 
-handle_ty VulkanDevice::create_shader_from_file(const std::string &file_name, ShaderType shader_type, const ocarina_set<string> &options) noexcept {
+handle_ty VulkanDevice::create_shader_from_file(const ocarina_string &file_name, ShaderType shader_type, const ocarina_set<string> &options) noexcept {
     if (shader_type != ShaderType::ComputeShader) {
         return 0;
     }
@@ -215,7 +215,7 @@ handle_ty VulkanDevice::create_shader_from_file(const std::string &file_name, Sh
     return create_shader_from_program(program, ShaderType::ComputeShader);
 }
 
-handle_ty VulkanDevice::find_shader_from_file(const std::string &file_name, ShaderType shader_type, const ocarina_set<string> &options) noexcept {
+handle_ty VulkanDevice::find_shader_from_file(const ocarina_string &file_name, ShaderType shader_type, const ocarina_set<string> &options) noexcept {
     (void)file_name;
     (void)shader_type;
     (void)options;

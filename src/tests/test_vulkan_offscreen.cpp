@@ -92,10 +92,10 @@ int main(int argc, char *argv[]) {
     const fs::path texture_vert = project_root / "res/shaderlibrary/builtin/texture.vert";
     const fs::path texture_frag = project_root / "res/shaderlibrary/builtin/texture.frag";
 
-    const std::string triangle_vert_abs = fs::absolute(triangle_vert).string();
-    const std::string triangle_frag_abs = fs::absolute(triangle_frag).string();
-    const std::string texture_vert_abs = fs::absolute(texture_vert).string();
-    const std::string texture_frag_abs = fs::absolute(texture_frag).string();
+    const ocarina_string triangle_vert_abs = ocarina::to_ocarina_string(fs::absolute(triangle_vert).string());
+    const ocarina_string triangle_frag_abs = ocarina::to_ocarina_string(fs::absolute(triangle_frag).string());
+    const ocarina_string texture_vert_abs = ocarina::to_ocarina_string(fs::absolute(texture_vert).string());
+    const ocarina_string texture_frag_abs = ocarina::to_ocarina_string(fs::absolute(texture_frag).string());
 
     const TextureUsageFlags offscreen_usage = static_cast<TextureUsageFlags>(
         static_cast<uint32_t>(TextureUsageFlags::RenderTarget) | static_cast<uint32_t>(TextureUsageFlags::ShaderReadOnly));
@@ -141,8 +141,9 @@ int main(int argc, char *argv[]) {
     camera.set_position({0.0f, 0.0f, -2.5f});
     camera.set_target({0.0f, 0.0f, 0.0f});
 
+    TransformComponent& triangle_transform = scene.transform_component(triangle_scene_index);
+    TransformComponent& quad_transform = scene.transform_component(quad_scene_index);
     const uint64_t model_matrix_name_id = hash64("modelMatrix");
-    const uint64_t model_matrix_inverse_name_id = hash64("modelMatrixInverse");
 
     RenderTarget offscreen_target = RenderTarget::texture(offscreen_color);
     RenderPassCreation offscreen_pass_creation;
@@ -196,25 +197,19 @@ int main(int argc, char *argv[]) {
         triangle_mesh = create_triangle_mesh();
         ResourceManager::instance().add_mesh("offscreen_triangle", triangle_mesh);
 
-        triangle.set_update_push_constant_function([&](RenderComponent& render, TransformComponent& transform) {
-            render.set_push_constant_variable(
-                model_matrix_name_id,
-                reinterpret_cast<std::byte*>(const_cast<void*>(static_cast<const void*>(&transform.get_world_matrix()))),
-                sizeof(transform.get_world_matrix()));
-        });
+        triangle.set_update_push_constant_function(
+            [&triangle_transform, model_matrix_name_id](RenderComponent& render, uint32_t) {
+                render.set_push_constant_variable(
+                    model_matrix_name_id,
+                    triangle_transform.get_world_matrix());
+            });
 
-        quad.set_update_push_constant_function([&](RenderComponent& render, TransformComponent& transform) {
-            const float4x4 world_matrix = transform.get_world_matrix();
-            const float4x4 world_matrix_inverse = inverse(world_matrix);
-            render.set_push_constant_variable(
-                model_matrix_name_id,
-                reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix)),
-                sizeof(world_matrix));
-            render.set_push_constant_variable(
-                model_matrix_inverse_name_id,
-                reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix_inverse)),
-                sizeof(world_matrix_inverse));
-        });
+        quad.set_update_push_constant_function(
+            [&quad_transform, model_matrix_name_id](RenderComponent& render, uint32_t) {
+                render.set_push_constant_variable(
+                    model_matrix_name_id,
+                    quad_transform.get_world_matrix());
+            });
 
         setup_offscreen_triangle(triangle);
         setup_quad(quad);

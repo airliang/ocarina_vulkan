@@ -40,7 +40,7 @@ struct GPUResourceRequest {
     virtual void process() = 0;
 
     Device* device = nullptr;
-    std::string name;
+    ocarina_string name;
 };
 
 /// Upload CPU pixels or finalize bindless binding for an existing Texture.

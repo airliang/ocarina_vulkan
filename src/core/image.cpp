@@ -26,8 +26,7 @@ constexpr const char* kImagePixelPool = "Image::pixel";
 
 template<typename T = std::byte>
 T* alloc_image_pixels(size_t count) noexcept {
-    TracyMemoryPoolScope scope(kImagePixelPool);
-    return allocate<T>(count);
+    return allocate<T>(count, kImagePixelPool);
 }
 
 }// namespace
@@ -39,8 +38,7 @@ void ImagePixelDeleter::operator()(const std::byte* p) const noexcept {
     if (p == nullptr) {
         return;
     }
-    TracyMemoryPoolScope scope(kImagePixelPool);
-    deallocate(const_cast<std::byte*>(p));
+    deallocate(const_cast<std::byte*>(p), kImagePixelPool);
 }
 
 Image::~Image() = default;
@@ -103,7 +101,7 @@ Image Image::create_empty(ocarina::PixelStorage pixel_format, ocarina::uint2 res
 
 Image Image::load(const fs::path &path, ColorSpace color_space, float3 scale) {
     PROFILE_SCOPE();
-    auto extension = to_lower(path.extension().string());
+    auto extension = to_lower(ocarina::to_ocarina_string(path.extension().string()));
     OC_INFO("load picture ", path.string());
     Image ret;
     if (extension == ".exr") {
@@ -416,7 +414,7 @@ void Image::save_other(const fs::path &fn, PixelStorage pixel_storage,
                        uint2 res, const std::byte *ptr) {
     OC_ASSERT(is_8bit(pixel_storage));
     auto path_str = fs::absolute(fn).string();
-    auto extension = to_lower(fn.extension().string());
+    auto extension = to_lower(ocarina::to_ocarina_string(fn.extension().string()));
     if (extension == ".png") {
         stbi_write_png(path_str.c_str(), res.x, res.y, 4, ptr, 0);
     } else if (extension == ".bmp") {
@@ -451,14 +449,14 @@ void Image::save_image(const fs::path &fn, PixelStorage pixel_storage,
                        uint2 res, const void *raw_ptr) {
     OC_ASSERT(raw_ptr != nullptr);
     const std::byte *ptr = reinterpret_cast<const std::byte *>(raw_ptr);
-    auto extension = to_lower(fn.extension().string());
+    auto extension = to_lower(ocarina::to_ocarina_string(fn.extension().string()));
     if (extension == ".exr") {
         if (is_32bit(pixel_storage)) {
             save_exr(fn, pixel_storage, res, ptr);
         } else {
             auto [format, pixel] = convert_to_32bit(pixel_storage, ptr, res);
             save_exr(fn, format, res, pixel);
-            delete_array(pixel);
+            deallocate(const_cast<std::byte *>(pixel), kImagePixelPool);
         }
     } else if (extension == ".hdr") {
         if (is_32bit(pixel_storage)) {
@@ -466,7 +464,7 @@ void Image::save_image(const fs::path &fn, PixelStorage pixel_storage,
         } else {
             auto [format, pixel] = convert_to_32bit(pixel_storage, ptr, res);
             save_hdr(fn, format, res, pixel);
-            delete_array(pixel);
+            deallocate(const_cast<std::byte *>(pixel), kImagePixelPool);
         }
     } else {
         if (is_8bit(pixel_storage)) {
@@ -474,7 +472,7 @@ void Image::save_image(const fs::path &fn, PixelStorage pixel_storage,
         } else {
             auto [format, pixel] = convert_to_8bit(pixel_storage, ptr, res);
             save_other(fn, format, res, pixel);
-            delete_array(pixel);
+            deallocate(const_cast<std::byte *>(pixel), kImagePixelPool);
         }
     }
     OC_INFO("save picture ", fn);

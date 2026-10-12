@@ -14,8 +14,8 @@ class ShaderProgram;
 /// File- or program-based request to compile / cache a graphics PSO.
 /// Vertex inputs are defined by the vertex shader (and its options), not stored here.
 struct PSORequest {
-    std::string vertex_shader_path;
-    std::string pixel_shader_path;
+    ocarina_string vertex_shader_path;
+    ocarina_string pixel_shader_path;
     ocarina_set<string> vertex_options;
     ocarina_set<string> pixel_options;
 
@@ -30,8 +30,8 @@ struct PSORequest {
     PrimitiveType primitive_type = PrimitiveType::TRIANGLES;
 
     [[nodiscard]] static PSORequest make_graphics(
-        std::string vertex_path,
-        std::string pixel_path,
+        ocarina_string vertex_path,
+        ocarina_string pixel_path,
         RHIRenderPass* render_pass,
         ocarina_set<string> vertex_options = {},
         ocarina_set<string> pixel_options = {}) {
@@ -106,13 +106,13 @@ struct PSORequestHash {
         hash_combine(hash, static_cast<uint32_t>(request.primitive_type));
         hash_combine(hash, static_cast<uint32_t>(request.blend_state.blend_enable));
         if (request.has_shader_paths()) {
-            hash_combine(hash, std::hash<std::string>{}(request.vertex_shader_path));
-            hash_combine(hash, std::hash<std::string>{}(request.pixel_shader_path));
-            for (const std::string& option : request.vertex_options) {
-                hash_combine(hash, std::hash<std::string>{}(option));
+            hash_combine(hash, std::hash<ocarina_string>{}(request.vertex_shader_path));
+            hash_combine(hash, std::hash<ocarina_string>{}(request.pixel_shader_path));
+            for (const ocarina_string& option : request.vertex_options) {
+                hash_combine(hash, std::hash<ocarina_string>{}(option));
             }
-            for (const std::string& option : request.pixel_options) {
-                hash_combine(hash, std::hash<std::string>{}(option));
+            for (const ocarina_string& option : request.pixel_options) {
+                hash_combine(hash, std::hash<ocarina_string>{}(option));
             }
         } else {
             hash_combine(hash, reinterpret_cast<uintptr_t>(request.shader_program));

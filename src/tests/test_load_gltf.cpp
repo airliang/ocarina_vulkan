@@ -64,29 +64,14 @@ int main(int argc, char* argv[]) {
     render_pass_creation.clear_stencil = 0;
     RHIRenderPass* render_pass = device.create_render_pass(render_pass_creation);
 
-    const std::string shader_vert_abs = fs::absolute(shader_vert).string();
-    const std::string shader_frag_abs = fs::absolute(shader_frag).string();
+    const ocarina_string shader_vert_abs = ocarina::to_ocarina_string(fs::absolute(shader_vert).string());
+    const ocarina_string shader_frag_abs = ocarina::to_ocarina_string(fs::absolute(shader_frag).string());
     GltfAsyncLoader gltf_loader(
         &renderer.task_scheduler(),
         &device,
         PSORequest::make_graphics(shader_vert_abs, shader_frag_abs, render_pass),
-        fs::absolute(gltf_path).string(),
+        ocarina::to_ocarina_string(fs::absolute(gltf_path).string()),
         render_pass);
-
-    const uint64_t model_matrix_name_id = hash64("modelMatrix");
-    const uint64_t model_matrix_inverse_name_id = hash64("modelMatrixInverse");
-    auto update_push_constant = [&](RenderComponent& render, TransformComponent& transform) {
-        const float4x4 world_matrix = transform.get_world_matrix();
-        const float4x4 world_matrix_inverse = inverse(world_matrix);
-        render.set_push_constant_variable(
-            model_matrix_name_id,
-            reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix)),
-            sizeof(world_matrix));
-        render.set_push_constant_variable(
-            model_matrix_inverse_name_id,
-            reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix_inverse)),
-            sizeof(world_matrix_inverse));
-    };
 
     ImguiRenderer imgui_renderer(*window);
     imgui_renderer.init(device);
@@ -105,7 +90,10 @@ int main(int argc, char* argv[]) {
     renderer.set_async_loader(&gltf_loader, nullptr, [&]() {
         Scene& scene = gltf_loader.get_scene();
         for (uint32_t index = 0; index < scene.primitive_count(); ++index) {
-            scene.render_component(index).set_update_push_constant_function(update_push_constant);
+            scene.render_component(index).set_update_push_constant_function(
+                [](RenderComponent& render, uint32_t entity_index) {
+                    render.set_push_constant_variable("transform_index", entity_index);
+                });
         }
         renderer.set_scene(&scene);
 

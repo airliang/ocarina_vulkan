@@ -6,8 +6,7 @@
 
 #include "constants.h"
 #include "scalar_func.h"
-#include "dsl/operators.h"
-#include "dsl/type_trait.h"
+#include "basic_types.h"
 
 #define MAKE_VECTOR_OP(op)                                                           \
     template<typename T>                                                             \
@@ -39,9 +38,9 @@ MAKE_VECTOR_OP(/)
 
 namespace ocarina {
 
-template<int n, typename T, typename ret_type = condition_t<expr_value_t<T>, T>>
+template<int n, typename T>
 requires requires(T a, T b) { a *b; }
-OC_NODISCARD constexpr ret_type Pow(const T &v) {
+OC_NODISCARD constexpr T Pow(const T &v) {
     if constexpr (n < 0) {
         return 1.f / Pow<-n>(v);
     } else if constexpr (n == 1) {
@@ -54,20 +53,19 @@ OC_NODISCARD constexpr ret_type Pow(const T &v) {
 }
 
 template<typename F, typename A, typename B>
-requires none_dsl_v<F, A, B>
 OC_NODISCARD constexpr auto
 lerp(F t, A a, B b) noexcept {
     return a + t * (b - a);
 }
 
 template<typename T, typename U>
-requires is_all_floating_point_expr_v<T, U>
-[[nodiscard]] condition_t<bool, T, U> is_close(T t, U u, float epsilon = 0.00001f) {
+requires is_all_floating_point_v<T, U>
+[[nodiscard]] auto is_close(T t, U u, float epsilon = 0.00001f) {
     return abs(t - u) < epsilon;
 }
 
 template<typename T, typename U>
-requires ocarina::is_all_scalar_expr_v<T, U>
+requires is_all_scalar_v<T, U>
 auto divide(T &&t, U &&u) noexcept {
     return OC_FORWARD(t) * rcp(OC_FORWARD(u));
 }
@@ -125,50 +123,9 @@ template<typename T, typename F2>
     return u * v0 + v * v1 + w * v2;
 }
 
-template<EPort P = D>
-[[nodiscard]] oc_float2<P> barycentric(const oc_float2<P> &p, const oc_float2<P> &v0,
-                                       const oc_float2<P> &v1, const oc_float2<P> &v2) {
-    oc_float<P> a1 = v0.x - v2.x;
-    oc_float<P> b1 = v1.x - v2.x;
-    oc_float<P> c1 = p.x - v2.x;
-
-    oc_float<P> a2 = v0.y - v2.y;
-    oc_float<P> b2 = v1.y - v2.y;
-    oc_float<P> c2 = p.y - v2.y;
-
-    oc_float<P> u = (c1 * b2 - c2 * b1) / (a1 * b2 - a2 * b1);
-    oc_float<P> v = (a1 * c2 - a2 * c1) / (a1 * b2 - a2 * b1);
-    return make_float2(u, v);
-}
-
-template<EPort p = D>
-[[nodiscard]] oc_bool<p> in_triangle(const oc_float2<p> &barycentric, const oc_float2<p> &v0,
-                                     const oc_float2<p> &v1, const oc_float2<p> &v2) noexcept {
-    oc_float3<p> a = make_float3(v0, 0.f);
-    oc_float3<p> b = make_float3(v1, 0.f);
-    oc_float3<p> c = make_float3(v2, 0.f);
-    oc_float3<p> n = make_float3(barycentric, 0.f);
-
-    oc_float3<p> ba = a - b;
-    oc_float3<p> cb = b - c;
-    oc_float3<p> ac = c - a;
-
-    oc_float3<p> an = n - a;
-    oc_float3<p> bn = n - b;
-    oc_float3<p> cn = n - c;
-
-    oc_float<p> r0 = cross(ba, bn).z;
-    oc_float<p> r1 = cross(cb, cn).z;
-    oc_float<p> r2 = cross(ac, an).z;
-
-    oc_bool<p> cond = length_squared(cross(ac, ba)) > 0;
-
-    return ((r0 >= 0 && r1 >= 0 && r2 >= 0) || (r0 <= 0 && r1 <= 0 && r2 <= 0)) && cond;
-}
-
 template<typename T>
 [[nodiscard]] T srgb_to_linear(T S) {
-    using raw_ty = expr_value_t<T>;
+    using raw_ty = std::remove_cvref_t<T>;
     return select((S < raw_ty(0.04045f)),
                   (S / raw_ty(12.92f)),
                   (pow((S + 0.055f) * 1.f / 1.055f, 2.4f)));
@@ -176,7 +133,7 @@ template<typename T>
 
 template<typename T>
 [[nodiscard]] T linear_to_srgb(T L) {
-    using raw_ty = expr_value_t<T>;
+    using raw_ty = std::remove_cvref_t<T>;
     return select((L < raw_ty(0.0031308f)),
                   (L * raw_ty(12.92f)),
                   (raw_ty(1.055f) * pow(L, raw_ty(1.0f / 2.4f)) - raw_ty(0.055f)));
@@ -189,22 +146,22 @@ template<typename T>
 
 template<typename T>
 OC_NODISCARD auto is_zero(const T &v) noexcept {
-    return all(v == expr_value_t<T>(0));
+    return all(v == std::remove_cvref_t<T>(0));
 }
 
 template<typename T>
 OC_NODISCARD auto nonzero(const T &v) noexcept {
-    return any(v != expr_value_t<T>(0));
+    return any(v != std::remove_cvref_t<T>(0));
 }
 
 template<typename T>
-requires is_vector_expr_v<T>
+requires is_vector_v<T>
 OC_NODISCARD auto has_nan(const T &v) noexcept {
     return any(isnan(v));
 }
 
 template<typename T>
-requires is_vector_expr_v<T>
+requires is_vector_v<T>
 OC_NODISCARD auto has_inf(const T &v) noexcept {
     return any(isinf(v));
 }
@@ -221,7 +178,7 @@ template<typename T>
 
 template<typename T>
 OC_NODISCARD auto max_comp(const T &v) noexcept {
-    static constexpr uint dim = vector_expr_dimension_v<T>;
+    static constexpr uint dim = vector_dimension_v<T>;
     auto ret = v[0];
     for (int i = 1; i < dim; ++i) {
         ret = max(v[i], ret);
@@ -234,7 +191,7 @@ OC_NODISCARD auto max_comp(const T &v) noexcept {
 }
 
 template<typename V>
-requires ocarina::is_vector3_v<expr_value_t<V>>
+requires ocarina::is_vector3_v<V>
 [[nodiscard]] inline uint32_t make_rgba(const V &color) {
     return (make_8bit(color.x) << 0) +
            (make_8bit(color.y) << 8) +
@@ -243,7 +200,7 @@ requires ocarina::is_vector3_v<expr_value_t<V>>
 }
 
 template<typename V>
-requires ocarina::is_vector4_v<expr_value_t<V>>
+requires ocarina::is_vector4_v<V>
 [[nodiscard]] inline uint32_t make_rgba(const V &color) {
     return (make_8bit(color.x) << 0) +
            (make_8bit(color.y) << 8) +

@@ -34,7 +34,7 @@ public:
             memset(shaderCode, 0, size + 1);
             is.read(shaderCode, size + 1);
             is.close();
-            std::string shader_code(shaderCode);
+            ocarina_string shader_code(shaderCode);
             HRESULT hr = pUtils->CreateBlob(shader_code.data(), shader_code.size(), 0, output);
             
             delete[] shaderCode;
@@ -47,12 +47,12 @@ public:
     HRESULT STDMETHODCALLTYPE 
         LoadSource(_In_ LPCWSTR pFilename, _COM_Outptr_result_maybenull_ IDxcBlob **ppIncludeSource) override {
         ComPtr<IDxcBlobEncoding> pEncoding;
-        std::string file_name = wstring_to_string(pFilename);
-        std::string path = get_file_directory(file_name);//Paths::Normalize(UNICODE_TO_MULTIBYTE(pFilename));
+        ocarina_string file_name = wstring_to_string(pFilename);
+        ocarina_string path = get_file_directory(file_name);//Paths::Normalize(UNICODE_TO_MULTIBYTE(pFilename));
         //file_name = get_file_name(file_name);
         //gVerify(Paths::ResolveRelativePaths(path), == true);
 
-        auto existingInclude = std::find_if(IncludedFiles.begin(), IncludedFiles.end(), [&path](const std::string &include) {
+        auto existingInclude = std::find_if(IncludedFiles.begin(), IncludedFiles.end(), [&path](const ocarina_string &include) {
             return strcmp(include.c_str(), path.c_str()) == 0;
         });
 
@@ -75,9 +75,9 @@ public:
     ULONG STDMETHODCALLTYPE AddRef(void) override { return 0; }
     ULONG STDMETHODCALLTYPE Release(void) override { return 0; }
 
-    ocarina_vector<std::string> IncludedFiles;
+    ocarina_vector<ocarina_string> IncludedFiles;
     IDxcUtils* pUtils;
-    std::string shader_file_directory;
+    ocarina_string shader_file_directory;
 };
 
 bool DXCCompiler::compile_hlsl_spriv(const CompileInput &input, CompileResult &result) {
@@ -104,9 +104,9 @@ bool DXCCompiler::compile_hlsl_spriv(const CompileInput &input, CompileResult &r
     ocarina_vector<std::wstring> owned_wstrings;
     owned_wstrings.reserve(2 + input.include_paths.size() + input.macros.size());
 
-    std::string file_dir = get_file_directory(input.full_file_path);
+    ocarina_string file_dir = get_file_directory(input.full_file_path);
     args.push_back(L"-I");
-    owned_wstrings.push_back(string_to_wstring(file_dir));
+    owned_wstrings.emplace_back(string_to_wstring(file_dir).c_str());
     args.push_back(owned_wstrings.back().c_str());
     for (size_t i = 0; i < input.include_paths.size(); ++i) {
         args.push_back(L"-I");
@@ -209,9 +209,9 @@ void DXCCompiler::run_spriv_reflection(const ocarina_vector<uint32_t> &spriv, Sh
                         return;
                     }
 
-                    std::string name = get_name(type_id);
+                    ocarina_string name = ocarina::to_ocarina_string(get_name(type_id));
                     if (name.empty()) {
-                        name = get_name(type.self);
+                        name = ocarina::to_ocarina_string(get_name(type.self));
                     }
                     if (name.empty()) {
                         return;
@@ -254,7 +254,7 @@ void DXCCompiler::run_spriv_reflection(const ocarina_vector<uint32_t> &spriv, Sh
     SpirvReflector spirvmodule((const uint32_t *)shader_data, shader_data_size / 4);
 
     // The SPIR-V is now parsed, and we can perform reflection on it.
-    std::string entryPointName;
+    ocarina_string entryPointName;
     spv::ExecutionModel executionModel;
     switch (shader_type) {
         case ShaderType::VertexShader:
@@ -364,9 +364,9 @@ void DXCCompiler::run_spriv_reflection(const ocarina_vector<uint32_t> &spriv, Sh
             return;
         }
 
-        std::string name = spirvmodule.get_name(type_id);
+        ocarina_string name = ocarina::to_ocarina_string(spirvmodule.get_name(type_id));
         if (name.empty()) {
-            name = spirvmodule.get_name(struct_type.self);
+            name = ocarina::to_ocarina_string(spirvmodule.get_name(struct_type.self));
         }
         if (name.empty() && fallback_name != nullptr) {
             name = fallback_name;
@@ -618,7 +618,7 @@ void DXCCompiler::run_spriv_reflection(const ocarina_vector<uint32_t> &spriv, Sh
             shader_resource.shader_type = (uint32_t)shader_type;
             shader_resource.parameter_type = ShaderReflection::ResourceType::InputAttachment;
             shader_resource.format = format;
-            std::string semantic;
+            ocarina_string semantic;
             if (spirvmodule.has_decoration(resource.id, spv::DecorationHlslSemanticGOOGLE)) {
                 semantic = spirvmodule.get_decoration_string(resource.id, spv::DecorationHlslSemanticGOOGLE);
             } else {

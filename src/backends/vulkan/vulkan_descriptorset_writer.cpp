@@ -43,7 +43,7 @@ VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, Vulka
             descriptor_image->binding = binding->binding;
             descriptor_image->name_ = binding->name;
             descriptor_image->descriptor_type_ = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            descriptor_image->default_sampler_name_ = std::string("sampler_") + binding->name;
+            descriptor_image->default_sampler_name_ = ocarina_string("sampler_") + binding->name;
             descriptors_.insert(std::make_pair(hash64(descriptor_image->name_), descriptor_image));
             if (binding->is_bindless) {
                 bindless_textures_descriptor_ = descriptor_image;
@@ -53,7 +53,7 @@ VulkanDescriptorSetWriter::VulkanDescriptorSetWriter(VulkanDevice *device, Vulka
             descriptor_image->binding = binding->binding;
             descriptor_image->name_ = binding->name;
             descriptor_image->descriptor_type_ = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-            descriptor_image->default_sampler_name_ = std::string("sampler_") + binding->name;
+            descriptor_image->default_sampler_name_ = ocarina_string("sampler_") + binding->name;
             descriptors_.insert(std::make_pair(hash64(descriptor_image->name_), descriptor_image));
             if (binding->is_bindless) {
                 bindless_textures_descriptor_ = descriptor_image;

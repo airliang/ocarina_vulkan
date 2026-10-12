@@ -97,8 +97,11 @@ void PipelineCompileTask::finish_and_release() noexcept {
     if (manager_ != nullptr) {
         manager_->on_compile_task_finished(request_, cache_key_);
     }
-    if (pool_ != nullptr) {
-        pool_->Release(this);
+    // Drop PSORequest heap (paths/options) now; the task object itself is pooled.
+    PipelineCompileTaskPool* pool = pool_;
+    reset();
+    if (pool != nullptr) {
+        pool->Release(this);
     }
 }
 
@@ -147,22 +150,21 @@ void PipelineCompileTaskPool::Release(PipelineCompileTask* task) {
 
 void PipelineCompileTaskPool::reclaim() noexcept {
     std::lock_guard<std::mutex> lock(mutex_);
-    ocarina_deque<PipelineCompileTask*> still_running;
-    while (!pending_release_.empty()) {
-        PipelineCompileTask* task = pending_release_.front();
-        pending_release_.pop_front();
+    // Compact in place — do not allocate a temporary deque every frame
+    // (PipelineManager::update → reclaim is called each frame).
+    size_t write = 0;
+    for (size_t read = 0; read < pending_release_.size(); ++read) {
+        PipelineCompileTask* task = pending_release_[read];
         if (task == nullptr) {
             continue;
         }
         if (!task->GetIsComplete()) {
-            still_running.push_back(task);
+            pending_release_[write++] = task;
             continue;
         }
         free_.push_back(task);
     }
-    for (PipelineCompileTask* task : still_running) {
-        pending_release_.push_back(task);
-    }
+    pending_release_.resize(write);
 }
 
 void PipelineCompileTaskPool::clear() noexcept {

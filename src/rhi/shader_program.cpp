@@ -220,11 +220,11 @@ void ShaderProgram::dispatch_for_extent(
 }
 
 ShaderProgram* ShaderProgram::compile_graphics_from_HLSL(
-    const std::string& vertex_shader_file,
-    const std::string& pixel_shader_file,
-    const ocarina_set<std::string>& vertex_options,
-    const ocarina_set<std::string>& pixel_options,
-    const std::string& entry_point) {
+    const ocarina_string& vertex_shader_file,
+    const ocarina_string& pixel_shader_file,
+    const ocarina_set<ocarina_string>& vertex_options,
+    const ocarina_set<ocarina_string>& pixel_options,
+    const ocarina_string& entry_point) {
 
     CompiledShader vertex_compiled{};
     if (!compile_hlsl_to_spirv_and_reflect(
@@ -273,9 +273,9 @@ ShaderProgram* ShaderProgram::compile_graphics_from_HLSL(
 }
 
 ShaderProgram* ShaderProgram::compile_compute_from_HLSL(
-    const std::string& compute_shader_file,
-    const ocarina_set<std::string>& options,
-    const std::string& entry_point) {
+    const ocarina_string& compute_shader_file,
+    const ocarina_set<ocarina_string>& options,
+    const ocarina_string& entry_point) {
 
     CompiledShader compiled{};
     if (!compile_hlsl_to_spirv_and_reflect(
@@ -531,11 +531,13 @@ void ShaderProgram::collect_push_constant_ranges(ocarina_vector<PushConstantRang
             continue;
         }
 
+        const uint16_t offset = static_cast<uint16_t>(pc.offset);
+        const uint16_t size = static_cast<uint16_t>(
+            std::min<uint32_t>(pc.size, static_cast<uint32_t>(PushConstantRange::kMaxDataBytes)));
+
         PushConstantRange* existing = nullptr;
         for (PushConstantRange& range : ranges) {
-            if (range.name == pc.name && range.offset == static_cast<uint16_t>(pc.offset)
-                && range.size
-                    == static_cast<uint16_t>(std::min<uint32_t>(pc.size, PushConstantRange::kMaxDataBytes))) {
+            if (range.offset == offset && range.size == size) {
                 existing = &range;
                 break;
             }
@@ -543,28 +545,14 @@ void ShaderProgram::collect_push_constant_ranges(ocarina_vector<PushConstantRang
 
         if (existing == nullptr) {
             PushConstantRange range;
-            range.name = pc.name;
-            range.offset = static_cast<uint16_t>(pc.offset);
-            range.size = static_cast<uint16_t>(
-                std::min<uint32_t>(pc.size, static_cast<uint32_t>(PushConstantRange::kMaxDataBytes)));
+            range.offset = offset;
+            range.size = size;
             range.shader_stage = static_cast<uint8_t>(pc.stage_flags & 0xFFu);
             range.data.fill(std::byte{0});
-            for (const ShaderReflection::ShaderVariable& variable : pc.shader_variables) {
-                PushConstantVariable pc_variable;
-                pc_variable.offset = variable.offset;
-                pc_variable.size = variable.size;
-                range.variables.emplace(hash64(variable.name), pc_variable);
-            }
-            ranges.push_back(std::move(range));
+            ranges.push_back(range);
         } else {
             existing->shader_stage =
                 static_cast<uint8_t>((static_cast<uint32_t>(existing->shader_stage) | pc.stage_flags) & 0xFFu);
-            for (const ShaderReflection::ShaderVariable& variable : pc.shader_variables) {
-                PushConstantVariable pc_variable;
-                pc_variable.offset = variable.offset;
-                pc_variable.size = variable.size;
-                existing->variables.emplace(hash64(variable.name), pc_variable);
-            }
         }
     }
 }

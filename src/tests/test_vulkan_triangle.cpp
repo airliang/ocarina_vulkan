@@ -73,8 +73,8 @@ int main(int argc, char *argv[]) {
 
     const fs::path source_dir = fs::path(__FILE__).parent_path();
     const fs::path project_root = source_dir.parent_path().parent_path();
-    const std::string shader_vert = fs::absolute(project_root / "res/shaderlibrary/builtin/triangle.vert").string();
-    const std::string shader_frag = fs::absolute(project_root / "res/shaderlibrary/builtin/triangle.frag").string();
+    const ocarina_string shader_vert = ocarina::to_ocarina_string(fs::absolute(project_root / "res/shaderlibrary/builtin/triangle.vert").string());
+    const ocarina_string shader_frag = ocarina::to_ocarina_string(fs::absolute(project_root / "res/shaderlibrary/builtin/triangle.frag").string());
 
     AsyncLoader async_loader(
         &renderer.task_scheduler(),
@@ -100,15 +100,14 @@ int main(int argc, char *argv[]) {
     camera.set_position({0.0f, 0.0f, -2.5f});
     camera.set_target({0.0f, 0.0f, 0.0f});
 
-    uint64_t model_matrix_name_id = hash64("modelMatrix");
-    auto update_push_constant = [&](RenderComponent& render, TransformComponent& transform) {
-        render.set_push_constant_variable(
-            model_matrix_name_id,
-            reinterpret_cast<std::byte*>(const_cast<void*>(static_cast<const void*>(&transform.get_world_matrix()))),
-            sizeof(transform.get_world_matrix()));
-    };
-
-    triangle.set_update_push_constant_function(update_push_constant);
+    TransformComponent& triangle_transform = scene.transform_component(triangle_scene_index);
+    const uint64_t model_matrix_name_id = hash64("modelMatrix");
+    triangle.set_update_push_constant_function(
+        [&triangle_transform, model_matrix_name_id](RenderComponent& render, uint32_t) {
+            render.set_push_constant_variable(
+                model_matrix_name_id,
+                triangle_transform.get_world_matrix());
+        });
 
     RenderTarget swapchain_target = RenderTarget::swapchain();
     RenderPassCreation render_pass_creation;

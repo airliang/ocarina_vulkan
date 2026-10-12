@@ -47,7 +47,7 @@ inline void warning_if_not(bool predicate, Args &&...args) noexcept {
 
 template<typename... Args>
 [[noreturn]] inline void exception(Args &&...args) {
-    throw std::runtime_error{serialize(std::forward<Args>(args)...)};
+    throw std::runtime_error{serialize(std::forward<Args>(args)...).c_str()};
 }
 
 template<typename... Args>

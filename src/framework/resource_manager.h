@@ -29,41 +29,41 @@ public:
     void cleanup();
 
     static uint64_t make_material_key(ShaderProgram* shader_program) noexcept;
-    static uint64_t make_texture_key(const std::string& name, const TextureViewCreation& texture_view, const TextureSampler& sampler) noexcept;
+    static uint64_t make_texture_key(const ocarina_string& name, const TextureViewCreation& texture_view, const TextureSampler& sampler) noexcept;
 
     ShaderProgram* create_shader_program(
         Device* device,
-        const std::string& vertex_shader_file,
-        const std::string& pixel_shader_file,
-        const ocarina_set<std::string>& vertex_options,
-        const ocarina_set<std::string>& pixel_options,
-        const std::string& entry_point = "main");
+        const ocarina_string& vertex_shader_file,
+        const ocarina_string& pixel_shader_file,
+        const ocarina_set<ocarina_string>& vertex_options,
+        const ocarina_set<ocarina_string>& pixel_options,
+        const ocarina_string& entry_point = "main");
     [[nodiscard]] ShaderProgram* get_shader_program(
-        const std::string& vertex_shader_file,
-        const std::string& pixel_shader_file,
-        const ocarina_set<std::string>& vertex_options,
-        const ocarina_set<std::string>& pixel_options,
-        const std::string& entry_point = "main") const noexcept;
+        const ocarina_string& vertex_shader_file,
+        const ocarina_string& pixel_shader_file,
+        const ocarina_set<ocarina_string>& vertex_options,
+        const ocarina_set<ocarina_string>& pixel_options,
+        const ocarina_string& entry_point = "main") const noexcept;
 
     ShaderProgram* create_compute_shader_program(
         Device* device,
-        const std::string& compute_shader_file,
-        const ocarina_set<std::string>& options,
-        const std::string& entry_point = "main");
+        const ocarina_string& compute_shader_file,
+        const ocarina_set<ocarina_string>& options,
+        const ocarina_string& entry_point = "main");
     [[nodiscard]] ShaderProgram* get_compute_shader_program(
-        const std::string& compute_shader_file,
-        const ocarina_set<std::string>& options,
-        const std::string& entry_point = "main") const noexcept;
+        const ocarina_string& compute_shader_file,
+        const ocarina_set<ocarina_string>& options,
+        const ocarina_string& entry_point = "main") const noexcept;
 
     Material* create_material(Device* device, ShaderProgram* shader_program);
     Material* create_unique_material(Device* device, ShaderProgram* shader_program);
     Material* get_material(ShaderProgram* shader_program) const noexcept;
     bool release_material(ShaderProgram* shader_program);
 
-    Mesh* create_mesh(const std::string& name);
-    Mesh* get_mesh(const std::string& name) const noexcept;
+    Mesh* create_mesh(const ocarina_string& name);
+    Mesh* get_mesh(const ocarina_string& name) const noexcept;
     [[nodiscard]] Mesh* get_mesh(uint32_t mesh_id) const noexcept;
-    void add_mesh(const std::string& name, Mesh* mesh);
+    void add_mesh(const ocarina_string& name, Mesh* mesh);
 
     /// Assign a stable mesh id (called from Mesh construction).
     uint32_t register_mesh(Mesh* mesh);
@@ -75,7 +75,7 @@ public:
         Device* device,
         size_t element_count,
         GraphicBufferBindFlags bind_flags,
-        const std::string& name = "");
+        const ocarina_string& name = "");
 
     [[nodiscard]] Buffer* get_buffer(handle_ty handle) const noexcept;
     /// Destroy the Buffer registered under @p handle. Safe to call with 0 / unknown handles.
@@ -89,7 +89,7 @@ public:
         const TextureSampler& sampler);
     [[nodiscard]] TextureHandle create_texture(
         Device* device,
-        const std::string& name,
+        const ocarina_string& name,
         uint32_t width,
         uint32_t height,
         PixelStorage pixel_storage,
@@ -99,18 +99,18 @@ public:
     /// Render targets are created immediately (needed for framebuffer setup).
     [[nodiscard]] Texture* create_render_target_texture(
         Device* device,
-        const std::string& name,
+        const ocarina_string& name,
         uint32_t width,
         uint32_t height,
         PixelStorage pixel_storage,
         TextureUsageFlags usage);
 
     [[nodiscard]] TextureHandle get_texture_handle(
-        const std::string& name,
+        const ocarina_string& name,
         const TextureViewCreation& texture_view,
         const TextureSampler& sampler) const noexcept;
     [[nodiscard]] Texture* get_texture(
-        const std::string& name,
+        const ocarina_string& name,
         const TextureViewCreation& texture_view,
         const TextureSampler& sampler) const noexcept;
 
@@ -139,15 +139,15 @@ public:
 
 private:
     static ShaderProgramKey make_graphics_program_key(
-        const std::string& vertex_shader_file,
-        const std::string& pixel_shader_file,
-        const ocarina_set<std::string>& vertex_options,
-        const ocarina_set<std::string>& pixel_options,
-        const std::string& entry_point);
+        const ocarina_string& vertex_shader_file,
+        const ocarina_string& pixel_shader_file,
+        const ocarina_set<ocarina_string>& vertex_options,
+        const ocarina_set<ocarina_string>& pixel_options,
+        const ocarina_string& entry_point);
     static ShaderProgramKey make_compute_program_key(
-        const std::string& compute_shader_file,
-        const ocarina_set<std::string>& options,
-        const std::string& entry_point);
+        const ocarina_string& compute_shader_file,
+        const ocarina_set<ocarina_string>& options,
+        const ocarina_string& entry_point);
 
     ocarina_unordered_map<uint64_t, Material*> materials_;
     ocarina_vector<Material*> unique_materials_;
@@ -167,7 +167,7 @@ TypedBuffer<T> ResourceManager::create_buffer(
     Device* device,
     size_t element_count,
     GraphicBufferBindFlags bind_flags,
-    const std::string& name) {
+    const ocarina_string& name) {
     const size_t byte_size = element_count * sizeof(T);
     handle_ty handle = device->create_buffer(byte_size, bind_flags, name);
     Buffer* buffer = reinterpret_cast<Buffer*>(handle);

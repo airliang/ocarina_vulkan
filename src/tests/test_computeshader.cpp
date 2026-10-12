@@ -76,9 +76,9 @@ int main(int argc, char *argv[]) {
     const fs::path fullscreen_vert = project_root / "res/shaderlibrary/builtin/fullscreen.vert";
     const fs::path display_frag = project_root / "res/shaderlibrary/builtin/display_texture.frag";
 
-    const std::string compute_abs = fs::absolute(compute_path).string();
-    const std::string fullscreen_vert_abs = fs::absolute(fullscreen_vert).string();
-    const std::string display_frag_abs = fs::absolute(display_frag).string();
+    const ocarina_string compute_abs = ocarina::to_ocarina_string(fs::absolute(compute_path).string());
+    const ocarina_string fullscreen_vert_abs = ocarina::to_ocarina_string(fs::absolute(fullscreen_vert).string());
+    const ocarina_string display_frag_abs = ocarina::to_ocarina_string(fs::absolute(display_frag).string());
 
     const TextureUsageFlags compute_tex_usage = static_cast<TextureUsageFlags>(
         static_cast<uint32_t>(TextureUsageFlags::ShaderReadWrite)

@@ -64,8 +64,7 @@ public:
     template<typename T>
     static Image from_data(T *data, uint2 res) {
         size_t size_in_bytes = sizeof(T) * res.x * res.y;
-        TracyMemoryPoolScope scope("Image::pixel");
-        auto pixel = allocate(size_in_bytes);
+        auto pixel = allocate(size_in_bytes, "Image::pixel");
         auto pixel_format = PixelStorageImpl<T>::storage;
         oc_memcpy(pixel, data, size_in_bytes);
         return {pixel_format, pixel, res};
@@ -100,7 +99,7 @@ public:
         }
     }
 
-    std::string name() const { return path_.filename().string(); }
+    ocarina_string name() const { return ocarina::to_ocarina_string(path_.filename().string()); }
 
     void save(const fs::path &fn) const;
     void convert_to_8bit_image();

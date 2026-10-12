@@ -174,7 +174,7 @@ DescriptorSet* FrameResources::get_global_descriptor_set(uint64_t name_id) const
     return it == global_descriptor_sets_by_name_.end() ? nullptr : it->second;
 }
 
-DescriptorSet* FrameResources::get_global_descriptor_set(const std::string& name) const {
+DescriptorSet* FrameResources::get_global_descriptor_set(const ocarina_string& name) const {
     return get_global_descriptor_set(hash64(name));
 }
 

@@ -176,7 +176,7 @@ GltfAsyncLoader::GltfAsyncLoader(
     enki::TaskScheduler* scheduler,
     Device* device,
     PSORequest mesh_pso_request,
-    const std::string& gltf_file,
+    const ocarina_string& gltf_file,
     RHIRenderPass* target_render_pass)
     : AsyncLoader(scheduler, device, target_render_pass)
     , gltf_file_(gltf_file)
@@ -269,12 +269,15 @@ bool GltfAsyncLoader::ensure_gltf_parsed() {
     }
 
     tinygltf::TinyGLTF gltf_context;
+    std::string parse_error;
     std::string warning;
+    const std::string gltf_file_path(gltf_file_.data(), gltf_file_.size());
     const bool binary = fs::path(gltf_file_).extension() == ".glb";
     gltf_parse_success_ = binary
-        ? gltf_context.LoadBinaryFromFile(gltf_model_.get(), &gltf_parse_error_, &warning, gltf_file_)
-        : gltf_context.LoadASCIIFromFile(gltf_model_.get(), &gltf_parse_error_, &warning, gltf_file_);
+        ? gltf_context.LoadBinaryFromFile(gltf_model_.get(), &parse_error, &warning, gltf_file_path)
+        : gltf_context.LoadASCIIFromFile(gltf_model_.get(), &parse_error, &warning, gltf_file_path);
 
+    gltf_parse_error_ = ocarina::to_ocarina_string(parse_error);
     if (!warning.empty()) {
         OC_WARNING_FORMAT("glTF loader warning for {}: {}", gltf_file_.c_str(), warning.c_str());
     }
@@ -294,7 +297,8 @@ void GltfAsyncLoader::begin_gltf_progress() {
         return;
     }
 
-    progress_listener_->set_title(fs::path(gltf_file_).filename().string());
+    progress_listener_->set_title(
+        ocarina::to_ocarina_string(fs::path(gltf_file_).filename().string()));
     progress_listener_->set_phase("Loading scene");
 }
 
@@ -392,6 +396,11 @@ void GltfAsyncLoader::load_gltf_node(
             if (material != nullptr) {
                 render.set_material(material);
             }
+            // mesh.vert reads g_transforms[transform_index]; entity_index is the ECS slot.
+            render.set_update_push_constant_function(
+                [](RenderComponent& rc, uint32_t entity_index) {
+                    rc.set_push_constant_variable("transform_index", entity_index);
+                });
 
             if (progress_listener_ != nullptr) {
                 progress_listener_->advance();
@@ -450,7 +459,7 @@ BoundingBox GltfAsyncLoader::append_primitive_geometry(
     bool has_colors = false;
 
     for (const auto& attr : primitive.attributes) {
-        const std::string& name = attr.first;
+        const ocarina_string name = ocarina::to_ocarina_string(attr.first);
         const int accessor_index = attr.second;
         if (accessor_index < 0 || accessor_index >= static_cast<int>(model.accessors.size())) {
             continue;
@@ -631,8 +640,8 @@ TextureHandle GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::
     texture_view.srgb = srgb;
     TextureSampler sampler{TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT};
 
-    const std::string texture_name =
-        image_path.filename().string() + (srgb ? "_srgb" : "_linear");
+    const ocarina_string texture_name = ocarina::to_ocarina_string(
+        image_path.filename().string() + (srgb ? "_srgb" : "_linear"));
     TextureHandle handle = ResourceManager::instance().get_texture_handle(
         texture_name, texture_view, sampler);
     if (handle.bindless_index_ == InvalidUI32) {

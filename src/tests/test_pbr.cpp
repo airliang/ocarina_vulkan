@@ -151,13 +151,13 @@ int main(int argc, char *argv[]) {
     const fs::path cubemap_dir = project_root / "res/textures/Yokohama2";
     const fs::path gltf_path = project_root / "res/FlightHelmet/glTF/FlightHelmet.gltf";
 
-    const std::string shader_vert_abs = fs::absolute(shader_vert).string();
-    const std::string shader_frag_abs = fs::absolute(shader_frag).string();
-    const std::string mesh_vert_abs = fs::absolute(mesh_vert).string();
-    const std::string mesh_pbr_frag_abs = fs::absolute(mesh_pbr_frag).string();
-    const std::string irradiance_abs = fs::absolute(irradiance_path).string();
-    const std::string specular_abs = fs::absolute(specular_path).string();
-    const std::string brdf_lut_abs = fs::absolute(brdf_lut_path).string();
+    const ocarina_string shader_vert_abs = ocarina::to_ocarina_string(fs::absolute(shader_vert).string());
+    const ocarina_string shader_frag_abs = ocarina::to_ocarina_string(fs::absolute(shader_frag).string());
+    const ocarina_string mesh_vert_abs = ocarina::to_ocarina_string(fs::absolute(mesh_vert).string());
+    const ocarina_string mesh_pbr_frag_abs = ocarina::to_ocarina_string(fs::absolute(mesh_pbr_frag).string());
+    const ocarina_string irradiance_abs = ocarina::to_ocarina_string(fs::absolute(irradiance_path).string());
+    const ocarina_string specular_abs = ocarina::to_ocarina_string(fs::absolute(specular_path).string());
+    const ocarina_string brdf_lut_abs = ocarina::to_ocarina_string(fs::absolute(brdf_lut_path).string());
 
     LoadingProgressListener loading_progress;
     renderer.set_loading_progress_listener(&loading_progress);
@@ -402,7 +402,7 @@ int main(int argc, char *argv[]) {
         &renderer.task_scheduler(),
         &device,
         opaque_mesh_pso,
-        fs::absolute(gltf_path).string(),
+        ocarina::to_ocarina_string(fs::absolute(gltf_path).string()),
         opaque_pass);
     PSORequest alpha_blend_mesh_pso = PSORequest::make_graphics(
         mesh_vert_abs,

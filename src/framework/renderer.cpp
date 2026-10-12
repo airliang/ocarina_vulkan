@@ -154,11 +154,10 @@ void Renderer::set_scene(Scene* scene) noexcept {
 void Renderer::update_entity_render_component(uint32_t entity_index) {
     EntityComponentSystem& ecs = EntityComponentSystem::instance();
     RenderComponent* render = ecs.try_render_component(entity_index);
-    TransformComponent* transform = ecs.try_transform_component(entity_index);
-    if (render == nullptr || transform == nullptr) {
+    if (render == nullptr) {
         return;
     }
-    render->update(device_, *transform, entity_index);
+    render->update(device_, entity_index);
 }
 
 void Renderer::update_visible_render_components() {
@@ -202,8 +201,10 @@ void Renderer::populate_render_pass_queues(RHIRenderPass* render_pass, PassGroup
 
         const PipelineState& pipeline_state = material->get_pipeline_state();
         render_pass->add_draw_call(entity_index, pipeline_state);
-        PipelineManager::instance().enqueue(pipeline_state, render_pass);
+        // Enqueue once per dirty material, not once per visible entity (avoids
+        // pending_requests_ insert/erase allocating every draw every frame).
         if (material->is_pipeline_dirty()) {
+            PipelineManager::instance().enqueue(pipeline_state, render_pass);
             material->clear_pipeline_dirty();
         }
     };
@@ -322,11 +323,10 @@ void Renderer::draw_fullscreen(CommandBuffer& cmd, Material* material, RHIRender
     }
 
     const PipelineState& pipeline_state = material->get_pipeline_state();
-    // Material pipeline state is the source of truth (cull / depth / blend). Enqueue so the
-    // cache key matches get_pipeline — do not rely on a separately authored PSORequest.
-    PipelineManager::instance().enqueue(pipeline_state, render_pass);
     RHIPipeline* pipeline = PipelineManager::instance().get_pipeline(pipeline_state, render_pass);
     if (pipeline == nullptr) {
+        // Compile once on cache miss; do not enqueue every fullscreen draw.
+        PipelineManager::instance().enqueue(pipeline_state, render_pass);
         return;
     }
 

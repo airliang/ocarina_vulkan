@@ -22,7 +22,7 @@ public:
     void begin_disabled() noexcept override;
     void end_disabled() noexcept override;
 
-    bool radio_button(const std::string &label, bool active) noexcept override;
+    bool radio_button(const ocarina_string &label, bool active) noexcept override;
 
     void image(handle_ty tex_id, uint2 size, float2 uv0, float2 uv1) noexcept override;
     void image(const Image &image) noexcept override;
@@ -51,7 +51,7 @@ public:
     void end_menu_bar() noexcept override;
 
     void text(const char *format, ...) noexcept override;
-    bool input_text(const std::string &label, char *buf, size_t buf_size) noexcept override;
+    bool input_text(const ocarina_string &label, char *buf, size_t buf_size) noexcept override;
     void text_wrapped(const char *format, ...) noexcept override;
     void progress_bar(float fraction, uint2 size) noexcept override;
     bool push_centered_window(const string &label, float bg_alpha) noexcept override;
@@ -114,7 +114,7 @@ public:
     bool drag_float3(const string &label, ocarina::float3 *val, float speed, float min, float max, const char *fmt) noexcept override;
     bool drag_float4(const string &label, ocarina::float4 *val, float speed, float min, float max, const char *fmt) noexcept override;
 
-    bool combo(const std::string &label, int *current_item, const char *const *items, int item_num) noexcept override;
+    bool combo(const ocarina_string &label, int *current_item, const char *const *items, int item_num) noexcept override;
     bool is_item_hovered() noexcept override;
     float2 mouse_pos() noexcept override;
 };

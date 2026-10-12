@@ -69,8 +69,8 @@ int main(int argc, char *argv[]) {
 
     Renderer renderer(&device);
 
-    const std::string shader_vert_abs = fs::absolute(shader_vert).string();
-    const std::string shader_frag_abs = fs::absolute(shader_frag).string();
+    const ocarina_string shader_vert_abs = ocarina::to_ocarina_string(fs::absolute(shader_vert).string());
+    const ocarina_string shader_frag_abs = ocarina::to_ocarina_string(fs::absolute(shader_frag).string());
 
     AsyncLoader async_loader(
         &renderer.task_scheduler(),
@@ -111,22 +111,14 @@ int main(int argc, char *argv[]) {
     camera.set_position({0.0f, 0.0f, -2.5f});
     camera.set_target({0.0f, 0.0f, 0.0f});
 
-    uint64_t name_id_world_matrix = hash64("modelMatrix");
-    uint64_t name_id_world_matrix_inverse = hash64("modelMatrixInverse");
-    auto update_push_constant = [&](RenderComponent& render, TransformComponent& transform) {
-        const float4x4 world_matrix = transform.get_world_matrix();
-        const float4x4 world_matrix_inverse = inverse(world_matrix);
-        render.set_push_constant_variable(
-            name_id_world_matrix,
-            reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix)),
-            sizeof(world_matrix));
-        render.set_push_constant_variable(
-            name_id_world_matrix_inverse,
-            reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix_inverse)),
-            sizeof(world_matrix_inverse));
-    };
-
-    quad.set_update_push_constant_function(update_push_constant);
+    TransformComponent& quad_transform = scene.transform_component(quad_scene_index);
+    const uint64_t model_matrix_name_id = hash64("modelMatrix");
+    quad.set_update_push_constant_function(
+        [&quad_transform, model_matrix_name_id](RenderComponent& render, uint32_t) {
+            render.set_push_constant_variable(
+                model_matrix_name_id,
+                quad_transform.get_world_matrix());
+        });
 
     RenderTarget swapchain_target = RenderTarget::swapchain();
     RenderPassCreation render_pass_creation;

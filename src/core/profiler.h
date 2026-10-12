@@ -10,6 +10,9 @@
 //
 // Connect with the Tracy desktop app while the game is running (Debug build recommended).
 
+#include <chrono>
+#include "logging.h"
+
 namespace ocarina {
 
     class Timer {
@@ -48,13 +51,11 @@ namespace ocarina {
 #define OC_PROFILE_LOCK_MARK(var) LockMark(var)
 #define PROFILE_SCOPE() ZoneScoped
 #define OC_TRACY_MEMORY_ENABLED 1
+/// Report non-heap (e.g. VMA GPU) blocks to Tracy Memory named pools.
+#define OC_TRACY_ALLOC_N(ptr, size, pool) TracyAllocNS((ptr), (size), 32, (pool))
+#define OC_TRACY_FREE_N(ptr, pool) TracyFreeNS((ptr), 32, (pool))
 
 #else
-
-#include <chrono>
-#include "logging.h"
-
-
 
 #define OC_PROFILE_FUNCTION ((void)0)
 #define OC_PROFILE_SCOPE_N(name) ((void)0)
@@ -68,6 +69,8 @@ namespace ocarina {
 #define OC_PROFILE_LOCK_MARK(var) ((void)0)
 #define PROFILE_SCOPE() ocarina::Timer timer(__FUNCTION__)
 #define OC_TRACY_MEMORY_ENABLED 0
+#define OC_TRACY_ALLOC_N(ptr, size, pool) ((void)0)
+#define OC_TRACY_FREE_N(ptr, pool) ((void)0)
 
 #endif
 

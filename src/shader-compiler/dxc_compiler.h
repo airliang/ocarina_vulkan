@@ -13,18 +13,18 @@
 namespace ocarina {
 
 struct CompileInput {
-    std::string hlsl;
-    std::string entry;
-    std::string full_file_path;
-    ocarina_vector<std::string> macros;
-    ocarina_vector<std::string> include_paths;
+    ocarina_string hlsl;
+    ocarina_string entry;
+    ocarina_string full_file_path;
+    ocarina_vector<ocarina_string> macros;
+    ocarina_vector<ocarina_string> include_paths;
     ShaderType shader_type;
     bool output_pdbs;
 };
 
 struct CompileResult {
     ocarina_vector<uint32_t> spriv_codes;
-    std::string error;
+    ocarina_string error;
 };
 
 class DXCCompiler : public concepts::Noncopyable {

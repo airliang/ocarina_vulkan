@@ -214,7 +214,8 @@ MeshGeometrySlice MeshBufferAllocator::upload(const MeshGeometryInput& input) {
             slice.vertex_offset,
             input.vertex_count);
     } else {
-        ocarina_vector<Vector3> normals(input.vertex_count, kDefaultNormal);
+        MeshNormals normals = make_mesh_normals();
+        normals.assign(input.vertex_count, kDefaultNormal);
         uploader.upload_vertex_attribute_range(
             vertex_buffer,
             VertexAttributeType::Enum::Normal,
@@ -231,7 +232,8 @@ MeshGeometrySlice MeshBufferAllocator::upload(const MeshGeometryInput& input) {
             slice.vertex_offset,
             input.vertex_count);
     } else {
-        ocarina_vector<Vector4> tangents(input.vertex_count, kDefaultTangent);
+        MeshTangents tangents = make_mesh_tangents();
+        tangents.assign(input.vertex_count, kDefaultTangent);
         uploader.upload_vertex_attribute_range(
             vertex_buffer,
             VertexAttributeType::Enum::Tangent,
@@ -248,7 +250,8 @@ MeshGeometrySlice MeshBufferAllocator::upload(const MeshGeometryInput& input) {
             slice.vertex_offset,
             input.vertex_count);
     } else {
-        ocarina_vector<Vector2> uvs(input.vertex_count, kDefaultUv);
+        MeshUvs uvs = make_mesh_uvs();
+        uvs.assign(input.vertex_count, kDefaultUv);
         uploader.upload_vertex_attribute_range(
             vertex_buffer,
             VertexAttributeType::Enum::TexCoord0,
@@ -265,7 +268,8 @@ MeshGeometrySlice MeshBufferAllocator::upload(const MeshGeometryInput& input) {
             slice.vertex_offset,
             input.vertex_count);
     } else {
-        ocarina_vector<Vector4> colors(input.vertex_count, kDefaultColor);
+        MeshColors colors = make_mesh_colors();
+        colors.assign(input.vertex_count, kDefaultColor);
         uploader.upload_vertex_attribute_range(
             vertex_buffer,
             VertexAttributeType::Enum::Color0,

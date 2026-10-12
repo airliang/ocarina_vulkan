@@ -66,7 +66,8 @@ public:
         return static_cast<uint32_t>(entities_.size());
     }
 
-    // --- Render ---
+    // --- Render (one RenderComponent per entity; mesh/material are shared separately) ---
+
     RenderComponent& add_render_component(uint32_t entity_index);
     bool remove_render_component(uint32_t entity_index);
     [[nodiscard]] bool has_render_component(uint32_t entity_index) const noexcept;
@@ -80,7 +81,9 @@ public:
     [[nodiscard]] const SparseComponentPool<RenderComponent>& render_components() const noexcept {
         return render_components_;
     }
-    [[nodiscard]] size_t render_component_count() const noexcept { return render_components_.size(); }
+    [[nodiscard]] size_t render_component_count() const noexcept {
+        return render_components_.size();
+    }
 
     // --- Transform ---
     TransformComponent& add_transform_component(uint32_t entity_index);
@@ -140,6 +143,7 @@ private:
     };
 
     EntityComponentSystem();
+    ~EntityComponentSystem() = default;
 
     void ensure_gpu_transform_capacity(size_t entity_index_exclusive);
 

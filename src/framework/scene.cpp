@@ -34,6 +34,10 @@ uint32_t Scene::emplace_entity() {
     return static_cast<uint32_t>(entity_indices_.size() - 1);
 }
 
+Scene::~Scene() {
+    clear_entities();
+}
+
 uint32_t Scene::emplace_renderable() {
     grid_built_ = false;
     EntityComponentSystem& ecs = EntityComponentSystem::instance();
@@ -45,6 +49,10 @@ uint32_t Scene::emplace_renderable() {
 }
 
 void Scene::clear_entities() {
+    EntityComponentSystem& ecs = EntityComponentSystem::instance();
+    for (uint32_t entity_index : entity_indices_) {
+        ecs.destroy_entity(entity_index);
+    }
     entity_indices_.clear();
     grid_cells_.clear();
     visible_cell_indices_.clear();

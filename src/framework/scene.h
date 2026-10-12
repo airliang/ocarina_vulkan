@@ -29,14 +29,14 @@ public:
     static constexpr float kDefaultGridCellSizeMeters = 64.0f;
 
     Scene() = default;
-    ~Scene() = default;
+    ~Scene();
 
     Scene(const Scene&) = delete;
     Scene& operator=(const Scene&) = delete;
     Scene(Scene&&) noexcept = default;
     Scene& operator=(Scene&&) noexcept = default;
 
-    /// Create an entity with Transform + Render components and register it in the scene.
+    /// Create an entity with Transform + RenderComponent and register it.
     /// Returns the scene index (into entity_indices_), not the raw ECS entity id.
     uint32_t emplace_renderable();
 
@@ -44,6 +44,7 @@ public:
     /// Returns the scene index (into entity_indices_), not the raw ECS entity id.
     uint32_t emplace_entity();
 
+    /// Destroy all scene-tracked ECS entities and clear spatial indices.
     void clear_entities();
 
     // Builds a 2D grid spatial index on XZ plane.

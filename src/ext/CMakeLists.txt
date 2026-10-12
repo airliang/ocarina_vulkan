@@ -83,19 +83,6 @@ endif()
 
 cmake_policy(SET CMP0148 NEW)
 
-if (${OCARINA_PY})
-    add_subdirectory(pybind11)
-    find_package(Python REQUIRED COMPONENTS Interpreter Development)
-    include_directories(${PYTHON_INCLUDE_DIRS})
-    link_directories(${PYTHON_LIBRARIES})
-    target_include_directories(ocarina-ext INTERFACE
-            ${CMAKE_CURRENT_SOURCE_DIR}/pybind11/include/pybind11
-            ${CMAKE_CURRENT_SOURCE_DIR}/pybind11/include
-            ${PYTHON_INCLUDE_DIRS})
-endif ()
-
-
-
 add_subdirectory(SPIRV-Cross)
 set(_ocarina_spirv_targets
     spirv-cross spirv-cross-c spirv-cross-core spirv-cross-glsl

@@ -14,10 +14,10 @@
 namespace ocarina {
 
 struct FileDialogFilter {
-    explicit FileDialogFilter(std::string ext_, std::string desc_ = {})
+    explicit FileDialogFilter(ocarina_string ext_, ocarina_string desc_ = {})
         : desc(std::move(desc_)), ext(std::move(ext_)) {}
-    std::string desc;
-    std::string ext;
+    ocarina_string desc;
+    ocarina_string ext;
 };
 
 using FileDialogFilterVec = ocarina_vector<FileDialogFilter>;

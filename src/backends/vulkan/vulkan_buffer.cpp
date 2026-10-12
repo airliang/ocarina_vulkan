@@ -3,10 +3,37 @@
 #include "vulkan_buffer.h"
 #include "vulkan_driver.h"
 #include "vulkan_vma.h"
+#include "core/profiler.h"
 
 #include <cstring>
 
 namespace ocarina {
+
+namespace {
+
+[[nodiscard]] const char *tracy_pool_for_buffer(
+    VkBufferUsageFlags usage,
+    VkMemoryPropertyFlags memory_flags) noexcept {
+    if ((usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) != 0) {
+        return "GPU.VertexBuffer";
+    }
+    if ((usage & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) != 0) {
+        return "GPU.IndexBuffer";
+    }
+    if ((usage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT) != 0) {
+        return "GPU.UniformBuffer";
+    }
+    if ((usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) != 0) {
+        return "GPU.StorageBuffer";
+    }
+    if ((usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) != 0 &&
+        (memory_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0) {
+        return "GPU.StagingBuffer";
+    }
+    return "GPU.Buffer";
+}
+
+}// namespace
 
 VulkanBuffer::VulkanBuffer(VulkanDevice *device, VkBufferUsageFlags usage_flags, VkMemoryPropertyFlags memory_property_flags, 
     VkDeviceSize size, const void *data ) : Buffer(device, 0, static_cast<size_t>(size)), device_(device), usage_(usage_flags) {
@@ -32,6 +59,10 @@ VulkanBuffer::VulkanBuffer(VulkanDevice *device, VkBufferUsageFlags usage_flags,
         &allocation_info_));
     memory_allocation_size_ = allocation_info_.size;
 
+    tracy_memory_pool_ = tracy_pool_for_buffer(usage_, memory_property_flags_);
+    // Use VulkanBuffer* as the Tracy key (VMA may share device memory blocks).
+    OC_TRACY_ALLOC_N(this, memory_allocation_size_, tracy_memory_pool_);
+
     if (data) {
         load_from_cpu(data, 0, size);
     }
@@ -39,6 +70,10 @@ VulkanBuffer::VulkanBuffer(VulkanDevice *device, VkBufferUsageFlags usage_flags,
 
 VulkanBuffer::~VulkanBuffer() {
     unmap();
+    if (tracy_memory_pool_ != nullptr) {
+        OC_TRACY_FREE_N(this, tracy_memory_pool_);
+        tracy_memory_pool_ = nullptr;
+    }
     VmaAllocator allocator = VulkanDriver::instance().allocator();
     if (allocator != VK_NULL_HANDLE && (vulkan_buffer_ != VK_NULL_HANDLE || allocation_ != VK_NULL_HANDLE)) {
         vmaDestroyBuffer(allocator, vulkan_buffer_, allocation_);

@@ -114,9 +114,15 @@ namespace eastl
 			return allocate(n, flags);
 		}
 
+		// Use mi_malloc_aligned (not C11 mi_aligned_alloc): the latter requires
+		// size % alignment == 0 and returns nullptr otherwise — which surfaced as
+		// std::bad_alloc from ::operator new / over-aligned types.
 #ifdef EASTL_MIMALLOC_ENABLED
-		void* ptr = mi_aligned_alloc(alignment, n);
+		void* ptr = mi_malloc_aligned(n, alignment);
 #else
+		if (n % alignment != 0) {
+			n += alignment - (n % alignment);
+		}
 		void* ptr = aligned_alloc(alignment, n);
 #endif
 		detail::tracy_alloc(ptr, n);

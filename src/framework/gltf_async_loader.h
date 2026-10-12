@@ -31,7 +31,7 @@ public:
         enki::TaskScheduler* scheduler,
         Device* device,
         PSORequest mesh_pso_request,
-        const std::string& gltf_file,
+        const ocarina_string& gltf_file,
         RHIRenderPass* target_render_pass = nullptr);
 
     ~GltfAsyncLoader() noexcept;
@@ -66,7 +66,7 @@ private:
 
     [[nodiscard]] ShaderProgram* resolve_shader_program(const PSORequest& request);
 
-    std::string gltf_file_;
+    ocarina_string gltf_file_;
     fs::path gltf_directory_;
     PSORequest mesh_pso_request_{};
     PSORequest alpha_blend_pso_request_{};
@@ -74,7 +74,7 @@ private:
     std::unique_ptr<tinygltf::Model> gltf_model_;
     bool gltf_model_parsed_ = false;
     bool gltf_parse_success_ = false;
-    std::string gltf_parse_error_;
+    ocarina_string gltf_parse_error_;
     ShaderProgram* shader_program_ = nullptr;
     ShaderProgram* alpha_blend_shader_program_ = nullptr;
     ocarina_vector<Mesh*> mesh_storage_;

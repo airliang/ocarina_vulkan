@@ -2,6 +2,7 @@
 
 #include "core/stl.h"
 #include "core/header.h"
+#include "core/hash.h"
 #include "rhi/pipeline_state.h"
 
 namespace ocarina {
@@ -9,12 +10,15 @@ namespace ocarina {
 class Device;
 class Material;
 class Mesh;
-class TransformComponent;
 
-/// Per-entity render state. Stored sparsely — only entities that add it allocate a slot.
+/// Per-entity render state (mesh/material pointers + push-constant scratch).
+/// Mesh and Material instances are shared across entities; RenderComponent is not.
 struct RenderComponent {
+    /// Optional callback to stage push-constant members via set_push_constant_variable
+    /// (shader reflection), same pattern as Material::set_property. No TransformComponent —
+    /// per-entity data (e.g. transform_index) is supplied each frame via entity_index.
     using UpdatePushConstantFn =
-        ocarina::function<void(RenderComponent& render, TransformComponent& transform)>;
+        ocarina::function<void(RenderComponent& render, uint32_t entity_index)>;
 
     uint32_t mesh_id = InvalidUI32;
     Material* material = nullptr;
@@ -23,7 +27,6 @@ struct RenderComponent {
     ocarina_vector<PushConstantRange> push_constants;
 
     bool initialized = false;
-    uint32_t last_push_constant_transform_version = InvalidUI32;
     UpdatePushConstantFn update_push_constant_function;
 
     void set_mesh(Mesh* mesh);
@@ -34,16 +37,29 @@ struct RenderComponent {
 
     void set_update_push_constant_function(UpdatePushConstantFn func) {
         update_push_constant_function = std::move(func);
-        last_push_constant_transform_version = InvalidUI32;
+        initialized = false;
     }
 
     void ensure_push_constants_from_shaders();
     void set_push_constant_variable(uint64_t name_id, const std::byte* data, size_t size);
-    void write_transform_index_push_constant(uint32_t entity_index);
+    void set_push_constant_variable(const char* name, const std::byte* data, size_t size);
 
-    void initialize(Device* device, TransformComponent& transform, uint32_t entity_index);
-    void update_push_constants(TransformComponent& transform, uint32_t entity_index);
-    void update(Device* device, TransformComponent& transform, uint32_t entity_index);
+    template<typename T>
+    void set_push_constant_variable(uint64_t name_id, const T& value) {
+        set_push_constant_variable(
+            name_id,
+            reinterpret_cast<const std::byte*>(&value),
+            sizeof(T));
+    }
+
+    template<typename T>
+    void set_push_constant_variable(const char* name, const T& value) {
+        set_push_constant_variable(hash64(name), value);
+    }
+
+    void initialize(Device* device);
+    void update_push_constants(uint32_t entity_index);
+    void update(Device* device, uint32_t entity_index);
 };
 
 }// namespace ocarina

@@ -18,7 +18,7 @@ bool Widgets::open_file_dialog(std::filesystem::path &path, const FileDialogFilt
 #endif
 }
 
-bool Widgets::slider_floatN(const std::string &label, float *val, ocarina::uint size, float min, float max) noexcept {
+bool Widgets::slider_floatN(const ocarina_string &label, float *val, ocarina::uint size, float min, float max) noexcept {
     switch (size) {
         case 1:
             return slider_float(label, val, min, max);
@@ -35,7 +35,7 @@ bool Widgets::slider_floatN(const std::string &label, float *val, ocarina::uint 
     return false;
 }
 
-bool Widgets::colorN_edit(const std::string &label, float *val, ocarina::uint size) noexcept {
+bool Widgets::colorN_edit(const ocarina_string &label, float *val, ocarina::uint size) noexcept {
     switch (size) {
         case 3:
             return color_edit(label, reinterpret_cast<float3 *>(val));
@@ -47,7 +47,7 @@ bool Widgets::colorN_edit(const std::string &label, float *val, ocarina::uint si
     }
 }
 
-bool Widgets::input_floatN(const std::string &label, float *val, ocarina::uint size) noexcept {
+bool Widgets::input_floatN(const ocarina_string &label, float *val, ocarina::uint size) noexcept {
     switch (size) {
         case 1:
             return input_float(label, val);
@@ -64,7 +64,7 @@ bool Widgets::input_floatN(const std::string &label, float *val, ocarina::uint s
     return false;
 }
 
-bool Widgets::drag_floatN(const std::string &label, float *val, ocarina::uint size,
+bool Widgets::drag_floatN(const ocarina_string &label, float *val, ocarina::uint size,
                           float speed, float min, float max, const char *fmt) noexcept {
     switch (size) {
         case 1:

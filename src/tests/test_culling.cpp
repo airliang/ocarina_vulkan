@@ -1,5 +1,4 @@
 #include "core/stl.h"
-#include "core/hash.h"
 #include "core/logging.h"
 #include "math/basic_types.h"
 #include "rhi/context.h"
@@ -91,8 +90,8 @@ int main(int argc, char* argv[]) {
 
     Renderer renderer(&device);
 
-    const std::string shader_vert_abs = fs::absolute(shader_vert).string();
-    const std::string shader_frag_abs = fs::absolute(shader_frag).string();
+    const ocarina_string shader_vert_abs = ocarina::to_ocarina_string(fs::absolute(shader_vert).string());
+    const ocarina_string shader_frag_abs = ocarina::to_ocarina_string(fs::absolute(shader_frag).string());
 
     AsyncLoader async_loader(
         &renderer.task_scheduler(),
@@ -111,6 +110,11 @@ int main(int argc, char* argv[]) {
         scene = ocarina::new_with_allocator<Scene>();
         scene->reserve_primitives(kTotalCubes);
 
+        // Per-entity RenderComponent (own push constants); mesh + material are shared.
+        auto update_push_constant = [](RenderComponent& render, uint32_t entity_index) {
+            render.set_push_constant_variable("transform_index", entity_index);
+        };
+
         for (uint32_t height = 0; height < kGridCount; ++height) {
             for (uint32_t row = 0; row < kGridCount; ++row) {
                 for (uint32_t col = 0; col < kGridCount; ++col) {
@@ -122,6 +126,7 @@ int main(int argc, char* argv[]) {
                     RenderComponent& render = scene->render_component(primitive_index);
                     render.set_mesh(cube_mesh);
                     render.set_material(material);
+                    render.set_update_push_constant_function(update_push_constant);
                 }
             }
         }
@@ -136,21 +141,6 @@ int main(int argc, char* argv[]) {
     camera.set_zfar(2000.0f);
     camera.set_position({-80.0f, 0.0f, -80.0f});
     camera.set_target({99.0f, 0.0f, 99.0f});
-
-    const uint64_t model_matrix_name_id = hash64("modelMatrix");
-    const uint64_t model_matrix_inverse_name_id = hash64("modelMatrixInverse");
-    auto update_push_constant = [&](RenderComponent& render, TransformComponent& transform) {
-        const float4x4 world_matrix = transform.get_world_matrix();
-        const float4x4 world_matrix_inverse = inverse(world_matrix);
-        render.set_push_constant_variable(
-            model_matrix_name_id,
-            reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix)),
-            sizeof(world_matrix));
-        render.set_push_constant_variable(
-            model_matrix_inverse_name_id,
-            reinterpret_cast<std::byte*>(const_cast<float4x4*>(&world_matrix_inverse)),
-            sizeof(world_matrix_inverse));
-    };
 
     RenderTarget swapchain_target = RenderTarget::swapchain();
     RenderPassCreation render_pass_creation;
@@ -211,9 +201,6 @@ int main(int argc, char* argv[]) {
             return;
         }
 
-        for (uint32_t index = 0; index < scene->primitive_count(); ++index) {
-            scene->render_component(index).set_update_push_constant_function(update_push_constant);
-        }
         renderer.set_scene(scene);
 
         imgui_renderer.set_frame_callback([&]() {

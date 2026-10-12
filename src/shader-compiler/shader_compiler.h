@@ -20,12 +20,12 @@ struct CompiledShader {
 // @p options become DXC -D macros (e.g. "ALPHA_BLEND=1").
 // SPIR-V is cached as <shader_dir>/<hex(shader_hash)>.spv.
 bool compile_hlsl_to_spirv_and_reflect(
-    const std::string &filename,
+    const ocarina_string &filename,
     ShaderType shader_type,
-    const std::string &entry_point,
+    const ocarina_string &entry_point,
     CompiledShader &out,
     bool rebuild_shaders = false,
-    const ocarina_set<std::string> &options = {});
+    const ocarina_set<ocarina_string> &options = {});
 
 } // namespace ocarina
 

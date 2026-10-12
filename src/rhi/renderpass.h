@@ -28,7 +28,9 @@ struct DescriptorSetsBinding
 
 struct PipelineRenderQueue
 {
-    ocarina_list<uint32_t> draw_call_items;
+    // vector: clear() keeps capacity so we do not reallocate per-node every frame
+    // (std::list did allocate/free one node per draw call).
+    ocarina_vector<uint32_t> draw_call_items;
 
     void clear()
     {
@@ -147,7 +149,7 @@ protected:
     int4 scissor_ = {0, 0, 0, 0};
     uint2 size_ = {0, 0};
 
-    std::string name_ = "RHIRenderPass";
+    ocarina_string name_ = "RHIRenderPass";
 
     float4 clear_color_ = {0.025f, 0.025f, 0.025f, 1.0f};
     float clear_depth_ = 1.0f;

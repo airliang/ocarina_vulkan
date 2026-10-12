@@ -8,12 +8,7 @@ VertexBuffer::VertexBuffer(Device::Impl *device)
 
 VertexBuffer::~VertexBuffer() {
     for (size_t i = 0; i < (size_t)VertexAttributeType::Enum::Count; ++i) {
-        VertexStream &stream = vertex_streams_[i];
-        if (stream.data) {
-            delete[] static_cast<uint8_t *>(stream.data);
-            stream.data = nullptr;
-        }
-        release_stream_buffer(stream);
+        release_stream_buffer(vertex_streams_[i]);
     }
 }
 
@@ -28,31 +23,6 @@ void VertexBuffer::release_stream_buffer(VertexStream &stream) {
     }
     device_->destroy_buffer(reinterpret_cast<handle_ty>(stream.buffer));
     stream.buffer = nullptr;
-}
-
-void VertexBuffer::add_vertex_stream(
-    VertexAttributeType::Enum type,
-    uint32_t count,
-    uint32_t stride,
-    const void *data) {
-    if (vertex_streams_[(uint8_t)type].data) {
-        delete[] static_cast<uint8_t *>(vertex_streams_[(uint8_t)type].data);
-        vertex_streams_[(uint8_t)type].data = nullptr;
-    }
-
-    if (data != nullptr) {
-        vertex_streams_[(uint8_t)type].data = new uint8_t[count * stride];
-        memcpy(vertex_streams_[(uint8_t)type].data, data, count * stride);
-    }
-
-    vertex_streams_[(uint8_t)type].type = type;
-    vertex_streams_[(uint8_t)type].count = count;
-    vertex_streams_[(uint8_t)type].stride = stride;
-    vertex_streams_[(uint8_t)type].offset = 0;
-    if (type == VertexAttributeType::Enum::Position) {
-        vertex_count_ = count;
-    }
-    dirty_ = true;
 }
 
 void VertexBuffer::allocate_stream_capacity(

@@ -54,7 +54,9 @@ namespace ocarina {
 
 namespace detail {
 OC_CORE_API void *allocator_allocate(size_t size, size_t alignment) noexcept;
+OC_CORE_API void *allocator_allocate(size_t size, size_t alignment, const char *tracy_pool) noexcept;
 OC_CORE_API void allocator_deallocate(void *p, size_t alignment) noexcept;
+OC_CORE_API void allocator_deallocate(void *p, size_t alignment, const char *tracy_pool) noexcept;
 OC_CORE_API void *allocator_reallocate(void *p, size_t size, size_t alignment) noexcept;
 }// namespace detail
 
@@ -97,10 +99,23 @@ template<typename T = std::byte>
     }
 }
 
+/// Allocate into a named Tracy Memory pool (string literal). Prefer this over
+/// wrapping new/delete with TracyMemoryPoolScope.
+template<typename T = std::byte>
+[[nodiscard]] inline T *allocate(size_t n, const char *tracy_pool) noexcept {
+    return static_cast<T *>(detail::allocator_allocate(sizeof(T) * n, alignof(T), tracy_pool));
+}
+
 template<typename T>
 inline void deallocate(T *p) {
     using type = std::remove_cvref_t<T>;
     allocator<type>{}.deallocate(const_cast<type *>(p), 0u);
+}
+
+template<typename T>
+inline void deallocate(T *p, const char *tracy_pool) noexcept {
+    using type = std::remove_cvref_t<T>;
+    detail::allocator_deallocate(const_cast<type *>(p), alignof(type), tracy_pool);
 }
 
 template<typename T, typename... Args>
@@ -138,81 +153,107 @@ void delete_array(T *ptr) noexcept {
     deallocate(ptr);
 }
 
+}// namespace ocarina
+
+// Needs ocarina::allocator above; defines ocarina_string / ocarina_vector / …
+#include "ocarina_containers.h"
+
+namespace ocarina {
+
 // io
 using std::cerr;
 using std::cout;
 using std::endl;
 
-// ptr
+// ptr — route make_unique / make_shared through EASTL/mimalloc (Tracy-visible).
+// Do NOT override global ::operator new in each DLL (breaks mi_aligned_alloc /
+// cross-module heap ownership). Use ocarina::allocator instead.
 using eastl::move_only_function;
 using std::const_pointer_cast;
 using std::dynamic_pointer_cast;
 using std::enable_shared_from_this;
 using std::function;
-using std::make_shared;
-using std::make_unique;
 using std::reinterpret_pointer_cast;
 using std::shared_ptr;
 using std::static_pointer_cast;
-using std::unique_ptr;
 using std::weak_ptr;
 
+/// Matches new_with_allocator / delete_with_allocator (EASTL heap).
+template<typename T>
+struct ocarina_delete {
+    constexpr ocarina_delete() noexcept = default;
+
+    /// Enables unique_ptr<Derived> → unique_ptr<Base> moves (like std::default_delete).
+    template<typename U>
+        requires std::is_convertible_v<U *, T *>
+    ocarina_delete(const ocarina_delete<U> &) noexcept {}
+
+    void operator()(T *p) const noexcept { delete_with_allocator(p); }
+};
+
+template<typename T, typename Deleter = ocarina_delete<T>>
+using unique_ptr = std::unique_ptr<T, Deleter>;
+
+template<typename T, typename... Args>
+[[nodiscard]] unique_ptr<T> make_unique(Args &&...args) {
+    return unique_ptr<T>(new_with_allocator<T>(std::forward<Args>(args)...));
+}
+
+template<typename T, typename... Args>
+[[nodiscard]] shared_ptr<T> make_shared(Args &&...args) {
+    return std::allocate_shared<T>(allocator<T>{}, std::forward<Args>(args)...);
+}
+
 template<typename To, typename From>
-[[nodiscard]] std::unique_ptr<To> dynamic_unique_pointer_cast(std::unique_ptr<From> &&from) {
+[[nodiscard]] unique_ptr<To> dynamic_unique_pointer_cast(unique_ptr<From> &&from) {
     if (To *casted = dynamic_cast<To *>(from.get())) {
         from.release();
-        return std::unique_ptr<To>(casted);
-    } else {
-        return std::unique_ptr<To>(nullptr);
+        return unique_ptr<To>(casted);
     }
+    return unique_ptr<To>(nullptr);
 }
 
 template<typename To, typename From>
-[[nodiscard]] std::unique_ptr<To> static_unique_pointer_cast(std::unique_ptr<From> &&from) {
+[[nodiscard]] unique_ptr<To> static_unique_pointer_cast(unique_ptr<From> &&from) {
     To *casted = static_cast<To *>(from.get());
     from.release();
-    return std::unique_ptr<To>(casted);
+    return unique_ptr<To>(casted);
 }
-
 
 struct unique_allocator {
     unique_allocator() = default;
     template<typename T>
     [[nodiscard]] T *allocate(size_t n) const noexcept {
-        return static_cast<T *>(::operator new(n * sizeof(T)));
+        return allocator<T>{}.allocate(n);
     }
     template<typename T>
     void deallocate(T *p, size_t) const noexcept {
-        deallocate(p);
+        allocator<T>{}.deallocate(p, 0);
     }
 };
 
-template<typename T, typename Alloc>
+template<typename T, typename Alloc = unique_allocator>
 struct unique_deleter {
-    Alloc alloc;
-    void operator()(T *ptr) {
-        if (ptr) {
-            ptr->~T();
-            alloc.deallocate(ptr, 1);
+    Alloc alloc{};
+    void operator()(T *ptr) const noexcept {
+        if (ptr == nullptr) {
+            return;
         }
+        std::destroy_at(ptr);
+        alloc.deallocate(ptr, 1);
     }
 };
 
 template<typename T, typename Alloc = unique_allocator, typename... Args>
-std::unique_ptr<T> make_unique_with_allocator(Args &&...args) {
-    //auto deleter = [](T *p) {
-    //    std::destroy_at(p);
-    //    deallocate(p);
-    //};
+[[nodiscard]] std::unique_ptr<T, unique_deleter<T, Alloc>> make_unique_with_allocator(Args &&...args) {
     Alloc alloc;
-    //return {ptr, std::bind(deleter, std::placeholders::_1, allocate<T>, 1)};
-    T *rawPtr = alloc.allocate<T>(1);
-    new (rawPtr) T(std::forward<Args>(args)...);
-    return std::unique_ptr<T>(rawPtr);//std::unique_ptr<T, unique_deleter<T, Alloc>>(rawPtr, unique_deleter<T, Alloc>{alloc});
+    T *raw_ptr = alloc.template allocate<T>(1);
+    ocarina::construct_at(raw_ptr, std::forward<Args>(args)...);
+    return std::unique_ptr<T, unique_deleter<T, Alloc>>(raw_ptr, unique_deleter<T, Alloc>{alloc});
 }
 
-template<typename... Ts>
-using UP = unique_ptr<Ts...>;
+template<typename T, typename Deleter = ocarina_delete<T>>
+using UP = unique_ptr<T, Deleter>;
 
 template<typename T>
 using SP = shared_ptr<T>;
@@ -243,10 +284,14 @@ public:
           alignment(alignment), max_member_size(max_member_size) {}
 };
 
-// string
-using std::string;
+// string — ocarina_string / string alias come from ocarina_containers.h
 using std::string_view;
-using std::to_string;
+
+template<typename T>
+[[nodiscard]] inline ocarina_string to_string(T value) {
+    const auto tmp = std::to_string(value);
+    return ocarina_string(tmp.data(), tmp.size());
+}
 
 template<class To, class From>
 requires(sizeof(To) == sizeof(From) &&
@@ -257,9 +302,9 @@ requires(sizeof(To) == sizeof(From) &&
 }
 
 inline size_t substr_count(string_view str, string_view target) noexcept {
-    string::size_type pos = 0;
+    ocarina_string::size_type pos = 0;
     size_t ret = 0;
-    while ((pos = str.find(target, pos)) != string::npos) {
+    while ((pos = str.find(target, pos)) != string_view::npos) {
         ret += 1;
         pos += target.length();
     }
@@ -356,7 +401,7 @@ namespace fs = std::filesystem;
 
 void clear_directory(const std::filesystem::path &dir_path);
 
-inline std::string get_file_name(const std::string& file_path) {
+inline ocarina_string get_file_name(const ocarina_string& file_path) {
     auto it = std::find_if(file_path.rbegin(), file_path.rend(), [](const char c) {
         return c == '\\' || c == '/';
         });
@@ -365,34 +410,28 @@ inline std::string get_file_name(const std::string& file_path) {
         return file_path;
     }
 
-    return file_path.substr(it.base() - file_path.begin());
+    return file_path.substr(static_cast<size_t>(it.base() - file_path.begin()));
 }
 
-inline std::string get_file_directory(const std::string& file_path)
+inline ocarina_string get_file_directory(const ocarina_string& file_path)
 {
-    std::string file_name = get_file_name(file_path);
+    ocarina_string file_name = get_file_name(file_path);
     return file_path.substr(0, file_path.length() - file_name.length());
 }
 
-inline std::string wstring_to_string(const wchar_t* source)
+inline ocarina_string wstring_to_string(const wchar_t* source)
 {
     size_t len = std::wcstombs(nullptr, source, 0) + 1;
-    // Creating a buffer to hold the multibyte string
-    char *buffer = new char[len];
-
-    // Converting wstring to string
+    char *buffer = allocate<char>(len);
     std::wcstombs(buffer, source, len);
-
-    // Creating std::string from char buffer
-    std::string str(buffer);
-
-    delete[] buffer;
+    ocarina_string str(buffer);
+    deallocate(buffer);
     return str;
 }
 
-inline std::wstring string_to_wstring(const std::string& source)
+inline ocarina_wstring string_to_wstring(const ocarina_string& source)
 {
-    return std::wstring(source.begin(), source.end());
+    return ocarina_wstring(source.begin(), source.end());
 }
 
 inline bool is_file_exist(const char* full_file_path)
@@ -498,5 +537,3 @@ template<typename T>
 using DCSP = deep_copy_shared_ptr<T>;
 
 }// namespace ocarina
-
-#include "ocarina_containers.h"

@@ -22,7 +22,7 @@ namespace ocarina {
 
 	namespace {
 
-	std::string format_validation_message(const VkDebugUtilsMessengerCallbackDataEXT* callback_data) {
+	ocarina_string format_validation_message(const VkDebugUtilsMessengerCallbackDataEXT* callback_data) {
 		std::ostringstream stream;
 		stream << "[Vulkan validation] ";
 		if (callback_data->pMessageIdName) {
@@ -33,7 +33,7 @@ namespace ocarina {
 			stream << "[" << callback_data->messageIdNumber << "] : "
 				<< callback_data->pMessage;
 		}
-		return stream.str();
+		return ocarina::to_ocarina_string(stream.str());
 	}
 
 	} // namespace
@@ -44,7 +44,7 @@ namespace ocarina {
 		const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
 		void* user_data)
 	{
-		const std::string message = format_validation_message(callback_data);
+		const ocarina_string message = format_validation_message(callback_data);
 
 #if defined(__ANDROID__)
 		if (message_severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {

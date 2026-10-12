@@ -21,12 +21,9 @@ public:
         uint32_t indices_count,
         bool bit16 = true);
 
-    void set_indices(ocarina_vector<uint16_t>&& indices) {
-        indices_ = std::move(indices);
-    }
-
+    /// Capacity of the GPU index buffer (mega pages use allocate_capacity).
     uint32_t get_index_count() const {
-        return static_cast<uint32_t>(indices_.size());
+        return capacity_indices_;
     }
 
     bool is_16_bit() const {
@@ -38,14 +35,13 @@ public:
         return reinterpret_cast<handle_ty>(buffer_);
     }
 
-    /// Pre-allocate a fixed-capacity GPU index buffer (no CPU upload).
+    /// Pre-allocate a fixed-capacity GPU index buffer (no CPU mirror).
     /// GPU copies go through StagingUploader on GPUResourceThread.
     void allocate_capacity(uint32_t max_indices);
 
 protected:
     void release_buffer();
 
-    ocarina_vector<uint16_t> indices_;
     bool bit16_ = true;
     Buffer* buffer_ = nullptr;
     uint32_t capacity_indices_ = 0;

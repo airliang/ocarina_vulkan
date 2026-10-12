@@ -85,10 +85,6 @@ PipelineCompileTask* PipelineManager::enqueue(
         return nullptr;
     }
 
-    if (!try_mark_pending_request(request)) {
-        return nullptr;
-    }
-
     // Resolve shader program from cache when paths are provided.
     if (request.has_shader_paths() && !request.has_shader_program()) {
         ShaderProgram* program = ResourceManager::instance().get_shader_program(
@@ -102,12 +98,20 @@ PipelineCompileTask* PipelineManager::enqueue(
         }
     }
 
+    // Bail out before touching pending_requests_ when the PSO is already cached.
     if (request.has_shader_program()) {
         const PipelineCacheKey key = request.make_cache_key();
         if (has_pipeline(key)) {
-            clear_pending_request(request);
             return nullptr;
         }
+    }
+
+    if (!try_mark_pending_request(request)) {
+        return nullptr;
+    }
+
+    if (request.has_shader_program()) {
+        const PipelineCacheKey key = request.make_cache_key();
         if (!try_mark_pending_key(key)) {
             clear_pending_request(request);
             return nullptr;

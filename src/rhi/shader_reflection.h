@@ -36,11 +36,11 @@ struct ShaderReflection {
         bool is_separate_image = false;
         VertexFormat format = VertexFormat::Undefined;
         VertexAttributeType::Enum vertex_attribute_type = VertexAttributeType::Enum::Count;
-        std::string name;
+        ocarina_string name;
     };
 
     struct ShaderVariable {
-        std::string name;
+        ocarina_string name;
         uint32_t offset = 0;
         uint32_t size = 0;
         uint32_t register_ = 0;
@@ -60,7 +60,7 @@ struct ShaderReflection {
     };
 
     struct UniformBuffer {
-        std::string name;
+        ocarina_string name;
         uint8_t binding = 0;
         uint8_t descriptor_set = 0;
         uint32_t size = 0;

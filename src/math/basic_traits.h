@@ -200,8 +200,11 @@ template<typename T, size_t N = 0u>
 constexpr auto is_host_swizzle_v = is_host_swizzle<T, N>::value;
 
 namespace detail {
+/// Host identity; formerly stripped DSL Var/Expr wrappers (DSL removed).
 template<typename T>
-struct remove_device_impl;
+struct remove_device_impl {
+    using type = T;
+};
 }
 
 template<typename T>

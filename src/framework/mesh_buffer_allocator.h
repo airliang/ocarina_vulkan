@@ -3,6 +3,7 @@
 #include "core/header.h"
 #include "core/concepts.h"
 #include "core/stl.h"
+#include "mesh_cpu_memory.h"
 #include "mesh_geometry.h"
 #include "rhi/vertex_buffer.h"
 
@@ -63,7 +64,7 @@ private:
     void allocate_page_streams(VertexPage& page, uint32_t vertex_capacity);
 
     Device* device_ = nullptr;
-    ocarina_vector<VertexPage> pages_;
+    ocarina_vector<VertexPage> pages_{ocarina_pool_allocator<VertexPage>(kMeshVertexPagesPool)};
 };
 
 class IndexAllocator : public concepts::Noncopyable {
@@ -80,7 +81,7 @@ private:
     void allocate_page_buffer(IndexPage& page, uint32_t index_capacity);
 
     Device* device_ = nullptr;
-    ocarina_vector<IndexPage> pages_;
+    ocarina_vector<IndexPage> pages_{ocarina_pool_allocator<IndexPage>(kMeshIndexPagesPool)};
 };
 
 /// Owns paged mega VB/IB storage and performs GPU uploads into pages.

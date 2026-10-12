@@ -55,7 +55,7 @@ void ImGuiWidgets::end_disabled() noexcept {
     ImGui::PopItemFlag();
 }
 
-bool ImGuiWidgets::radio_button(const std::string &label, bool active) noexcept {
+bool ImGuiWidgets::radio_button(const ocarina_string &label, bool active) noexcept {
     return ImGui::RadioButton(label.c_str(), active);
 }
 
@@ -145,7 +145,7 @@ void ImGuiWidgets::text(const char *format, ...) noexcept {
     va_end(args);
 }
 
-bool ImGuiWidgets::input_text(const std::string &label, char *buf, size_t buf_size) noexcept {
+bool ImGuiWidgets::input_text(const ocarina_string &label, char *buf, size_t buf_size) noexcept {
     return ImGui::InputText(label.c_str(), buf, buf_size);
 }
 
@@ -357,7 +357,7 @@ bool ImGuiWidgets::drag_float4(const string &label, ocarina::float4 *val, float 
     return ImGui::DragFloat4(label.c_str(), reinterpret_cast<float *>(val), speed, min, max, fmt);
 }
 
-bool ImGuiWidgets::combo(const std::string &label, int *current_item, const char *const *items, int item_num) noexcept {
+bool ImGuiWidgets::combo(const ocarina_string &label, int *current_item, const char *const *items, int item_num) noexcept {
     return ImGui::Combo(label.c_str(), current_item, items, item_num);
 }
 

@@ -49,15 +49,15 @@ public:
     }
     [[nodiscard]] Texture *depth_attachment() const noexcept { return depth_attachment_; }
 
-    void set_name(std::string name) { name_ = std::move(name); }
-    [[nodiscard]] const std::string &name() const noexcept { return name_; }
+    void set_name(ocarina_string name) { name_ = std::move(name); }
+    [[nodiscard]] const ocarina_string &name() const noexcept { return name_; }
 
 private:
     Type type_ = Type::Swapchain;
     uint32_t color_attachment_count_ = 0;
     Texture *color_attachments_[MAX_COLOR_ATTACHMENTS] = {};
     Texture *depth_attachment_ = nullptr;
-    std::string name_ = "RenderTarget";
+    ocarina_string name_ = "RenderTarget";
 };
 
 }// namespace ocarina

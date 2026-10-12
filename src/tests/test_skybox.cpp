@@ -66,8 +66,8 @@ int main(int argc, char *argv[]) {
     const fs::path shader_frag = project_root / "res/shaderlibrary/builtin/skybox.frag";
     const fs::path cubemap_dir = project_root / "res/textures/Yokohama2";
 
-    const std::string shader_vert_abs = fs::absolute(shader_vert).string();
-    const std::string shader_frag_abs = fs::absolute(shader_frag).string();
+    const ocarina_string shader_vert_abs = ocarina::to_ocarina_string(fs::absolute(shader_vert).string());
+    const ocarina_string shader_frag_abs = ocarina::to_ocarina_string(fs::absolute(shader_frag).string());
 
     AsyncLoader async_loader(
         &renderer.task_scheduler(),

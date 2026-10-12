@@ -104,7 +104,7 @@ public:
     }
 
     DescriptorSet* get_global_descriptor_set(uint64_t name_id) const;
-    DescriptorSet* get_global_descriptor_set(const std::string& name) const;
+    DescriptorSet* get_global_descriptor_set(const ocarina_string& name) const;
 
     /// Record that a program pipeline layout uses FRAME set 0.
     void ensure_global_descriptor_sets(RHIPipelineLayout* pipeline_layout);

@@ -42,7 +42,7 @@ struct ShaderVariableBinding {
 
 /// Reflected push-constant block from the shader.
 struct ShaderPushConstant {
-    std::string name;
+    ocarina_string name;
     uint32_t offset = 0;
     uint32_t size = 0;
     uint32_t stage_flags = 0;
@@ -72,16 +72,16 @@ public:
     [[nodiscard]] bool is_graphics() const noexcept { return key_.is_graphics(); }
     [[nodiscard]] bool is_compute() const noexcept { return key_.is_compute(); }
 
-    [[nodiscard]] const std::string& vertex_shader_file() const noexcept {
+    [[nodiscard]] const ocarina_string& vertex_shader_file() const noexcept {
         return key_.vertex_shader_file;
     }
-    [[nodiscard]] const std::string& pixel_shader_file() const noexcept {
+    [[nodiscard]] const ocarina_string& pixel_shader_file() const noexcept {
         return key_.pixel_shader_file;
     }
-    [[nodiscard]] const std::string& compute_shader_file() const noexcept {
+    [[nodiscard]] const ocarina_string& compute_shader_file() const noexcept {
         return key_.compute_shader_file;
     }
-    [[nodiscard]] const std::string& entry_point() const noexcept { return key_.entry_point; }
+    [[nodiscard]] const ocarina_string& entry_point() const noexcept { return key_.entry_point; }
 
     [[nodiscard]] const ocarina_vector<uint32_t>& vertex_spirv() const noexcept { return vertex_spirv_; }
     [[nodiscard]] const ocarina_vector<uint32_t>& pixel_spirv() const noexcept { return pixel_spirv_; }
@@ -120,17 +120,17 @@ public:
 
     /// Compile VS+PS from HLSL, merge reflection, and build binding tables.
     [[nodiscard]] static ShaderProgram* compile_graphics_from_HLSL(
-        const std::string& vertex_shader_file,
-        const std::string& pixel_shader_file,
-        const ocarina_set<std::string>& vertex_options,
-        const ocarina_set<std::string>& pixel_options,
-        const std::string& entry_point = "main");
+        const ocarina_string& vertex_shader_file,
+        const ocarina_string& pixel_shader_file,
+        const ocarina_set<ocarina_string>& vertex_options,
+        const ocarina_set<ocarina_string>& pixel_options,
+        const ocarina_string& entry_point = "main");
 
     /// Compile a single compute shader from HLSL.
     [[nodiscard]] static ShaderProgram* compile_compute_from_HLSL(
-        const std::string& compute_shader_file,
-        const ocarina_set<std::string>& options,
-        const std::string& entry_point = "main");
+        const ocarina_string& compute_shader_file,
+        const ocarina_set<ocarina_string>& options,
+        const ocarina_string& entry_point = "main");
 
     void create_descriptor_set_layouts(Device* device);
     void create_descriptor_set_layouts(

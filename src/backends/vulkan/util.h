@@ -10,7 +10,7 @@
 #include "rhi/resources/texture_sampler.h"
 #include "rhi/shader_program.h"
 
-static std::string errorString(VkResult errorCode) {
+static ocarina::ocarina_string errorString(VkResult errorCode) {
     switch (errorCode) {
 #define STR(r) \
     case VK_##r: return #r

@@ -30,12 +30,23 @@ void clear_directory(const std::filesystem::path &dir_path) {
     }
 }
 
-namespace detail{
-    void *allocator_allocate(size_t size, size_t alignment) noexcept {
+namespace detail {
+
+void *allocator_allocate(size_t size, size_t alignment) noexcept {
+    return eastl::GetDefaultAllocator()->allocate(size, alignment, 0u);
+}
+
+void *allocator_allocate(size_t size, size_t alignment, const char *tracy_pool) noexcept {
+    eastl::TracyMemoryPoolScope scope(tracy_pool);
     return eastl::GetDefaultAllocator()->allocate(size, alignment, 0u);
 }
 
 void allocator_deallocate(void *p, size_t) noexcept {
+    eastl::GetDefaultAllocator()->deallocate(p, 0u);
+}
+
+void allocator_deallocate(void *p, size_t, const char *tracy_pool) noexcept {
+    eastl::TracyMemoryPoolScope scope(tracy_pool);
     eastl::GetDefaultAllocator()->deallocate(p, 0u);
 }
 
@@ -44,5 +55,6 @@ void *allocator_reallocate(void *p, size_t size, size_t alignment) noexcept {
     allocator->deallocate(p, 0u);
     return allocator->allocate(size, alignment, 0u);
 }
-}
+
+}// namespace detail
 }// namespace ocarina

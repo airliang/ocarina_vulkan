@@ -8,7 +8,7 @@ IndexBuffer::IndexBuffer(Device::Impl *device)
 
 IndexBuffer::IndexBuffer(
     Device::Impl *device,
-    const void *initial_data,
+    const void * /*initial_data*/,
     uint32_t indices_count,
     bool bit16)
     : RHIResource(device, Tag::BUFFER, 0) {
@@ -16,12 +16,8 @@ IndexBuffer::IndexBuffer(
     if (indices_count == 0) {
         return;
     }
+    // CPU index payloads live in MeshCPU.indices and are uploaded via StagingUploader.
     allocate_capacity(indices_count);
-    if (initial_data != nullptr) {
-        const uint32_t stride = bit16_ ? sizeof(uint16_t) : sizeof(uint32_t);
-        indices_.resize(indices_count);
-        memcpy(indices_.data(), initial_data, static_cast<size_t>(indices_count) * stride);
-    }
 }
 
 IndexBuffer::~IndexBuffer() {
@@ -60,7 +56,6 @@ void IndexBuffer::allocate_capacity(uint32_t max_indices) {
         num_bytes,
         GraphicBufferBindFlags::IndexBuffer));
     capacity_indices_ = max_indices;
-    indices_.clear();
     set_gpu_resource_state(GPUResourceState::GPU_Visible);
 }
 

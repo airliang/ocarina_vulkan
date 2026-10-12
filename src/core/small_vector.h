@@ -23,14 +23,26 @@
 #pragma once
 
 #include <stddef.h>
-#include <stdlib.h>
+#include <cstddef>
 #include <utility>
 #include <exception>
 #include <algorithm>
 #include <initializer_list>
+#include "stl.h"
 
 namespace ocarina
 {
+namespace detail {
+// Routes through EASTL/mimalloc (+ Tracy when enabled).
+[[nodiscard]] inline void *small_vector_allocate(size_t bytes) noexcept {
+	return allocator_allocate(bytes, alignof(std::max_align_t));
+}
+
+inline void small_vector_deallocate(void *ptr) noexcept {
+	allocator_deallocate(ptr, alignof(std::max_align_t));
+}
+}// namespace detail
+
 // std::aligned_storage does not support size == 0, so roll our own.
 template <typename T, size_t N>
 class AlignedBuffer
@@ -181,7 +193,7 @@ public:
 		{
 			// Pilfer allocated pointer.
 			if (this->ptr != stack_storage.data())
-				free(this->ptr);
+				detail::small_vector_deallocate(this->ptr);
 			this->ptr = other.ptr;
 			this->buffer_size = other.buffer_size;
 			buffer_capacity = other.buffer_capacity;
@@ -230,7 +242,7 @@ public:
 	{
 		clear();
 		if (this->ptr != stack_storage.data())
-			free(this->ptr);
+			detail::small_vector_deallocate(this->ptr);
 	}
 
 	void clear()
@@ -284,7 +296,9 @@ public:
 				target_capacity <<= 1u;
 
 			T *new_buffer =
-			    target_capacity > N ? static_cast<T *>(malloc(target_capacity * sizeof(T))) : stack_storage.data();
+			    target_capacity > N
+			        ? static_cast<T *>(detail::small_vector_allocate(target_capacity * sizeof(T)))
+			        : stack_storage.data();
 
 			if (!new_buffer)
 				std::terminate();
@@ -301,7 +315,7 @@ public:
 			}
 
 			if (this->ptr != stack_storage.data())
-				free(this->ptr);
+				detail::small_vector_deallocate(this->ptr);
 			this->ptr = new_buffer;
 			buffer_capacity = target_capacity;
 		}
@@ -332,7 +346,9 @@ public:
 
 				// Need to allocate new buffer. Move everything to a new buffer.
 				T *new_buffer =
-				    target_capacity > N ? static_cast<T *>(malloc(target_capacity * sizeof(T))) : stack_storage.data();
+				    target_capacity > N
+				        ? static_cast<T *>(detail::small_vector_allocate(target_capacity * sizeof(T)))
+				        : stack_storage.data();
 				if (!new_buffer)
 					std::terminate();
 
@@ -369,7 +385,7 @@ public:
 				}
 
 				if (this->ptr != stack_storage.data())
-					free(this->ptr);
+					detail::small_vector_deallocate(this->ptr);
 				this->ptr = new_buffer;
 				buffer_capacity = target_capacity;
 			}

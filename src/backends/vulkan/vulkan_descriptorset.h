@@ -25,7 +25,7 @@ class VulkanDescriptor
 public:
     virtual ~VulkanDescriptor() = default;
     uint32_t binding = 0;
-    std::string name_;
+    ocarina_string name_;
     bool is_buffer_ = false;
 };
 
@@ -42,7 +42,7 @@ public:
 
 class VulkanDescriptorImage : public VulkanDescriptor{
 public:
-    std::string default_sampler_name_;
+    ocarina_string default_sampler_name_;
     VkDescriptorType descriptor_type_ = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 };
 
