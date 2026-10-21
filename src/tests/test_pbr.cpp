@@ -6,6 +6,7 @@
 //
 
 #include "core/stl.h"
+#include "core/logging.h"
 #include "math/basic_types.h"
 #include "rhi/common.h"
 #include "rhi/context.h"
@@ -17,6 +18,7 @@
 #include "framework/sdl_window.h"
 #include "framework/imgui_renderer.h"
 #include "framework/framework_ui.h"
+#include "framework/widgets.h"
 #include "framework/renderer.h"
 #include "framework/scene.h"
 #include "rhi/renderpass.h"
@@ -112,7 +114,7 @@ int main(int argc, char *argv[]) {
     file_manager.parse_command_line(argc, argv);
 
     const uint2 window_size = make_uint2(1280, 720);
-    auto window = create_sdl_window("PBR IBL FlightHelmet", window_size);
+    auto window = create_sdl_window("PBR IBL", window_size);
 
     InstanceCreation instanceCreation = {};
     instanceCreation.windowHandle = window->get_window_handle();
@@ -121,6 +123,17 @@ int main(int argc, char *argv[]) {
     Device device = file_manager.create_device("vulkan", instanceCreation);
 
     Renderer renderer(&device);
+    const fs::path source_dir = fs::path(__FILE__).parent_path();
+    const fs::path project_root = source_dir.parent_path().parent_path();
+
+    const fs::path pipeline_path = project_root / "res/pipelines/forward_pbr.pipeline.json";
+    RenderTarget swapchain_target = RenderTarget::swapchain();
+    // Default forward path: DepthPrepass (clear/write depth) → Opaque (Load depth, Equal) → Transparent.
+    // All three passes share swapchain_target so Opaque reuses the DepthPrepass depth buffer.
+    if (!renderer.load_default_pipeline(&swapchain_target, pipeline_path)) {
+        OC_ERROR("Failed to load default ForwardPBR pipeline (DepthPrepass/Opaque/Transparent)");
+        return -1;
+    }
 
     ShaderProgram* irradiance_program = nullptr;
     ShaderProgram* specular_program = nullptr;
@@ -139,8 +152,7 @@ int main(int argc, char *argv[]) {
         TextureSampler::Filter::LINEAR_LINEAR,
         TextureSampler::Address::EDGE};
 
-    const fs::path source_dir = fs::path(__FILE__).parent_path();
-    const fs::path project_root = source_dir.parent_path().parent_path();
+    
     const fs::path shader_vert = project_root / "res/shaderlibrary/builtin/fullscreen.vert";
     const fs::path shader_frag = project_root / "res/shaderlibrary/builtin/skybox.frag";
     const fs::path mesh_vert = project_root / "res/shaderlibrary/builtin/mesh.vert";
@@ -150,6 +162,7 @@ int main(int argc, char *argv[]) {
     const fs::path brdf_lut_path = project_root / "res/shaderlibrary/builtin/brdf_lut.compute";
     const fs::path cubemap_dir = project_root / "res/textures/Yokohama2";
     const fs::path gltf_path = project_root / "res/FlightHelmet/glTF/FlightHelmet.gltf";
+    //const fs::path gltf_path = project_root / "res/jabami_anime_tree_v3/scene.gltf";
 
     const ocarina_string shader_vert_abs = ocarina::to_ocarina_string(fs::absolute(shader_vert).string());
     const ocarina_string shader_frag_abs = ocarina::to_ocarina_string(fs::absolute(shader_frag).string());
@@ -183,8 +196,8 @@ int main(int argc, char *argv[]) {
             ShaderProgram* skybox_program = resources.create_shader_program(
                 load_device, shader_vert_abs, shader_frag_abs, options, options);
             skybox_material = resources.create_material(load_device, skybox_program);
-            skybox_material->set_depth_stencil_state(make_skybox_depth_state());
-            skybox_material->set_raster_state(make_skybox_raster_state());
+            skybox_material->set_depth_stencil_state(PassGroupId::Opaque, make_skybox_depth_state());
+            skybox_material->set_raster_state(PassGroupId::Opaque, make_skybox_raster_state());
 
             const fs::path face_paths[6] = {
                 cubemap_dir / "posx.jpg",
@@ -355,29 +368,24 @@ int main(int argc, char *argv[]) {
         }
     });
 
-    RenderTarget swapchain_target = RenderTarget::swapchain();
+    // Skybox + UI stay hard-coded; Opaque / Transparent come from the pipeline JSON.
+    RHIRenderPass* depth_prepass = renderer.find_pipeline_render_pass("DepthPrepass");
+    RHIRenderPass* opaque_pass = renderer.find_pipeline_render_pass("Opaque");
+    RHIRenderPass* transparent_pass = renderer.find_pipeline_render_pass("Transparent");
+    if (depth_prepass == nullptr || opaque_pass == nullptr || transparent_pass == nullptr) {
+        OC_ERROR("Default pipeline missing DepthPrepass / Opaque / Transparent RHIRenderPass");
+        return -1;
+    }
 
+    // DepthPrepass (pipeline) clears depth; skybox only clears color.
     RenderPassCreation skybox_pass_creation;
     skybox_pass_creation.render_target = &swapchain_target;
     skybox_pass_creation.clear_color = make_float4(0.02f, 0.02f, 0.02f, 1.0f);
     skybox_pass_creation.clear_depth = 1.0f;
     skybox_pass_creation.clear_stencil = 0;
+    skybox_pass_creation.clear_depth_attachment = false;
     skybox_pass_creation.present_swapchain = false;
     RHIRenderPass* skybox_pass = device.create_render_pass(skybox_pass_creation);
-
-    RenderPassCreation opaque_pass_creation;
-    opaque_pass_creation.render_target = &swapchain_target;
-    opaque_pass_creation.clear_color_attachment = false;
-    opaque_pass_creation.clear_depth_attachment = false;
-    opaque_pass_creation.present_swapchain = false;
-    RHIRenderPass* opaque_pass = device.create_render_pass(opaque_pass_creation);
-
-    RenderPassCreation transparent_pass_creation;
-    transparent_pass_creation.render_target = &swapchain_target;
-    transparent_pass_creation.clear_color_attachment = false;
-    transparent_pass_creation.clear_depth_attachment = false;
-    transparent_pass_creation.present_swapchain = false;
-    RHIRenderPass* transparent_pass = device.create_render_pass(transparent_pass_creation);
 
     RenderPassCreation ui_pass_creation;
     ui_pass_creation.render_target = &swapchain_target;
@@ -392,27 +400,14 @@ int main(int argc, char *argv[]) {
     ibl_loader.set_pso_requests({std::move(skybox_pso)});
     ibl_loader.set_target_render_pass(skybox_pass);
 
-    PSORequest opaque_mesh_pso = PSORequest::make_graphics(
-        mesh_vert_abs,
-        mesh_pbr_frag_abs,
-        opaque_pass,
-        {},
-        {make_shader_option("ALPHA_BLEND", 0)});
+    // Gltf loads after pipeline asset: materials are built from MaterialAsset + pipeline passes.
     GltfAsyncLoader gltf_loader(
         &renderer.task_scheduler(),
         &device,
-        opaque_mesh_pso,
-        ocarina::to_ocarina_string(fs::absolute(gltf_path).string()),
-        opaque_pass);
-    PSORequest alpha_blend_mesh_pso = PSORequest::make_graphics(
+        &renderer,
         mesh_vert_abs,
         mesh_pbr_frag_abs,
-        transparent_pass,
-        {},
-        {make_shader_option("ALPHA_BLEND", 1)});
-    alpha_blend_mesh_pso.blend_state = BlendState::AlphaBlend();
-    alpha_blend_mesh_pso.depth_stencil_state.depth_write_enable = false;
-    gltf_loader.set_alpha_blend_pso_request(std::move(alpha_blend_mesh_pso));
+        ocarina::to_ocarina_string(fs::absolute(gltf_path).string()));
     gltf_loader.set_progress_listener(&loading_progress);
 
     CombinedLoader combined_loader;
@@ -420,40 +415,76 @@ int main(int argc, char *argv[]) {
     combined_loader.gltf_loader = &gltf_loader;
 
     renderer.set_camera(&camera);
-    // Scene geometry goes to Opaque / Transparent only; UI pass is ImGui.
+    // Scene geometry: DepthPrepass / Opaque / Transparent from MaterialAsset pass_participation.
     renderer.set_render_pass_primitive_filter(
-        [opaque_pass, transparent_pass](uint32_t, RHIRenderPass* pass) {
-            return pass == opaque_pass || pass == transparent_pass;
+        [depth_prepass, opaque_pass, transparent_pass](uint32_t, RHIRenderPass* pass) {
+            return pass == depth_prepass || pass == opaque_pass || pass == transparent_pass;
         });
     renderer.pass_group(PassGroupId::ComputePass).add_render_pass(compute_pass);
     renderer.pass_group(PassGroupId::Skybox).add_render_pass(skybox_pass);
-    renderer.pass_group(PassGroupId::Opaque).add_render_pass(opaque_pass);
-    renderer.pass_group(PassGroupId::Transparent).add_render_pass(transparent_pass);
+    // DepthPrepass / Opaque / Transparent already registered by load_pipeline.
     renderer.pass_group(PassGroupId::UI).add_render_pass(ui_pass);
 
     ImguiRenderer imgui_renderer(*window);
     imgui_renderer.init(device);
-    const string window_name = "PBR IBL FlightHelmet";
+    const string window_name = "PBR IBL";
     FrameInfoContext frame_info;
     frame_info.renderer = &renderer;
     frame_info.device = &device;
     frame_info.window_title = window_name;
     window->widgets()->set_frame_info_context(&frame_info);
-    imgui_renderer.set_frame_callback([&]() {
-        display_loading_progress(*window->widgets(), &loading_progress, renderer.dt());
-    });
 
-    renderer.set_async_loader(&combined_loader, nullptr, [&]() {
+    auto on_gltf_loaded = [&]() {
         Scene& scene = gltf_loader.get_scene();
-        (void)device;
         bind_ibl_to_scene(scene, irradiance_cubemap, specular_cubemap, ibl_sampler);
         renderer.set_scene(&scene);
         renderer.set_skybox_material(skybox_material);
+    };
 
-        imgui_renderer.set_frame_callback([&]() {
-            display_frame_info(*window->widgets());
+    auto open_gltf_scene = [&]() {
+        if (renderer.is_async_loading()) {
+            return;
+        }
+
+        FileDialogFilterVec filters;
+        filters.emplace_back("gltf", "glTF");
+        filters.emplace_back("glb", "glTF Binary");
+        fs::path selected;
+        if (!Widgets::open_file_dialog(selected, filters)) {
+            return;
+        }
+
+        // Drop the live scene while the loader window runs, then rebuild from the new file.
+        renderer.set_scene(nullptr);
+        loading_progress.reset();
+        gltf_loader.reset_for_reload(
+            ocarina::to_ocarina_string(fs::absolute(selected).string()));
+        gltf_loader.set_progress_listener(&loading_progress);
+
+        renderer.set_async_loader(&gltf_loader, nullptr, on_gltf_loaded);
+        renderer.start_async_loader();
+    };
+
+    imgui_renderer.set_frame_callback([&]() {
+        Widgets& widgets = *window->widgets();
+        widgets.use_main_menu_bar([&]() {
+            widgets.use_menu("File", [&]() {
+                widgets.set_enabled(!renderer.is_async_loading(), [&]() {
+                    if (widgets.menu_item("Open glTF...")) {
+                        open_gltf_scene();
+                    }
+                });
+            });
         });
+
+        if (renderer.is_async_loading()) {
+            display_loading_progress(widgets, &loading_progress, renderer.dt());
+        } else {
+            display_frame_info(widgets);
+        }
     });
+
+    renderer.set_async_loader(&combined_loader, nullptr, on_gltf_loaded);
 
     renderer.set_loading_gui_impl_callback([&](const CommandBuffer& cmd_buffer) {
         imgui_renderer.render(cmd_buffer);

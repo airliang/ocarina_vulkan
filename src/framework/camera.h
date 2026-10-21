@@ -77,16 +77,18 @@ private:
     void clear_movement_keys() noexcept;
     [[nodiscard]] math3d::Vector3D get_forward() const noexcept;
     [[nodiscard]] math3d::Vector3D get_right() const noexcept;
+    /// Up vector lying in the view plane (perpendicular to forward and right).
+    [[nodiscard]] math3d::Vector3D get_view_up() const noexcept;
     void apply_orbit_delta(float delta_yaw, float delta_pitch) noexcept;
     void apply_pan_delta(float delta_x, float delta_y) noexcept;
     void move_along_view(float distance) noexcept;
 
     float fov_ = 60.0f;
     float znear_ = 0.1f;
-    float zfar_ = 100.0f;
+    float zfar_ = 1000.0f;
     float aspect_ratio_ = 60.0f;
 
-    float move_speed_ = 0.5f;
+    float move_speed_ = 2.5f;
     float look_sensitivity_ = 0.003f;
     float pan_sensitivity_ = 0.005f;
 

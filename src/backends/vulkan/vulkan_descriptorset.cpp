@@ -527,6 +527,48 @@ DescriptorSetLayout* VulkanDescriptorManager::create_frame_descriptor_set_layout
     return frame_descriptor_set_layout_;
 }
 
+DescriptorSetLayout* VulkanDescriptorManager::create_or_get_descriptor_set_layout(
+    uint8_t set_index,
+    span<const ShaderVariableBinding> bindings) {
+    std::lock_guard<std::mutex> lock(layout_mutex_);
+
+    if (bindings.empty()) {
+        return nullptr;
+    }
+    if (set_index == static_cast<uint8_t>(DescriptorSetIndex::FRAME_SET)) {
+        return frame_descriptor_set_layout_;
+    }
+
+    DescriptorLayoutKey layout_key;
+    for (const ShaderVariableBinding& binding : bindings) {
+        ShaderVariableBinding program_binding = binding;
+        program_binding.descriptor_set = set_index;
+        if (program_binding.is_bindless) {
+            program_binding.count = get_vulkan_bindless_resource_max_count(program_binding.type);
+        }
+        layout_key.add_binding(program_binding);
+    }
+    layout_key.normalize();
+
+    const uint64_t hashkey = layout_key.generate_hash();
+    auto it = descriptor_set_layouts_.find(hashkey);
+    if (it != descriptor_set_layouts_.end()) {
+        return it->second;
+    }
+
+    VulkanDescriptorSetLayout* layout = ocarina::new_with_allocator<VulkanDescriptorSetLayout>(
+        device_,
+        set_index);
+    for (const auto& binding : layout_key.bindings) {
+        layout->add_binding(binding);
+        layout->set_name(binding.name);
+    }
+    layout->finalize_bindings();
+    layout->build_layout();
+    descriptor_set_layouts_.insert(std::make_pair(hashkey, layout));
+    return layout;
+}
+
 DescriptorSetLayout* VulkanDescriptorManager::get_frame_descriptor_set_layout() {
     std::lock_guard<std::mutex> lock(layout_mutex_);
     return frame_descriptor_set_layout_;

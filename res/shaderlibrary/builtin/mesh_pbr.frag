@@ -2,9 +2,14 @@
 // MATERIAL_SET: material UBO + irradiance / specular cubemaps.
 // FRAME_SET: BRDF LUT via bindless g_textures[brdfLutIndex].
 // glTF ORM packing: G = roughness, B = metallic (R often packed AO).
-// Compile variants via pixel options: ALPHA_BLEND=0 (opaque) / ALPHA_BLEND=1 (blend).
+// Compile variants via pixel options:
+//   ALPHA_BLEND=0/1  — transparent blend
+//   ALPHA_MASK=0/1   — glTF MASK / cutout (clip against alphaCutoff)
 #ifndef ALPHA_BLEND
 #define ALPHA_BLEND 0
+#endif
+#ifndef ALPHA_MASK
+#define ALPHA_MASK 0
 #endif
 #include "frame.hlsl"
 #include "push_constant.hlsl"
@@ -78,9 +83,16 @@ PushConstants pushConstants;
 
 float4 main(VSOutput input) : SV_TARGET
 {
-    float4 sampled = g_textures[material.albedoIndex].Sample(
-        g_samplers[material.albedoSamplerIndex], input.UV);
+    float4 sampled = float4(1.0, 1.0, 1.0, 1.0);
+    if (material.albedoIndex != 0xffffffff) {
+        sampled = g_textures[material.albedoIndex].Sample(
+            g_samplers[material.albedoSamplerIndex], input.UV);
+    }
     float3 albedo = sampled.rgb * material.baseColorFactor.rgb * input.Color;
+    float alpha = sampled.a * material.baseColorFactor.a;
+#if ALPHA_MASK
+    clip(alpha - material.alphaCutoff);
+#endif
 
     float roughness = material.roughness;
     float metallic = material.metallic;
@@ -150,8 +162,6 @@ float4 main(VSOutput input) : SV_TARGET
 
 #if ALPHA_BLEND
     // glTF BLEND: texture alpha * baseColorFactor.a (factor is the CPU opacity control).
-    float alpha = sampled.a * material.baseColorFactor.a;
-    alpha = material.baseColorFactor.a;
     return float4(color, alpha);
 #else
     return float4(color, 1.0);

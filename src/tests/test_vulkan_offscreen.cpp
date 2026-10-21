@@ -157,11 +157,20 @@ int main(int argc, char *argv[]) {
     swapchain_pass_creation.clear_color = make_float4(0.1f, 0.1f, 0.1f, 1.0f);
     swapchain_pass_creation.clear_depth = 1.0f;
     swapchain_pass_creation.clear_stencil = 0;
+    swapchain_pass_creation.present_swapchain = false;
     RHIRenderPass* swapchain_pass = device.create_render_pass(swapchain_pass_creation);
+
+    RenderPassCreation ui_pass_creation;
+    ui_pass_creation.render_target = &swapchain_target;
+    ui_pass_creation.clear_color_attachment = false;
+    ui_pass_creation.clear_depth_attachment = false;
+    ui_pass_creation.enable_depth_attachment = false;
+    ui_pass_creation.present_swapchain = true;
+    RHIRenderPass* ui_pass = device.create_render_pass(ui_pass_creation);
 
     renderer.set_scene(&scene);
     renderer.set_camera(&camera);
-    // Offscreen draws the triangle; swapchain draws the textured quad that samples it.
+    // Offscreen draws the triangle; Opaque draws the textured quad that samples it.
     renderer.set_render_pass_primitive_filter([&](uint32_t entity_index, RHIRenderPass* render_pass) {
         if (render_pass == offscreen_pass) {
             return entity_index == triangle_entity_index;
@@ -172,9 +181,10 @@ int main(int argc, char *argv[]) {
         return false;
     });
 
-    // Pass groups: Offscreen RT first, then UI/swapchain (opaque present + ImGui).
+    // Offscreen RT → Opaque blit → UI (ImGui present).
     renderer.pass_group(PassGroupId::Offscreen).add_render_pass(offscreen_pass);
-    renderer.pass_group(PassGroupId::UI).add_render_pass(swapchain_pass);
+    renderer.pass_group(PassGroupId::Opaque).add_render_pass(swapchain_pass);
+    renderer.pass_group(PassGroupId::UI).add_render_pass(ui_pass);
 
     async_loader.set_pso_requests({
         PSORequest::make_graphics(triangle_vert_abs, triangle_frag_abs, offscreen_pass),

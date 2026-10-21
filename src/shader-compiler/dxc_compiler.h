@@ -19,7 +19,9 @@ struct CompileInput {
     ocarina_vector<ocarina_string> macros;
     ocarina_vector<ocarina_string> include_paths;
     ShaderType shader_type;
-    bool output_pdbs;
+    /// Emit RenderDoc-friendly SPIR-V debug info (-fspv-debug=vulkan-with-source).
+    /// Debug is embedded in the SPIR-V; DXC does not support -Fd / separate PDBs with -spirv.
+    bool output_pdbs = false;
 };
 
 struct CompileResult {

@@ -27,6 +27,8 @@ private:
         fs::path cache_directory;
         bool use_cache{true};
         bool rebuild_shaders{false};
+        /// When true, recompile shaders with DXC debug info for RenderDoc (embedded in SPIR-V).
+        bool shader_pdbs{false};
         ocarina::map<string, DynamicModule> modules;
         Impl() = default;
     };
@@ -35,9 +37,10 @@ private:
 public:
     RHIContext &init(const fs::path &path, string_view cache_dir = ".cache");
     virtual ~RHIContext() noexcept;
-    /// Parse argv for launch flags (e.g. "rebuildshader"). Safe to call more than once.
+    /// Parse argv for launch flags (e.g. "rebuildshader", "shaderpdb"). Safe to call more than once.
     void parse_command_line(int argc, char **argv);
     [[nodiscard]] bool rebuild_shaders() const noexcept;
+    [[nodiscard]] bool shader_pdbs() const noexcept;
     [[nodiscard]] const fs::path &runtime_directory() const noexcept;
     [[nodiscard]] const fs::path &cache_directory() const noexcept;
     static bool create_directory_if_necessary(const fs::path &path);

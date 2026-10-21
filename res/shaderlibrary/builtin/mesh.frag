@@ -1,4 +1,11 @@
 // Copyright 2020 Google LLC
+// Compile variants: ALPHA_BLEND=0/1, ALPHA_MASK=0/1 (glTF alphaMode).
+#ifndef ALPHA_BLEND
+#define ALPHA_BLEND 0
+#endif
+#ifndef ALPHA_MASK
+#define ALPHA_MASK 0
+#endif
 #include "frame.hlsl"
 #include "push_constant.hlsl"
 #include "material.hlsl"
@@ -43,9 +50,17 @@ PushConstants pushConstants;
 
 float4 main(VSOutput input) : SV_TARGET
 {
-    float4 sampled = g_textures[material.albedoIndex].Sample(
-        g_samplers[material.albedoSamplerIndex], input.UV);
+    float4 sampled = float4(1.0, 1.0, 1.0, 1.0);
+    if (material.albedoIndex != 0xffffffff) {
+        sampled = g_textures[material.albedoIndex].Sample(
+            g_samplers[material.albedoSamplerIndex], input.UV);
+    }
     float3 albedo = sampled.rgb * material.baseColorFactor.rgb * input.Color;
+    float alpha = sampled.a * material.baseColorFactor.a;
+#if ALPHA_MASK
+    // glTF MASK: discard fragments below alphaCutoff from the asset.
+    clip(alpha - material.alphaCutoff);
+#endif
 
     // Factors multiply texture samples (glTF). Without a MR map, factors alone are used —
     // note glTF default metallicFactor is 1.0, so a missing MR map looks fully metallic.
@@ -94,5 +109,10 @@ float4 main(VSOutput input) : SV_TARGET
     float3 radiance = sunColor.rgb * sunIntensity;
     float3 color = ambient + (diffuse + specular) * radiance * NdotL;
 
-    return float4(color, sampled.a * material.baseColorFactor.a);
+#if ALPHA_BLEND
+    // glTF BLEND: texture alpha * baseColorFactor.a
+    return float4(color, alpha);
+#else
+    return float4(color, 1.0);
+#endif
 }

@@ -51,9 +51,14 @@ void VulkanRenderPass::setup_render_pass() {
         size_ = swapChain->resolution();
         scissor_ = {0, 0, static_cast<int>(size_.x), static_cast<int>(size_.y)};
         viewport_ = {0, 0, static_cast<float>(size_.x), static_cast<float>(size_.y)};
-        color_attachment_format_count_ = 1;
-        color_attachment_formats_[0] = swapChain->color_format();
-        depth_attachment_format_ = swapChain->depth_format();
+        // Match begin_swapchain_render_pass: depth-only passes omit color formats.
+        color_attachment_format_count_ = enable_color_attachments_ ? 1u : 0u;
+        if (enable_color_attachments_) {
+            color_attachment_formats_[0] = swapChain->color_format();
+        }
+        depth_attachment_format_ = enable_depth_attachment_
+            ? swapChain->depth_format()
+            : VK_FORMAT_UNDEFINED;
         if (device_->supports_dynamic_rendering()) {
             render_pass_ = VK_NULL_HANDLE;
         } else {

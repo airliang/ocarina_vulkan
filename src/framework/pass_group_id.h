@@ -1,7 +1,10 @@
 #pragma once
 
 #include "core/header.h"
+#include "core/stl.h"
 #include <cstdint>
+#include <optional>
+#include <string_view>
 
 namespace ocarina {
 
@@ -12,6 +15,7 @@ enum class PassGroupId : uint32_t {
     Offscreen,
     GBuffer,
     Lighting,
+    DepthPrepass,
     Skybox,
     Opaque,
     Transparent,
@@ -26,6 +30,7 @@ enum class PassGroupId : uint32_t {
         case PassGroupId::Offscreen: return "Offscreen";
         case PassGroupId::GBuffer: return "GBuffer";
         case PassGroupId::Lighting: return "Lighting";
+        case PassGroupId::DepthPrepass: return "DepthPrepass";
         case PassGroupId::Skybox: return "Skybox";
         case PassGroupId::Opaque: return "Opaque";
         case PassGroupId::Transparent: return "Transparent";
@@ -33,6 +38,16 @@ enum class PassGroupId : uint32_t {
         case PassGroupId::UI: return "UI";
         default: return "Unknown";
     }
+}
+
+[[nodiscard]] inline std::optional<PassGroupId> pass_group_id_from_name(std::string_view name) noexcept {
+    for (uint32_t i = 0; i < static_cast<uint32_t>(PassGroupId::Count); ++i) {
+        const auto id = static_cast<PassGroupId>(i);
+        if (name == pass_group_id_name(id)) {
+            return id;
+        }
+    }
+    return std::nullopt;
 }
 
 }// namespace ocarina

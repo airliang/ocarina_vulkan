@@ -431,6 +431,18 @@ struct RenderTargetCreation {
 
 class RenderTarget;
 
+/// Attachment load / store ops for render-pass descriptions (pipeline JSON, etc.).
+enum class PipelineLoadOp : uint8_t {
+    Clear = 0,
+    Load,
+    DontCare
+};
+
+enum class PipelineStoreOp : uint8_t {
+    Store = 0,
+    DontCare
+};
+
 struct RenderPassCreation
 {
     constexpr static uint32_t MAX_COLOR_ATTACHMENTS = 8;
@@ -444,6 +456,10 @@ RenderTarget* render_target = nullptr;
     /// that share the same target (e.g. opaque after skybox on the swapchain).
     bool clear_color_attachment = true;
     bool clear_depth_attachment = true;
+    /// When false, swapchain/offscreen begin omits color attachments (depth-only, e.g. DepthPrepass).
+    bool enable_color_attachments = true;
+    /// When false, begin omits the depth attachment.
+    bool enable_depth_attachment = true;
     /// Swapchain only: transition the backbuffer to PRESENT at end of this pass.
     /// Set false for intermediate swapchain passes in the same frame.
     bool present_swapchain = true;

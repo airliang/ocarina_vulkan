@@ -295,9 +295,8 @@ void FrameResources::process_material_update() {
                     return false;
                 }
 
-                request.material->apply_material_parameters_upload();
-                request.material->clear_uniform_buffer_update_queued();
-                return true;
+                // False: a loader write landed after the snapshot. Keep the request.
+                return request.material->apply_material_parameters_upload();
             }
             default:
                 return true;

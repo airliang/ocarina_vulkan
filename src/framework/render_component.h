@@ -10,23 +10,28 @@ namespace ocarina {
 class Device;
 class Material;
 class Mesh;
+class ShaderProgram;
 
 /// Per-entity render state (mesh/material pointers + push-constant scratch).
 /// Mesh and Material instances are shared across entities; RenderComponent is not.
 struct RenderComponent {
     /// Optional callback to stage push-constant members via set_push_constant_variable
-    /// (shader reflection), same pattern as Material::set_property. No TransformComponent —
-    /// per-entity data (e.g. transform_index) is supplied each frame via entity_index.
+    /// (shader reflection). No TransformComponent — per-entity data (e.g. transform_index)
+    /// is supplied via entity_index when the draw path refreshes a dirty program block.
     using UpdatePushConstantFn =
         ocarina::function<void(RenderComponent& render, uint32_t entity_index)>;
+
+    struct PushConstantBlock {
+        ocarina_vector<PushConstantRange> ranges;
+        bool dirty = true;
+    };
 
     uint32_t mesh_id = InvalidUI32;
     Material* material = nullptr;
 
-    /// Push-constant blocks from material shader reflection (not pipeline layout).
-    ocarina_vector<PushConstantRange> push_constants;
+    /// Per ShaderProgram* staging (a material may use different programs across passes).
+    ocarina_unordered_map<ShaderProgram*, PushConstantBlock> push_constants_by_program;
 
-    bool initialized = false;
     UpdatePushConstantFn update_push_constant_function;
 
     void set_mesh(Mesh* mesh);
@@ -37,10 +42,20 @@ struct RenderComponent {
 
     void set_update_push_constant_function(UpdatePushConstantFn func) {
         update_push_constant_function = std::move(func);
-        initialized = false;
+        mark_push_constants_dirty();
     }
 
-    void ensure_push_constants_from_shaders();
+    void mark_push_constants_dirty() noexcept;
+
+    /// Ensure staging ranges exist for @p program (from program reflection).
+    PushConstantBlock& ensure_push_constants(ShaderProgram* program);
+
+    /// If the block for @p program is dirty, run the update callback then clear dirty.
+    void update_push_constants_if_dirty(ShaderProgram* program, uint32_t entity_index);
+
+    [[nodiscard]] const ocarina_vector<PushConstantRange>* push_constants_for(
+        ShaderProgram* program) const noexcept;
+
     void set_push_constant_variable(uint64_t name_id, const std::byte* data, size_t size);
     void set_push_constant_variable(const char* name, const std::byte* data, size_t size);
 
@@ -57,9 +72,9 @@ struct RenderComponent {
         set_push_constant_variable(hash64(name), value);
     }
 
-    void initialize(Device* device);
-    void update_push_constants(uint32_t entity_index);
-    void update(Device* device, uint32_t entity_index);
+private:
+    /// Program whose ranges set_push_constant_variable writes into during an update.
+    ShaderProgram* active_push_constant_program_ = nullptr;
 };
 
 }// namespace ocarina

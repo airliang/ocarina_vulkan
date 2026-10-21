@@ -84,6 +84,12 @@ void RHIContext::parse_command_line(int argc, char **argv) {
             impl_->rebuild_shaders = true;
             OC_INFO("rebuildshader: SPV disk cache will be ignored; shaders recompiled from HLSL");
         }
+        if (arg == "shaderpdb" || arg == "--shaderpdb" || arg == "/shaderpdb") {
+            impl_->shader_pdbs = true;
+            // Debug SPIR-V must be freshly compiled; cached .spv usually has no source debug info.
+            impl_->rebuild_shaders = true;
+            OC_INFO("shaderpdb: shaders recompiled with RenderDoc debug info embedded in .spv");
+        }
     }
 }
 
@@ -96,6 +102,10 @@ void RHIContext::parse_process_command_line() {
 
 bool RHIContext::rebuild_shaders() const noexcept {
     return impl_ && impl_->rebuild_shaders;
+}
+
+bool RHIContext::shader_pdbs() const noexcept {
+    return impl_ && impl_->shader_pdbs;
 }
 
 void RHIContext::destroy_instance() {

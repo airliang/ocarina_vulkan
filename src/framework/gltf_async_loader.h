@@ -6,6 +6,7 @@
 #include "scene.h"
 #include "mesh_geometry.h"
 #include "material.h"
+#include "material_asset.h"
 #include "bindless_texture_registry.h"
 #include "rhi/device.h"
 #include <memory>
@@ -24,24 +25,27 @@ class Material;
 class Mesh;
 class Texture;
 class ShaderProgram;
+class Renderer;
 
 class GltfAsyncLoader : public AsyncLoader {
 public:
+    /// @p renderer must already have loaded a RenderPipelineAsset (Opaque / Transparent passes).
+    /// @p vertex_shader / @p pixel_shader are absolute paths used when building MaterialAssets.
     GltfAsyncLoader(
         enki::TaskScheduler* scheduler,
         Device* device,
-        PSORequest mesh_pso_request,
-        const ocarina_string& gltf_file,
-        RHIRenderPass* target_render_pass = nullptr);
+        Renderer* renderer,
+        ocarina_string vertex_shader,
+        ocarina_string pixel_shader,
+        const ocarina_string& gltf_file);
 
     ~GltfAsyncLoader() noexcept;
 
-    /// Optional ALPHA_BLEND=1 mesh program / PSO for glTF alphaMode "BLEND" materials.
-    /// Uses the same shader files as the opaque request with a distinct pixel option set.
-    void set_alpha_blend_pso_request(PSORequest request);
-
     [[nodiscard]] Scene& get_scene() noexcept { return scene_; }
     [[nodiscard]] const Scene& get_scene() const noexcept { return scene_; }
+
+    /// Clear scene entities / GPU meshes / materials for @p gltf_file and allow load() again.
+    void reset_for_reload(const ocarina_string& gltf_file);
 
 protected:
     void load(Device* device) override;
@@ -57,27 +61,29 @@ private:
         const tinygltf::Primitive& primitive,
         const tinygltf::Model& model,
         Mesh* mesh);
-    /// Build a fully CPU-initialized material (params + texture handles). Does not wait on GPU.
+    /// Build MaterialAsset from glTF, then create engine Material via MaterialAsset.
     [[nodiscard]] Material* create_material(const tinygltf::Material& material, const tinygltf::Model& model);
     [[nodiscard]] Material* create_default_material();
+    /// @p alpha_blend forces BLEND when true; otherwise alphaMode comes from @p material
+    /// (OPAQUE / MASK / BLEND). MASK materials participate in DepthPrepass + Opaque.
+    [[nodiscard]] MaterialAsset convert_gltf_material_to_asset(
+        const tinygltf::Material* material,
+        bool alpha_blend) const;
     [[nodiscard]] Mesh* get_or_create_mesh(const tinygltf::Primitive& gltf_primitive, const tinygltf::Model& model);
     [[nodiscard]] TextureHandle load_gltf_image(int image_index, const tinygltf::Model& model, bool srgb);
     [[nodiscard]] static uint64_t make_geometry_key(const tinygltf::Primitive& primitive);
 
-    [[nodiscard]] ShaderProgram* resolve_shader_program(const PSORequest& request);
-
     ocarina_string gltf_file_;
     fs::path gltf_directory_;
-    PSORequest mesh_pso_request_{};
-    PSORequest alpha_blend_pso_request_{};
-    bool has_alpha_blend_pso_request_ = false;
+    Renderer* renderer_ = nullptr;
+    ocarina_string vertex_shader_;
+    ocarina_string pixel_shader_;
     std::unique_ptr<tinygltf::Model> gltf_model_;
     bool gltf_model_parsed_ = false;
     bool gltf_parse_success_ = false;
     ocarina_string gltf_parse_error_;
-    ShaderProgram* shader_program_ = nullptr;
-    ShaderProgram* alpha_blend_shader_program_ = nullptr;
     ocarina_vector<Mesh*> mesh_storage_;
+    ocarina_vector<Material*> material_storage_;
     ocarina_unordered_map<int, TextureHandle> image_textures_;
     ocarina_unordered_map<uint64_t, Mesh*> geometry_meshes_;
     Scene scene_;

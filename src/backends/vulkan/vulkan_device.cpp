@@ -188,6 +188,12 @@ DescriptorSetLayout* VulkanDevice::create_frame_descriptor_set_layout(
     return VulkanDriver::instance().create_frame_descriptor_set_layout(bindings);
 }
 
+DescriptorSetLayout* VulkanDevice::create_or_get_descriptor_set_layout(
+    uint8_t set_index,
+    span<const ShaderVariableBinding> bindings) noexcept {
+    return VulkanDriver::instance().create_or_get_descriptor_set_layout(set_index, bindings);
+}
+
 void VulkanDevice::release_shader_program(ShaderProgram* program) noexcept {
     if (program != nullptr) {
         if (RHIPipeline* pipeline = program->compute_pipeline()) {

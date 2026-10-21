@@ -97,14 +97,6 @@ public:
         return kEmpty;
     }
 
-    virtual void collect_push_constant_ranges(ocarina_vector<PushConstantRange>& ranges) const {
-        if (program_ != nullptr) {
-            program_->collect_push_constant_ranges(ranges);
-        } else {
-            (void)ranges;
-        }
-    }
-
     [[nodiscard]] virtual bool get_shader_vertex_inputs(
         VertexInputAttributeDescription* out_attributes,
         uint32_t* inout_attribute_count,

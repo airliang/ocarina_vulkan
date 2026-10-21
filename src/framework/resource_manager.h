@@ -19,6 +19,8 @@ class Texture;
 class Cubemap;
 class Image;
 class Device;
+class LoadingProgressListener;
+struct MaterialAsset;
 
 class OC_FRAMEWORK_API ResourceManager : public concepts::Noncopyable {
 public:
@@ -56,9 +58,19 @@ public:
         const ocarina_string& entry_point = "main") const noexcept;
 
     Material* create_material(Device* device, ShaderProgram* shader_program);
+    /// Unique material with a single Opaque technique (legacy / fullscreen helpers).
     Material* create_unique_material(Device* device, ShaderProgram* shader_program);
+    /// Unique empty material; caller must initialize_from_asset (or equivalent).
+    Material* create_unique_material(Device* device);
+    /// Create a unique Material from a MaterialAsset (programs live on PassBindings).
+    Material* create_material_from_asset(
+        Device* device,
+        const MaterialAsset& asset,
+        LoadingProgressListener* progress_listener = nullptr);
     Material* get_material(ShaderProgram* shader_program) const noexcept;
     bool release_material(ShaderProgram* shader_program);
+    /// Destroy a material previously returned by create_unique_material / create_material_from_asset.
+    bool release_unique_material(Material* material);
 
     Mesh* create_mesh(const ocarina_string& name);
     Mesh* get_mesh(const ocarina_string& name) const noexcept;

@@ -136,6 +136,11 @@ public:
     void create_descriptor_set_layouts(
         const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>& layouts);
 
+    /// Replace one set layout (e.g. assign a Material-merged MATERIAL_SET layout so a
+    /// DepthOnly program can bind the material descriptor set without stubbing unused
+    /// shader resources; unused layout bindings are allowed by Vulkan).
+    void set_descriptor_set_layout(uint32_t set_index, DescriptorSetLayout* layout) noexcept;
+
     [[nodiscard]] const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>&
     descriptor_set_layouts() const noexcept {
         return descriptor_set_layouts_;

@@ -106,8 +106,8 @@ int main(int argc, char *argv[]) {
             ShaderProgram* display_program = resources.create_shader_program(
                 load_device, fullscreen_vert_abs, display_frag_abs, options, options);
             display_material = resources.create_material(load_device, display_program);
-            display_material->set_raster_state(make_fullscreen_raster_state());
-            display_material->set_depth_stencil_state(make_fullscreen_depth_state());
+            display_material->set_raster_state(PassGroupId::Opaque, make_fullscreen_raster_state());
+            display_material->set_depth_stencil_state(PassGroupId::Opaque, make_fullscreen_depth_state());
         });
 
     Camera camera;
@@ -166,7 +166,7 @@ int main(int argc, char *argv[]) {
         if (display_material == nullptr) {
             return;
         }
-        renderer.draw_fullscreen(cmd, display_material, display_pass);
+        renderer.draw_fullscreen(cmd, display_material, display_pass, PassGroupId::PostProcess);
     });
 
     RenderPassCreation ui_pass_creation;

@@ -53,7 +53,6 @@ void RenderTask::render_one_frame() {
 
     if (!loading) {
         renderer_.cull_scene();
-        renderer_.update_visible_render_components();
     }
 
     FrameResources::instance().update_per_frame(dt_, loading ? nullptr : renderer_.camera_);
@@ -85,8 +84,14 @@ void RenderTask::execute_default_render_path() {
         if (record_task.empty()) {
             continue;
         }
-        // During async load, keep skybox (clear) + UI (loading progress).
-        if (loading && group_id != PassGroupId::UI && group_id != PassGroupId::Skybox) {
+        // During async load: clear/init attachments + UI progress.
+        // DepthPrepass clears depth when present; otherwise Opaque clears color+depth
+        // (pipelines without a prepass). Skybox may clear color. UI shows the loader.
+        if (loading
+            && group_id != PassGroupId::UI
+            && group_id != PassGroupId::Skybox
+            && group_id != PassGroupId::DepthPrepass
+            && group_id != PassGroupId::Opaque) {
             continue;
         }
 

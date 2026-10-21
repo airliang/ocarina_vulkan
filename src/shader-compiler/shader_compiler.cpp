@@ -96,7 +96,8 @@ bool compile_hlsl_file_to_spirv(
     ShaderType shader_type,
     const ocarina_string &entry_point,
     const ocarina_set<ocarina_string> &options,
-    ocarina_vector<uint32_t> &spirv_code) {
+    ocarina_vector<uint32_t> &spirv_code,
+    bool output_pdbs) {
 
     std::ifstream input(filename.c_str(), std::ios::binary);
     if (!input.is_open()) {
@@ -120,7 +121,7 @@ bool compile_hlsl_file_to_spirv(
         .full_file_path = filename,
         .macros = ocarina_vector<ocarina_string>(options.begin(), options.end()),
         .shader_type = shader_type,
-        .output_pdbs = false,
+        .output_pdbs = output_pdbs,
     };
 
     CompileResult compile_result;
@@ -154,7 +155,8 @@ bool compile_hlsl_to_spirv_and_reflect(
     const ocarina_string &entry_point,
     CompiledShader &out,
     bool rebuild_shaders,
-    const ocarina_set<ocarina_string> &options) {
+    const ocarina_set<ocarina_string> &options,
+    bool output_pdbs) {
 
     // Guard compile + SPV cache: parallel PipelineCompileTasks share stages
     // (same hash → same .spv path) and DXC is not safe for concurrent use.
@@ -171,11 +173,20 @@ bool compile_hlsl_to_spirv_and_reflect(
     const ocarina_string spv_path = get_spv_path_for_shader_hash(filename, out.shader_hash);
     const ocarina_string hash_hex = shader_stage_hash_hex(out.shader_hash);
 
+    // Debug compiles must ignore the SPV cache (cached blobs usually lack source debug info).
+    const bool force_rebuild = rebuild_shaders || output_pdbs;
+
     // Re-check cache under the lock (another thread may have just written it).
-    const bool loaded_from_cache = !rebuild_shaders && load_spirv_from_file(spv_path, out.spirv);
+    const bool loaded_from_cache = !force_rebuild && load_spirv_from_file(spv_path, out.spirv);
 
     if (!loaded_from_cache) {
-        if (rebuild_shaders) {
+        if (output_pdbs) {
+            OC_INFO_FORMAT(
+                "shaderpdb: compiling {} hash={} (debug embedded in {})",
+                filename.c_str(),
+                hash_hex.c_str(),
+                spv_path.c_str());
+        } else if (rebuild_shaders) {
             OC_INFO_FORMAT(
                 "rebuildshader: compiling {} hash={} (ignoring {})",
                 filename.c_str(),
@@ -183,7 +194,8 @@ bool compile_hlsl_to_spirv_and_reflect(
                 spv_path.c_str());
         }
 
-        if (!compile_hlsl_file_to_spirv(filename, shader_type, entry_point, options, out.spirv)) {
+        if (!compile_hlsl_file_to_spirv(
+                filename, shader_type, entry_point, options, out.spirv, output_pdbs)) {
             out.shader_hash = 0;
             return false;
         }

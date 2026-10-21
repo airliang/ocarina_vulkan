@@ -1,6 +1,7 @@
 #include "gltf_async_loader.h"
 #include "enki_task_debug.h"
 #include "loading_progress_listener.h"
+#include "renderer.h"
 
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
@@ -13,6 +14,7 @@
 #include "render_component.h"
 #include "mesh.h"
 #include "material.h"
+#include "material_asset.h"
 #include "math/basic_types.h"
 #include "scene.h"
 #include "global_gpu_storage.h"
@@ -32,6 +34,17 @@ namespace ocarina {
 namespace {
 
 float4x4 node_local_transform(const tinygltf::Node& node) {
+    // glTF 2.0: matrix overrides TRS when present (column-major 4x4).
+    if (node.matrix.size() == 16) {
+        float4x4 matrix{};
+        for (int column = 0; column < 4; ++column) {
+            for (int row = 0; row < 4; ++row) {
+                matrix[column][row] = static_cast<float>(node.matrix[column * 4 + row]);
+            }
+        }
+        return matrix;
+    }
+
     float3 translation = float3(0.0f);
     if (node.translation.size() == 3) {
         translation = float3(
@@ -60,6 +73,120 @@ float4x4 node_local_transform(const tinygltf::Node& node) {
     Transform<float4x4> transform;
     transform.set_TRS(translation, rotation, scale);
     return transform.mat4x4();
+}
+
+[[nodiscard]] const unsigned char* accessor_data_ptr(
+    const tinygltf::Accessor& accessor,
+    const tinygltf::Model& model) noexcept {
+    if (accessor.bufferView < 0 || accessor.bufferView >= static_cast<int>(model.bufferViews.size())) {
+        return nullptr;
+    }
+    const tinygltf::BufferView& buffer_view = model.bufferViews[accessor.bufferView];
+    if (buffer_view.buffer < 0 || buffer_view.buffer >= static_cast<int>(model.buffers.size())) {
+        return nullptr;
+    }
+    const tinygltf::Buffer& buffer = model.buffers[buffer_view.buffer];
+    return buffer.data.data() + buffer_view.byteOffset + accessor.byteOffset;
+}
+
+/// Copy tightly-packed or strided float attribute elements into a contiguous destination.
+template<typename T>
+bool copy_float_accessor(
+    const tinygltf::Accessor& accessor,
+    const tinygltf::Model& model,
+    int expected_type,
+    ocarina_vector<T>& out) {
+    if (accessor.type != expected_type
+        || accessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT) {
+        return false;
+    }
+    const unsigned char* data = accessor_data_ptr(accessor, model);
+    if (data == nullptr || accessor.count <= 0) {
+        return false;
+    }
+    const tinygltf::BufferView& buffer_view = model.bufferViews[accessor.bufferView];
+    const int byte_stride = accessor.ByteStride(buffer_view);
+    if (byte_stride <= 0) {
+        return false;
+    }
+
+    constexpr size_t element_bytes = sizeof(T);
+    out.resize(static_cast<size_t>(accessor.count));
+    if (static_cast<size_t>(byte_stride) == element_bytes) {
+        memcpy(out.data(), data, static_cast<size_t>(accessor.count) * element_bytes);
+    } else {
+        for (int i = 0; i < accessor.count; ++i) {
+            memcpy(
+                &out[static_cast<size_t>(i)],
+                data + static_cast<size_t>(i) * static_cast<size_t>(byte_stride),
+                element_bytes);
+        }
+    }
+    return true;
+}
+
+bool copy_index_accessor(
+    const tinygltf::Accessor& accessor,
+    const tinygltf::Model& model,
+    MeshIndices& out) {
+    if (accessor.type != TINYGLTF_TYPE_SCALAR || accessor.count <= 0) {
+        return false;
+    }
+    const unsigned char* data = accessor_data_ptr(accessor, model);
+    if (data == nullptr) {
+        return false;
+    }
+    const tinygltf::BufferView& buffer_view = model.bufferViews[accessor.bufferView];
+    const int byte_stride = accessor.ByteStride(buffer_view);
+    if (byte_stride <= 0) {
+        return false;
+    }
+
+    out.resize(static_cast<size_t>(accessor.count));
+    switch (accessor.componentType) {
+    case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
+        for (int i = 0; i < accessor.count; ++i) {
+            out[static_cast<size_t>(i)] = data[static_cast<size_t>(i) * static_cast<size_t>(byte_stride)];
+        }
+        return true;
+    case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
+        if (byte_stride == static_cast<int>(sizeof(uint16_t))) {
+            memcpy(out.data(), data, static_cast<size_t>(accessor.count) * sizeof(uint16_t));
+        } else {
+            for (int i = 0; i < accessor.count; ++i) {
+                uint16_t value = 0;
+                memcpy(
+                    &value,
+                    data + static_cast<size_t>(i) * static_cast<size_t>(byte_stride),
+                    sizeof(uint16_t));
+                out[static_cast<size_t>(i)] = value;
+            }
+        }
+        return true;
+    case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:
+        for (int i = 0; i < accessor.count; ++i) {
+            uint32_t value = 0;
+            memcpy(
+                &value,
+                data + static_cast<size_t>(i) * static_cast<size_t>(byte_stride),
+                sizeof(uint32_t));
+            if (value > 0xffffu) {
+                OC_ERROR_FORMAT(
+                    "GltfAsyncLoader: index {} exceeds uint16 range ({})",
+                    i,
+                    value);
+                out.clear();
+                return false;
+            }
+            out[static_cast<size_t>(i)] = static_cast<uint16_t>(value);
+        }
+        return true;
+    default:
+        OC_ERROR_FORMAT(
+            "GltfAsyncLoader: unsupported index componentType {}",
+            accessor.componentType);
+        return false;
+    }
 }
 
 uint32_t position_vertex_count(const MeshPositions& positions) {
@@ -175,17 +302,16 @@ uint64_t GltfAsyncLoader::make_geometry_key(const tinygltf::Primitive& primitive
 GltfAsyncLoader::GltfAsyncLoader(
     enki::TaskScheduler* scheduler,
     Device* device,
-    PSORequest mesh_pso_request,
-    const ocarina_string& gltf_file,
-    RHIRenderPass* target_render_pass)
-    : AsyncLoader(scheduler, device, target_render_pass)
+    Renderer* renderer,
+    ocarina_string vertex_shader,
+    ocarina_string pixel_shader,
+    const ocarina_string& gltf_file)
+    : AsyncLoader(scheduler, device, nullptr)
     , gltf_file_(gltf_file)
-    , gltf_directory_(fs::path(gltf_file).parent_path()) {
-    if (mesh_pso_request.render_pass == nullptr) {
-        mesh_pso_request.render_pass = target_render_pass;
-    }
-    mesh_pso_request_ = mesh_pso_request;
-    add_pso_request(std::move(mesh_pso_request));
+    , gltf_directory_(fs::path(gltf_file).parent_path())
+    , renderer_(renderer)
+    , vertex_shader_(std::move(vertex_shader))
+    , pixel_shader_(std::move(pixel_shader)) {
 }
 
 GltfAsyncLoader::~GltfAsyncLoader() noexcept {
@@ -193,49 +319,35 @@ GltfAsyncLoader::~GltfAsyncLoader() noexcept {
         ocarina::delete_with_allocator<Mesh>(mesh);
     }
     mesh_storage_.clear();
+    for (Material* material : material_storage_) {
+        ResourceManager::instance().release_unique_material(material);
+    }
+    material_storage_.clear();
 }
 
-void GltfAsyncLoader::set_alpha_blend_pso_request(PSORequest request) {
-    if (request.render_pass == nullptr) {
-        request.render_pass = target_render_pass_;
-    }
-    // Same shader files as opaque; pixel option selects the ALPHA_BLEND=1 variant.
-    if (request.vertex_shader_path.empty()) {
-        request.vertex_shader_path = mesh_pso_request_.vertex_shader_path;
-    }
-    if (request.pixel_shader_path.empty()) {
-        request.pixel_shader_path = mesh_pso_request_.pixel_shader_path;
-    }
-    request.pixel_options.insert(make_shader_option("ALPHA_BLEND", 1));
-    if (!request.blend_state.blend_enable) {
-        request.blend_state = BlendState::AlphaBlend();
-    }
-    request.depth_stencil_state.depth_write_enable = false;
+void GltfAsyncLoader::reset_for_reload(const ocarina_string& gltf_file) {
+    scene_.clear_entities();
 
-    alpha_blend_pso_request_ = request;
-    has_alpha_blend_pso_request_ = true;
-    add_pso_request(std::move(request));
-}
+    for (Mesh* mesh : mesh_storage_) {
+        ocarina::delete_with_allocator<Mesh>(mesh);
+    }
+    mesh_storage_.clear();
+    geometry_meshes_.clear();
 
-ShaderProgram* GltfAsyncLoader::resolve_shader_program(const PSORequest& request) {
-    if (request.has_shader_program()) {
-        request.shader_program->ensure_gpu_shaders(device_);
-        return request.shader_program;
+    for (Material* material : material_storage_) {
+        ResourceManager::instance().release_unique_material(material);
     }
-    if (!request.has_shader_paths() || device_ == nullptr) {
-        return nullptr;
-    }
+    material_storage_.clear();
+    image_textures_.clear();
 
-    ShaderProgram* program = ResourceManager::instance().create_shader_program(
-        device_,
-        request.vertex_shader_path,
-        request.pixel_shader_path,
-        request.vertex_options,
-        request.pixel_options);
-    if (program != nullptr) {
-        program->ensure_gpu_shaders(device_);
-    }
-    return program;
+    gltf_model_.reset();
+    gltf_model_parsed_ = false;
+    gltf_parse_success_ = false;
+    gltf_parse_error_.clear();
+    is_loaded_ = false;
+
+    gltf_file_ = gltf_file;
+    gltf_directory_ = fs::path(gltf_file_).parent_path();
 }
 
 void GltfAsyncLoader::load(Device* device) {
@@ -244,17 +356,6 @@ void GltfAsyncLoader::load(Device* device) {
     }
 
     device_ = device;
-    shader_program_ = resolve_shader_program(mesh_pso_request_);
-    if (shader_program_ != nullptr) {
-        mesh_pso_request_.shader_program = shader_program_;
-    }
-    if (has_alpha_blend_pso_request_) {
-        alpha_blend_shader_program_ = resolve_shader_program(alpha_blend_pso_request_);
-        if (alpha_blend_shader_program_ != nullptr) {
-            alpha_blend_pso_request_.shader_program = alpha_blend_shader_program_;
-        }
-    }
-
     is_loaded_ = load_gltf_file();
 }
 
@@ -297,8 +398,11 @@ void GltfAsyncLoader::begin_gltf_progress() {
         return;
     }
 
-    progress_listener_->set_title(
-        ocarina::to_ocarina_string(fs::path(gltf_file_).filename().string()));
+    // Always begin (or restart) so glTF-only reloads show the loader window after reset().
+    const uint32_t steps = count_load_progress_steps();
+    progress_listener_->begin(
+        ocarina::to_ocarina_string(fs::path(gltf_file_).filename().string()),
+        steps);
     progress_listener_->set_phase("Loading scene");
 }
 
@@ -466,63 +570,35 @@ BoundingBox GltfAsyncLoader::append_primitive_geometry(
         }
 
         const tinygltf::Accessor& accessor = model.accessors[accessor_index];
-        if (accessor.bufferView < 0 || accessor.bufferView >= static_cast<int>(model.bufferViews.size())) {
-            continue;
-        }
-
-        const tinygltf::BufferView& buffer_view = model.bufferViews[accessor.bufferView];
-        if (buffer_view.buffer < 0 || buffer_view.buffer >= static_cast<int>(model.buffers.size())) {
-            continue;
-        }
-
-        const tinygltf::Buffer& buffer = model.buffers[buffer_view.buffer];
-        const unsigned char* data = buffer.data.data() + buffer_view.byteOffset + accessor.byteOffset;
-        const int count = accessor.count;
-        const int component_type = accessor.componentType;
-        const int type = accessor.type;
 
         if (name == "POSITION") {
-            if (type == TINYGLTF_TYPE_VEC3 && component_type == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-                positions.resize(static_cast<size_t>(count));
-                memcpy(positions.data(), data, static_cast<size_t>(count) * sizeof(Vector3));
+            if (copy_float_accessor(accessor, model, TINYGLTF_TYPE_VEC3, positions)) {
                 local_bounds = bounds_from_position_accessor(accessor);
                 if (!local_bounds.valid) {
-                    for (int vertex_index = 0; vertex_index < count; ++vertex_index) {
-                        const Vector3& position = positions[static_cast<size_t>(vertex_index)];
+                    for (const Vector3& position : positions) {
                         local_bounds.expand(make_float3(position.x, position.y, position.z));
                     }
                 }
             }
         } else if (name == "NORMAL") {
-            if (type == TINYGLTF_TYPE_VEC3 && component_type == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-                normals.resize(static_cast<size_t>(count));
-                memcpy(normals.data(), data, static_cast<size_t>(count) * sizeof(Vector3));
-                has_normals = true;
-            }
+            has_normals = copy_float_accessor(accessor, model, TINYGLTF_TYPE_VEC3, normals);
         } else if (name == "TANGENT") {
-            if (type == TINYGLTF_TYPE_VEC4 && component_type == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-                tangents.resize(static_cast<size_t>(count));
-                memcpy(tangents.data(), data, static_cast<size_t>(count) * sizeof(Vector4));
-                has_tangents = true;
-            }
+            has_tangents = copy_float_accessor(accessor, model, TINYGLTF_TYPE_VEC4, tangents);
         } else if (name == "TEXCOORD_0") {
-            if (type == TINYGLTF_TYPE_VEC2 && component_type == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-                uvs.resize(static_cast<size_t>(count));
-                memcpy(uvs.data(), data, static_cast<size_t>(count) * sizeof(Vector2));
-                has_uvs = true;
-            }
+            has_uvs = copy_float_accessor(accessor, model, TINYGLTF_TYPE_VEC2, uvs);
         } else if (name == "COLOR_0") {
-            if (type == TINYGLTF_TYPE_VEC4 && component_type == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-                colors.resize(static_cast<size_t>(count));
-                memcpy(colors.data(), data, static_cast<size_t>(count) * sizeof(Vector4));
+            if (copy_float_accessor(accessor, model, TINYGLTF_TYPE_VEC4, colors)) {
                 has_colors = true;
-            } else if (type == TINYGLTF_TYPE_VEC3 && component_type == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-                colors.resize(static_cast<size_t>(count));
-                const auto* src = reinterpret_cast<const Vector3*>(data);
-                for (int i = 0; i < count; ++i) {
-                    colors[static_cast<size_t>(i)] = Vector4(src[i].x, src[i].y, src[i].z, 1.0f);
+            } else if (accessor.type == TINYGLTF_TYPE_VEC3
+                       && accessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
+                MeshPositions rgb = make_mesh_positions();
+                if (copy_float_accessor(accessor, model, TINYGLTF_TYPE_VEC3, rgb)) {
+                    colors.resize(rgb.size());
+                    for (size_t i = 0; i < rgb.size(); ++i) {
+                        colors[i] = Vector4(rgb[i].x, rgb[i].y, rgb[i].z, 1.0f);
+                    }
+                    has_colors = true;
                 }
-                has_colors = true;
             }
         }
     }
@@ -543,26 +619,11 @@ BoundingBox GltfAsyncLoader::append_primitive_geometry(
         colors.clear();
     }
 
+    // glTF 2.0 indices may be UNSIGNED_BYTE / UNSIGNED_SHORT / UNSIGNED_INT.
+    // AlphaBlendModeTest uses UNSIGNED_BYTE; leaving them unfilled collapses draws to index 0.
     MeshIndices indices = make_mesh_indices();
     if (primitive.indices >= 0 && primitive.indices < static_cast<int>(model.accessors.size())) {
-        const tinygltf::Accessor& accessor = model.accessors[primitive.indices];
-        if (accessor.bufferView >= 0 && accessor.bufferView < static_cast<int>(model.bufferViews.size())) {
-            const tinygltf::BufferView& buffer_view = model.bufferViews[accessor.bufferView];
-            if (buffer_view.buffer >= 0 && buffer_view.buffer < static_cast<int>(model.buffers.size())) {
-                const tinygltf::Buffer& buffer = model.buffers[buffer_view.buffer];
-                const unsigned char* data = buffer.data.data() + buffer_view.byteOffset + accessor.byteOffset;
-                const int count = accessor.count;
-                indices.resize(static_cast<size_t>(count));
-                if (accessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-                    memcpy(indices.data(), data, static_cast<size_t>(count) * sizeof(uint16_t));
-                } else if (accessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
-                    const auto* src = reinterpret_cast<const uint32_t*>(data);
-                    for (int i = 0; i < count; ++i) {
-                        indices[static_cast<size_t>(i)] = static_cast<uint16_t>(src[i]);
-                    }
-                }
-            }
-        }
+        copy_index_accessor(model.accessors[primitive.indices], model, indices);
     }
 
     if (indices.empty()) {
@@ -667,22 +728,166 @@ TextureHandle GltfAsyncLoader::load_gltf_image(int image_index, const tinygltf::
     return handle;
 }
 
-Material* GltfAsyncLoader::create_default_material() {
-    if (shader_program_ == nullptr) {
-        return nullptr;
+namespace {
+
+enum class GltfAlphaMode : uint8_t {
+    Opaque = 0,
+    Mask,
+    Blend,
+};
+
+[[nodiscard]] GltfAlphaMode gltf_alpha_mode(const tinygltf::Material* material) noexcept {
+    if (material == nullptr) {
+        return GltfAlphaMode::Opaque;
+    }
+    if (material->alphaMode == "BLEND") {
+        return GltfAlphaMode::Blend;
+    }
+    if (material->alphaMode == "MASK") {
+        return GltfAlphaMode::Mask;
+    }
+    return GltfAlphaMode::Opaque;
+}
+
+void apply_cull_override(MaterialTechniqueOverrides& overrides, bool double_sided) noexcept {
+    overrides.has_cull_mode = true;
+    overrides.cull_mode = double_sided ? CullingMode::NONE : CullingMode::BACK;
+}
+
+}// namespace
+
+MaterialAsset GltfAsyncLoader::convert_gltf_material_to_asset(
+        const tinygltf::Material* material,
+        bool alpha_blend) const {
+    const GltfAlphaMode alpha_mode = alpha_blend
+        ? GltfAlphaMode::Blend
+        : gltf_alpha_mode(material);
+    const bool is_blend = alpha_mode == GltfAlphaMode::Blend;
+    const bool is_mask = alpha_mode == GltfAlphaMode::Mask;
+    const bool double_sided = material != nullptr && material->doubleSided;
+
+    MaterialAsset asset;
+    asset.version = 1;
+    asset.name = (material != nullptr && !material->name.empty())
+        ? ocarina::to_ocarina_string(material->name)
+        : ocarina_string(is_blend ? "gltf_transparent" : (is_mask ? "gltf_masked" : "gltf_opaque"));
+    asset.shading_model = is_blend ? "Transparent" : "Opaque";
+    asset.template_name = "StandardPBR";
+
+    // Adapt depth policy to the active pipeline: Equal/no-write only when a DepthPrepass exists.
+    const bool has_depth_prepass = renderer_ != nullptr
+        && renderer_->find_pipeline_pass("DepthPrepass") != nullptr;
+
+    MaterialTechniqueDesc technique;
+    technique.name = is_blend ? "ForwardTransparent" : "ForwardOpaque";
+    technique.vertex_shader = vertex_shader_;
+    technique.pixel_shader = pixel_shader_;
+    // MASK → ALPHA_MASK=1; BLEND → ALPHA_BLEND=1 (+ MaterialBlendMode::Alpha).
+    technique.macros.push_back(make_shader_option("ALPHA_BLEND", is_blend ? 1 : 0));
+    technique.macros.push_back(make_shader_option("ALPHA_MASK", is_mask ? 1 : 0));
+    technique.overrides.has_blend = true;
+    technique.overrides.blend = is_blend ? MaterialBlendMode::Alpha : MaterialBlendMode::Opaque;
+    technique.overrides.has_depth_write = true;
+    technique.overrides.has_depth_compare = true;
+    apply_cull_override(technique.overrides, double_sided);
+    if (is_blend) {
+        technique.overrides.depth_write = false;
+        technique.overrides.depth_compare = SamplerCompareFunc::LE;
+    } else if (has_depth_prepass) {
+        // After DepthPrepass: color pass tests Equal against prepass depth.
+        technique.overrides.depth_write = false;
+        technique.overrides.depth_compare = SamplerCompareFunc::E;
+    } else {
+        // Opaque-only pipeline: this pass owns depth.
+        technique.overrides.depth_write = true;
+        technique.overrides.depth_compare = SamplerCompareFunc::LE;
+    }
+    asset.techniques.push_back(std::move(technique));
+
+    if (!is_blend) {
+        asset.pass_participation["Opaque"] = "ForwardOpaque";
+        if (has_depth_prepass) {
+            const fs::path depth_frag_path =
+                fs::path(vertex_shader_.c_str()).parent_path() / "mesh_depth.frag";
+            MaterialTechniqueDesc depth_only;
+            depth_only.name = "DepthOnly";
+            depth_only.vertex_shader = vertex_shader_;
+            depth_only.pixel_shader =
+                ocarina::to_ocarina_string(fs::absolute(depth_frag_path).string());
+            depth_only.overrides.has_color_write = true;
+            depth_only.overrides.color_write = false;
+            depth_only.overrides.has_depth_write = true;
+            depth_only.overrides.depth_write = true;
+            depth_only.overrides.has_depth_compare = true;
+            depth_only.overrides.depth_compare = SamplerCompareFunc::LE;
+            apply_cull_override(depth_only.overrides, double_sided);
+            depth_only.overrides.has_blend = true;
+            depth_only.overrides.blend = MaterialBlendMode::Opaque;
+            asset.techniques.push_back(std::move(depth_only));
+            asset.pass_participation["DepthPrepass"] = "DepthOnly";
+        }
+    } else {
+        asset.pass_participation["Transparent"] = "ForwardTransparent";
     }
 
-    Material* prim_material = ResourceManager::instance().create_unique_material(
+    // Bind RHIRenderPass from the already-loaded pipeline on Renderer.
+    if (renderer_ != nullptr) {
+        asset.bind_render_passes(*renderer_);
+    }
+
+    auto add_float4 = [&](const char* name, const float4& value) {
+        MaterialPropertyDesc prop;
+        prop.name = name;
+        prop.type = MaterialPropertyValueType::Float4;
+        prop.float4_value = value;
+        prop.has_value = true;
+        asset.properties.push_back(std::move(prop));
+    };
+    auto add_float = [&](const char* name, float value) {
+        MaterialPropertyDesc prop;
+        prop.name = name;
+        prop.type = MaterialPropertyValueType::Float;
+        prop.float_value = value;
+        prop.has_value = true;
+        asset.properties.push_back(std::move(prop));
+    };
+
+    if (material != nullptr) {
+        const auto& pbr = material->pbrMetallicRoughness;
+        add_float4(
+            "baseColorFactor",
+            make_float4(
+                static_cast<float>(pbr.baseColorFactor[0]),
+                static_cast<float>(pbr.baseColorFactor[1]),
+                static_cast<float>(pbr.baseColorFactor[2]),
+                static_cast<float>(pbr.baseColorFactor[3])));
+        add_float("roughness", static_cast<float>(pbr.roughnessFactor));
+        add_float("metallic", static_cast<float>(pbr.metallicFactor));
+        add_float("alphaCutoff", static_cast<float>(material->alphaCutoff));
+    } else {
+        add_float4("baseColorFactor", make_float4(1.f, 1.f, 1.f, 1.f));
+        add_float("roughness", 1.f);
+        add_float("metallic", 0.f);
+        add_float("alphaCutoff", 0.5f);
+    }
+    add_float("ao", 1.f);
+
+    return asset;
+}
+
+Material* GltfAsyncLoader::create_default_material() {
+    MaterialAsset asset = convert_gltf_material_to_asset(nullptr, false);
+    Material* prim_material = ResourceManager::instance().create_material_from_asset(
         device_,
-        shader_program_);
+        asset,
+        progress_listener_);
     if (prim_material == nullptr) {
         return nullptr;
     }
+    material_storage_.push_back(prim_material);
 
-    prim_material->set_property("baseColorFactor", make_float4(1.f, 1.f, 1.f, 1.f));
-    prim_material->set_property("roughness", 1.f);
-    prim_material->set_property("metallic", 0.f);
-    prim_material->set_property("ao", 1.f);
+    prim_material->set_property("albedoIndex", InvalidUI32);
+    prim_material->set_property("albedoSamplerIndex", 0u);
     prim_material->set_property("normalIndex", InvalidUI32);
     prim_material->set_property("normalSamplerIndex", 0u);
     prim_material->set_property("metallicRoughnessIndex", InvalidUI32);
@@ -693,43 +898,25 @@ Material* GltfAsyncLoader::create_default_material() {
 Material* GltfAsyncLoader::create_material(
     const tinygltf::Material& material,
     const tinygltf::Model& model) {
-    const bool alpha_blend = material.alphaMode == "BLEND";
-    ShaderProgram* program = (alpha_blend && alpha_blend_shader_program_ != nullptr)
-        ? alpha_blend_shader_program_
-        : shader_program_;
-    if (program == nullptr) {
-        return nullptr;
-    }
-
-    Material* prim_material = ResourceManager::instance().create_unique_material(
+    // convert_gltf_material_to_asset reads alphaMode (OPAQUE / MASK / BLEND) from @p material.
+    MaterialAsset asset = convert_gltf_material_to_asset(&material, false);
+    Material* prim_material = ResourceManager::instance().create_material_from_asset(
         device_,
-        program);
+        asset,
+        progress_listener_);
     if (prim_material == nullptr) {
         return nullptr;
     }
+    material_storage_.push_back(prim_material);
 
-    const auto& pbr = material.pbrMetallicRoughness;
-    // baseColorFactor.a is the glTF opacity scalar (defaults to 1 when omitted).
-    const float4 base_color_factor = make_float4(
-        static_cast<float>(pbr.baseColorFactor[0]),
-        static_cast<float>(pbr.baseColorFactor[1]),
-        static_cast<float>(pbr.baseColorFactor[2]),
-        static_cast<float>(pbr.baseColorFactor[3]));
-    // glTF defaults: metallicFactor=1, roughnessFactor=1. Real values usually live in
-    // metallicRoughnessTexture (G/B); sample that or non-metal materials shade as metal.
-    const float roughness = static_cast<float>(pbr.roughnessFactor);
-    const float metallic = static_cast<float>(pbr.metallicFactor);
-    const float ao = 1.f;
-
-    prim_material->set_property("baseColorFactor", base_color_factor);
-    prim_material->set_property("roughness", roughness);
-    prim_material->set_property("metallic", metallic);
-    prim_material->set_property("ao", ao);
+    prim_material->set_property("albedoIndex", InvalidUI32);
+    prim_material->set_property("albedoSamplerIndex", 0u);
     prim_material->set_property("normalIndex", InvalidUI32);
     prim_material->set_property("normalSamplerIndex", 0u);
     prim_material->set_property("metallicRoughnessIndex", InvalidUI32);
     prim_material->set_property("metallicRoughnessSamplerIndex", 0u);
 
+    const auto& pbr = material.pbrMetallicRoughness;
     const uint32_t linear_repeat_sampler = get_bindless_sampler_index(
         TextureSampler{TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT});
 
@@ -773,11 +960,6 @@ Material* GltfAsyncLoader::create_material(
                 sizeof(normal_handle.bindless_index_));
             prim_material->set_property("normalSamplerIndex", linear_repeat_sampler);
         }
-    }
-
-    // glTF alphaMode "BLEND" → ALPHA_BLEND shader + alpha-blend pipeline state.
-    if (alpha_blend) {
-        prim_material->set_alpha_blend_enabled(true);
     }
 
     return prim_material;

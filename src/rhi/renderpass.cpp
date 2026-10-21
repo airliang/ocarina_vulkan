@@ -17,6 +17,8 @@ RHIRenderPass::RHIRenderPass(const RenderPassCreation &render_pass_creation)
       clear_stencil_(render_pass_creation.clear_stencil),
       clear_color_attachment_(render_pass_creation.clear_color_attachment),
       clear_depth_attachment_(render_pass_creation.clear_depth_attachment),
+      enable_color_attachments_(render_pass_creation.enable_color_attachments),
+      enable_depth_attachment_(render_pass_creation.enable_depth_attachment),
       present_swapchain_(render_pass_creation.present_swapchain) {
 }
 

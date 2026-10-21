@@ -104,6 +104,11 @@ public:
         /// Canonical FRAME set (set 0) layout; bindings are engine-owned, not from shader reflection.
         [[nodiscard]] virtual DescriptorSetLayout* create_frame_descriptor_set_layout(
             span<const ShaderVariableBinding> bindings) noexcept = 0;
+        /// Create or reuse a cached layout for @p set_index from an explicit binding list
+        /// (e.g. merged MATERIAL_SET across a material's techniques).
+        [[nodiscard]] virtual DescriptorSetLayout* create_or_get_descriptor_set_layout(
+            uint8_t set_index,
+            span<const ShaderVariableBinding> bindings) noexcept = 0;
         virtual void release_shader_program(ShaderProgram* program) noexcept {}
         /// Cache lookup only; returns 0 / InvalidUI64 when the module is not loaded yet.
         [[nodiscard]] virtual handle_ty find_shader_from_file(const ocarina_string &file_name, ShaderType shader_type, const ocarina_set<string> &options) noexcept {
@@ -242,6 +247,12 @@ public:
     [[nodiscard]] DescriptorSetLayout* create_frame_descriptor_set_layout(
         span<const ShaderVariableBinding> bindings) {
         return impl_->create_frame_descriptor_set_layout(bindings);
+    }
+
+    [[nodiscard]] DescriptorSetLayout* create_or_get_descriptor_set_layout(
+        uint8_t set_index,
+        span<const ShaderVariableBinding> bindings) {
+        return impl_->create_or_get_descriptor_set_layout(set_index, bindings);
     }
 
     void release_shader_program(ShaderProgram* program) {

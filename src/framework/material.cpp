@@ -1,7 +1,10 @@
 #include "material.h"
+#include "material_asset.h"
 #include "core/hash.h"
 #include "core/logging.h"
 #include "resource_manager.h"
+#include "pipeline_manager.h"
+#include "pso_request.h"
 #include "rhi/descriptor_set.h"
 #include "rhi/device.h"
 #include "rhi/pipeline_state.h"
@@ -10,6 +13,7 @@
 #include "rhi/resources/resource.h"
 #include "framework/frame_resources.h"
 #include <algorithm>
+#include <optional>
 
 namespace ocarina {
 namespace {
@@ -80,19 +84,450 @@ ocarina_vector<RHIShader::UniformBufferMember> to_rhi_uniform_members(
 
 }// namespace
 
-Material::Material(Device* device, ShaderProgram* shader_program) : device_(device), shader_program_(shader_program) {
-    pipeline_state_ = PipelineState::MakeGraphicsDefault(shader_program);
+Material::Material(Device* device) : device_(device) {}
 
-    collect_non_global_descriptor_set_layouts(shader_program, descriptor_set_layouts_);
-    // Resolve layout only. VkDescriptorSet allocation happens on the render thread.
-    resolve_material_descriptor_layout();
-
-    init_material_properties(shader_program);
+Material::Material(Device* device, ShaderProgram* shader_program) : device_(device) {
+    // Legacy / fullscreen: one Opaque technique until initialize_from_asset replaces bindings.
+    if (shader_program != nullptr) {
+        PassBinding binding;
+        binding.group = PassGroupId::Opaque;
+        binding.technique_name = "Default";
+        binding.shader_program = shader_program;
+        binding.pipeline_state = PipelineState::MakeGraphicsDefault(shader_program);
+        binding.pipeline_dirty = true;
+        pass_bindings_.push_back(std::move(binding));
+        init_from_shader_program(shader_program);
+    }
 }
 
 Material::~Material() {
     release_gpu_buffers();
 }
+
+void Material::init_from_shader_program(ShaderProgram* shader_program) {
+    if (shader_program == nullptr) {
+        return;
+    }
+    descriptor_set_layouts_.fill(nullptr);
+    collect_non_global_descriptor_set_layouts(shader_program, descriptor_set_layouts_);
+    material_descriptor_set_layout_ = nullptr;
+    material_descriptor_set_index_ = InvalidUI32;
+    // Resolve layout only. VkDescriptorSet allocation happens on the render thread.
+    resolve_material_descriptor_layout();
+    init_material_properties(shader_program);
+}
+
+ShaderProgram* Material::shader_program_for_pass(PassGroupId group_id) const noexcept {
+    const PassBinding* binding = find_pass_binding(group_id);
+    return binding != nullptr ? binding->shader_program : nullptr;
+}
+
+bool Material::collect_and_share_merged_descriptor_layouts() noexcept {
+    if (device_ == nullptr) {
+        OC_ERROR("Material::collect_and_share_merged_descriptor_layouts requires a device");
+        return false;
+    }
+
+    struct MergedBinding {
+        ShaderVariableBinding binding{};
+        ocarina_string source_technique;
+    };
+
+    // Per set: binding name → merged entry; binding index → name (conflict detection).
+    std::array<ocarina_map<ocarina_string, MergedBinding>, MAX_DESCRIPTOR_SETS_PER_SHADER>
+        by_name{};
+    std::array<ocarina_map<uint8_t, ocarina_string>, MAX_DESCRIPTOR_SETS_PER_SHADER>
+        name_by_index{};
+
+    const uint8_t frame_set = static_cast<uint8_t>(DescriptorSetIndex::FRAME_SET);
+
+    for (const PassBinding& pass : pass_bindings_) {
+        ShaderProgram* program = pass.shader_program;
+        if (program == nullptr) {
+            continue;
+        }
+        for (const ShaderVariableBinding& var : program->variables()) {
+            if (var.descriptor_set == frame_set) {
+                continue;
+            }
+            if (var.name[0] == '\0') {
+                continue;
+            }
+            if (var.descriptor_set >= MAX_DESCRIPTOR_SETS_PER_SHADER) {
+                OC_ERROR_FORMAT(
+                    "Material technique '{}': binding '{}' uses invalid descriptor set {}",
+                    pass.technique_name.c_str(),
+                    var.name,
+                    static_cast<uint32_t>(var.descriptor_set));
+                return false;
+            }
+
+            const uint8_t set = var.descriptor_set;
+            const ocarina_string name{var.name};
+
+            auto name_it = by_name[set].find(name);
+            if (name_it == by_name[set].end()) {
+                auto index_it = name_by_index[set].find(var.binding);
+                if (index_it != name_by_index[set].end() && index_it->second != name) {
+                    const auto& existing = by_name[set].at(index_it->second);
+                    OC_ERROR_FORMAT(
+                        "Material technique descriptor conflict: set {} binding index {} is "
+                        "'{}' (technique '{}') but technique '{}' declares '{}' at that index. "
+                        "All techniques in one material must agree on (set, name) → binding.",
+                        static_cast<uint32_t>(set),
+                        static_cast<uint32_t>(var.binding),
+                        index_it->second.c_str(),
+                        existing.source_technique.c_str(),
+                        pass.technique_name.c_str(),
+                        name.c_str());
+                    return false;
+                }
+
+                MergedBinding merged;
+                merged.binding = var;
+                merged.source_technique = pass.technique_name;
+                name_by_index[set][var.binding] = name;
+                by_name[set].emplace(name, std::move(merged));
+                continue;
+            }
+
+            MergedBinding& merged = name_it->second;
+            if (merged.binding.binding != var.binding) {
+                OC_ERROR_FORMAT(
+                    "Material technique descriptor conflict: set {} binding '{}' is index {} "
+                    "in technique '{}' but index {} in technique '{}'. All techniques in one "
+                    "material must use the same binding index for the same name.",
+                    static_cast<uint32_t>(set),
+                    name.c_str(),
+                    static_cast<uint32_t>(merged.binding.binding),
+                    merged.source_technique.c_str(),
+                    static_cast<uint32_t>(var.binding),
+                    pass.technique_name.c_str());
+                return false;
+            }
+            if (merged.binding.type != var.type) {
+                OC_ERROR_FORMAT(
+                    "Material technique descriptor conflict: set {} binding '{}' has type "
+                    "mismatch between techniques '{}' and '{}'.",
+                    static_cast<uint32_t>(set),
+                    name.c_str(),
+                    merged.source_technique.c_str(),
+                    pass.technique_name.c_str());
+                return false;
+            }
+
+            merged.binding.stage_flags |= var.stage_flags;
+            if (var.size > merged.binding.size) {
+                merged.binding.size = var.size;
+            }
+            if (var.count > merged.binding.count) {
+                merged.binding.count = var.count;
+            }
+            if (var.is_bindless) {
+                merged.binding.is_bindless = true;
+            }
+        }
+    }
+
+    for (uint8_t set = 0; set < MAX_DESCRIPTOR_SETS_PER_SHADER; ++set) {
+        if (set == frame_set || by_name[set].empty()) {
+            continue;
+        }
+
+        ocarina_vector<ShaderVariableBinding> union_bindings;
+        union_bindings.reserve(by_name[set].size());
+        for (auto& [_, merged] : by_name[set]) {
+            merged.binding.descriptor_set = set;
+            union_bindings.push_back(merged.binding);
+        }
+        std::sort(
+            union_bindings.begin(),
+            union_bindings.end(),
+            [](const ShaderVariableBinding& a, const ShaderVariableBinding& b) {
+                return a.binding < b.binding;
+            });
+
+        DescriptorSetLayout* shared = device_->create_or_get_descriptor_set_layout(
+            set,
+            union_bindings);
+        if (shared == nullptr) {
+            OC_ERROR_FORMAT(
+                "Material: failed to create merged descriptor set layout for set {}",
+                static_cast<uint32_t>(set));
+            return false;
+        }
+
+        for (PassBinding& pass : pass_bindings_) {
+            if (pass.shader_program == nullptr) {
+                continue;
+            }
+            pass.shader_program->set_descriptor_set_layout(set, shared);
+        }
+    }
+
+    return true;
+}
+
+ShaderProgram* Material::select_reflection_shader_program() const noexcept {
+    ShaderProgram* best = nullptr;
+    size_t best_score = 0;
+    const uint8_t material_set = static_cast<uint8_t>(DescriptorSetIndex::MATERIAL_SET);
+
+    for (const PassBinding& pass : pass_bindings_) {
+        ShaderProgram* program = pass.shader_program;
+        if (program == nullptr) {
+            continue;
+        }
+        size_t score = 0;
+        for (const ShaderVariableBinding& var : program->variables()) {
+            if (var.descriptor_set == material_set && var.name[0] != '\0') {
+                ++score;
+                score += var.members.size();
+            }
+        }
+        if (best == nullptr || score > best_score) {
+            best = program;
+            best_score = score;
+        }
+    }
+
+    if (best != nullptr) {
+        return best;
+    }
+    return pass_bindings_.empty() ? nullptr : pass_bindings_.front().shader_program;
+}
+
+Material::PassBinding* Material::find_pass_binding(PassGroupId group_id) noexcept {
+    for (PassBinding& binding : pass_bindings_) {
+        if (binding.group == group_id) {
+            return &binding;
+        }
+    }
+    return nullptr;
+}
+
+const Material::PassBinding* Material::find_pass_binding(PassGroupId group_id) const noexcept {
+    for (const PassBinding& binding : pass_bindings_) {
+        if (binding.group == group_id) {
+            return &binding;
+        }
+    }
+    return nullptr;
+}
+
+void Material::set_blend_state(PassGroupId group_id, const BlendState& blend_state) {
+    PassBinding* binding = find_pass_binding(group_id);
+    if (binding == nullptr || blend_state == binding->pipeline_state.blend_state) {
+        return;
+    }
+    binding->pipeline_state.blend_state = blend_state;
+    binding->pipeline_dirty = true;
+}
+
+const BlendState& Material::get_blend_state(PassGroupId group_id) const {
+    const PassBinding* binding = find_pass_binding(group_id);
+    static const BlendState kDefault = BlendState::Opaque();
+    return binding != nullptr ? binding->pipeline_state.blend_state : kDefault;
+}
+
+void Material::set_alpha_blend_enabled(PassGroupId group_id, bool enabled) {
+    PassBinding* binding = find_pass_binding(group_id);
+    if (binding == nullptr) {
+        return;
+    }
+    if (enabled) {
+        set_blend_state(group_id, BlendState::AlphaBlend());
+        DepthStencilState depth_state = binding->pipeline_state.depth_stencil_state;
+        depth_state.depth_write_enable = false;
+        set_depth_stencil_state(group_id, depth_state);
+    } else {
+        set_blend_state(group_id, BlendState::Opaque());
+        DepthStencilState depth_state = binding->pipeline_state.depth_stencil_state;
+        depth_state.depth_write_enable = true;
+        set_depth_stencil_state(group_id, depth_state);
+    }
+}
+
+void Material::set_raster_state(PassGroupId group_id, const RasterState& raster_state) {
+    PassBinding* binding = find_pass_binding(group_id);
+    if (binding == nullptr || raster_state == binding->pipeline_state.raster_state) {
+        return;
+    }
+    binding->pipeline_state.raster_state = raster_state;
+    binding->pipeline_dirty = true;
+}
+
+const RasterState& Material::get_raster_state(PassGroupId group_id) const {
+    const PassBinding* binding = find_pass_binding(group_id);
+    static const RasterState kDefault = RasterState::Default();
+    return binding != nullptr ? binding->pipeline_state.raster_state : kDefault;
+}
+
+void Material::set_depth_stencil_state(
+    PassGroupId group_id,
+    const DepthStencilState& depth_stencil_state) {
+    PassBinding* binding = find_pass_binding(group_id);
+    if (binding == nullptr || depth_stencil_state == binding->pipeline_state.depth_stencil_state) {
+        return;
+    }
+    binding->pipeline_state.depth_stencil_state = depth_stencil_state;
+    binding->pipeline_dirty = true;
+}
+
+const DepthStencilState& Material::get_depth_stencil_state(PassGroupId group_id) const {
+    const PassBinding* binding = find_pass_binding(group_id);
+    static const DepthStencilState kDefault = DepthStencilState::Default();
+    return binding != nullptr ? binding->pipeline_state.depth_stencil_state : kDefault;
+}
+
+void Material::mark_pipeline_dirty() {
+    for (PassBinding& binding : pass_bindings_) {
+        binding.pipeline_dirty = true;
+    }
+}
+
+bool Material::is_transparent() const noexcept {
+    return find_pass_binding(PassGroupId::Transparent) != nullptr;
+}
+
+bool Material::participates_in_pass(PassGroupId group_id) const noexcept {
+    return find_pass_binding(group_id) != nullptr;
+}
+
+const PipelineState* Material::pipeline_state_for_pass(PassGroupId group_id) const noexcept {
+    const PassBinding* binding = find_pass_binding(group_id);
+    if (binding == nullptr) {
+        return nullptr;
+    }
+    const_cast<Material*>(this)->ensure_gpu_shaders();
+    if (binding->shader_program != nullptr) {
+        binding->shader_program->ensure_gpu_shaders(device_);
+        const_cast<PassBinding*>(binding)->pipeline_state.shader_program = binding->shader_program;
+    }
+    return &binding->pipeline_state;
+}
+
+bool Material::is_pass_pipeline_dirty(PassGroupId group_id) const noexcept {
+    const PassBinding* binding = find_pass_binding(group_id);
+    return binding != nullptr && binding->pipeline_dirty;
+}
+
+void Material::clear_pass_pipeline_dirty(PassGroupId group_id) noexcept {
+    if (PassBinding* binding = find_pass_binding(group_id)) {
+        binding->pipeline_dirty = false;
+    }
+}
+
+
+bool Material::initialize_from_asset(
+    const MaterialAsset& asset,
+    LoadingProgressListener* progress_listener) {
+    if (device_ == nullptr || !asset.valid()) {
+        OC_ERROR("Material::initialize_from_asset requires device and a valid asset");
+        return false;
+    }
+
+    if (asset.primary_technique() == nullptr) {
+        OC_ERROR("Material::initialize_from_asset: asset has no techniques");
+        return false;
+    }
+
+    // Replace any prior bindings with asset pass_participation entries.
+    pass_bindings_.clear();
+    pass_bindings_.reserve(asset.pass_participation.size());
+
+    ResourceManager& resources = ResourceManager::instance();
+
+    for (const auto& [pass_name, technique_name] : asset.pass_participation) {
+        const std::optional<PassGroupId> group = pass_group_id_from_name(pass_name);
+        if (!group) {
+            OC_WARNING_FORMAT(
+                "Material::initialize_from_asset: unknown pass '{}' in pass_participation",
+                pass_name.c_str());
+            continue;
+        }
+        const MaterialTechniqueDesc* technique = asset.find_technique(technique_name);
+        if (technique == nullptr
+            || technique->vertex_shader.empty()
+            || technique->pixel_shader.empty()) {
+            OC_WARNING_FORMAT(
+                "Material::initialize_from_asset: missing technique '{}' for pass '{}'",
+                technique_name.c_str(),
+                pass_name.c_str());
+            continue;
+        }
+
+        PassBinding binding;
+        binding.group = *group;
+        binding.technique_name = technique_name;
+        binding.render_pass = technique->render_pass;
+        binding.shader_program = resources.create_shader_program(
+            device_,
+            technique->vertex_shader,
+            technique->pixel_shader,
+            {},
+            asset.technique_pixel_options(*technique));
+        if (binding.shader_program == nullptr) {
+            continue;
+        }
+        binding.shader_program->ensure_gpu_shaders(device_);
+
+        binding.pipeline_state = PipelineState::MakeGraphicsDefault(binding.shader_program);
+        asset.apply_technique_overrides_to_pipeline(*technique, binding.pipeline_state);
+        binding.pipeline_dirty = true;
+        pass_bindings_.push_back(std::move(binding));
+    }
+
+    if (pass_bindings_.empty()) {
+        OC_ERROR("Material::initialize_from_asset: no valid pass bindings");
+        return false;
+    }
+
+    // Union MATERIAL_SET (and other non-FRAME sets) across all techniques; error on
+    // (set, name) -> binding index conflicts. Shared layout is assigned to every program.
+    if (!collect_and_share_merged_descriptor_layouts()) {
+        return false;
+    }
+
+    ShaderProgram* reflection_program = select_reflection_shader_program();
+    if (reflection_program == nullptr) {
+        OC_ERROR("Material::initialize_from_asset: no ShaderProgram available for reflection");
+        return false;
+    }
+    init_from_shader_program(reflection_program);
+
+    for (const MaterialPropertyDesc& property : asset.properties) {
+        if (!property.has_value) {
+            continue;
+        }
+        switch (property.type) {
+            case MaterialPropertyValueType::Float:
+                set_property(property.name.c_str(), property.float_value);
+                break;
+            case MaterialPropertyValueType::Float4:
+                set_property(property.name.c_str(), property.float4_value);
+                break;
+            case MaterialPropertyValueType::Texture2D:
+                // Texture paths are applied by the loader after GPU texture creation.
+                break;
+        }
+    }
+
+    // Enqueue a PipelineCompileTask per bound pass that has an RHIRenderPass.
+    for (PassBinding& binding : pass_bindings_) {
+        if (binding.render_pass == nullptr || binding.shader_program == nullptr) {
+            continue;
+        }
+        PSORequest request = PSORequest::from_pipeline_state(
+            binding.pipeline_state,
+            binding.render_pass);
+        request.shader_program = binding.shader_program;
+        PipelineManager::instance().enqueue(std::move(request), progress_listener);
+    }
+
+    return true;
+}
+
 
 void Material::release_gpu_buffers() {
     ResourceManager& resources = ResourceManager::instance();
@@ -196,12 +631,17 @@ void Material::add_uniform_buffer_property(
 }
 
 void Material::ensure_gpu_shaders() {
-    if (device_ == nullptr || shader_program_ == nullptr) {
+    if (device_ == nullptr) {
         return;
     }
 
-    shader_program_->ensure_gpu_shaders(device_);
-    pipeline_state_.shader_program = shader_program_;
+    for (PassBinding& binding : pass_bindings_) {
+        if (binding.shader_program == nullptr) {
+            continue;
+        }
+        binding.shader_program->ensure_gpu_shaders(device_);
+        binding.pipeline_state.shader_program = binding.shader_program;
+    }
 }
 
 void Material::init_material_properties(ShaderProgram* shader_program) {
@@ -315,8 +755,9 @@ void Material::create_material_descriptor_set() {
 
 void Material::try_finish_gpu_init() {
     if (material_descriptor_set_ == nullptr) {
+        ShaderProgram* program = select_reflection_shader_program();
         descriptor_set_layouts_.fill(nullptr);
-        collect_non_global_descriptor_set_layouts(shader_program_, descriptor_set_layouts_);
+        collect_non_global_descriptor_set_layouts(program, descriptor_set_layouts_);
         material_descriptor_set_layout_ = nullptr;
         resolve_material_descriptor_layout();
         create_material_descriptor_set();
@@ -366,9 +807,22 @@ void Material::set_property(uint64_t name_id, const void* data, size_t size) {
     if (property->offset + copy_size > ubo->cpu_data.size()) {
         return;
     }
-    memcpy(ubo->cpu_data.data() + property->offset, data, copy_size);
-    ubo->dirty = true;
-    queue_uniform_buffer_update();
+
+    bool should_queue = false;
+    {
+        // The render thread may be uploading this buffer. Publish the bytes and the
+        // dirty bit together so that upload cannot clear a write it did not copy.
+        std::lock_guard<std::mutex> lock(uniform_mutex_);
+        memcpy(ubo->cpu_data.data() + property->offset, data, copy_size);
+        ubo->dirty = true;
+        if (!in_update_queue_) {
+            in_update_queue_ = true;
+            should_queue = true;
+        }
+    }
+    if (should_queue) {
+        queue_uniform_buffer_update();
+    }
 }
 
 void Material::set_property(uint64_t name_id, const TextureHandle& texture) {
@@ -438,9 +892,10 @@ bool Material::requires_local_descriptor_set_layout() const noexcept {
         }
     }
 
-    if (shader_program_ != nullptr) {
-        for (DescriptorSetLayout* layout : shader_program_->descriptor_set_layouts()) {
-            if (is_material_local_descriptor_set_layout(shader_program_, layout)) {
+    ShaderProgram* program = select_reflection_shader_program();
+    if (program != nullptr) {
+        for (DescriptorSetLayout* layout : program->descriptor_set_layouts()) {
+            if (is_material_local_descriptor_set_layout(program, layout)) {
                 return true;
             }
         }
@@ -475,50 +930,75 @@ void Material::ensure_uniform_buffer_gpus() {
     }
 }
 
-void Material::upload_owned_uniform_buffer(uint64_t name_id, OwnedUniformBuffer& ubo) {
-    if (ubo.buffer.handle() == 0 || ubo.size == 0) {
-        return;
-    }
-
-    DescriptorSet* descriptor_set = find_descriptor_set_by_property_name(name_id);
-    if (descriptor_set == nullptr) {
-        return;
-    }
-
-    ubo.buffer.copy_from_immediately(ubo.cpu_data.data(), ubo.size);
-
-    if (!ubo.descriptor_bound) {
-        descriptor_set->update_buffer(
-            name_id,
-            ubo.buffer.handle(),
-            0,
-            ubo.size);
-        ubo.descriptor_bound = true;
-    }
-    ubo.dirty = false;
-}
-
 void Material::queue_uniform_buffer_update() {
-    if (in_update_queue_) {
-        return;
-    }
-    in_update_queue_ = true;
     FrameResources::instance().queue_material_update(
         MaterialUpdateRequest::make_uniform_buffer(this));
 }
 
-void Material::apply_material_parameters_upload() {
+bool Material::apply_material_parameters_upload() {
     ensure_uniform_buffer_gpus();
 
-    for (auto& [name_id, ubo] : uniform_buffers_) {
-        if (!ubo.dirty && ubo.descriptor_bound) {
-            continue;
+    struct UploadSnapshot {
+        uint64_t name_id = 0;
+        OwnedUniformBuffer* ubo = nullptr;
+        ocarina_vector<uint8_t> bytes;
+        bool needs_descriptor_bind = false;
+    };
+    ocarina_vector<UploadSnapshot> snapshots;
+
+    {
+        std::lock_guard<std::mutex> lock(uniform_mutex_);
+        for (auto& [name_id, ubo] : uniform_buffers_) {
+            if (ubo.size > 0 && ubo.buffer.handle() == 0) {
+                // GPU buffer is not ready. Leave in_update_queue_ set and retry.
+                return false;
+            }
         }
-        if (ubo.buffer.handle() == 0) {
-            continue;
+        for (auto& [name_id, ubo] : uniform_buffers_) {
+            if (!ubo.dirty && ubo.descriptor_bound) {
+                continue;
+            }
+            UploadSnapshot snapshot;
+            snapshot.name_id = name_id;
+            snapshot.ubo = &ubo;
+            snapshot.bytes = ubo.cpu_data;
+            snapshot.needs_descriptor_bind = !ubo.descriptor_bound;
+            ubo.dirty = false;
+            snapshots.push_back(std::move(snapshot));
         }
-        upload_owned_uniform_buffer(name_id, ubo);
     }
+
+    for (UploadSnapshot& snapshot : snapshots) {
+        if (snapshot.ubo == nullptr || snapshot.bytes.empty()) {
+            continue;
+        }
+        snapshot.ubo->buffer.copy_from_immediately(snapshot.bytes.data(), static_cast<uint32_t>(snapshot.bytes.size()));
+        if (!snapshot.needs_descriptor_bind) {
+            continue;
+        }
+        DescriptorSet* descriptor_set = find_descriptor_set_by_property_name(snapshot.name_id);
+        if (descriptor_set == nullptr) {
+            continue;
+        }
+        descriptor_set->update_buffer(
+            snapshot.name_id,
+            snapshot.ubo->buffer.handle(),
+            0,
+            snapshot.ubo->size);
+        std::lock_guard<std::mutex> lock(uniform_mutex_);
+        snapshot.ubo->descriptor_bound = true;
+    }
+
+    std::lock_guard<std::mutex> lock(uniform_mutex_);
+    for (auto& [name_id, ubo] : uniform_buffers_) {
+        (void)name_id;
+        if (ubo.dirty || (ubo.size > 0 && !ubo.descriptor_bound)) {
+            // set_property ran after the snapshot, or the descriptor bind is still pending.
+            return false;
+        }
+    }
+    in_update_queue_ = false;
+    return true;
 }
 
 void Material::add_sampler(uint64_t name_id, const TextureSampler& sampler) {

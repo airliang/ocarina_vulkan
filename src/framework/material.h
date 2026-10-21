@@ -3,6 +3,7 @@
 #include "core/header.h"
 #include "core/stl.h"
 #include "core/hash.h"
+#include "pass_group_id.h"
 #include "rhi/graphics_descriptions.h"
 #include "rhi/pipeline_state.h"
 #include "rhi/shader_base.h"
@@ -11,6 +12,7 @@
 #include "rhi/resources/cubemap.h"
 #include "rhi/resources/buffer.h"
 #include "bindless_texture_registry.h"
+#include <mutex>
 
 namespace ocarina {
 class DescriptorSetLayout;
@@ -19,6 +21,9 @@ class TextureSampler;
 class Device;
 class FrameResources;
 class ShaderProgram;
+class LoadingProgressListener;
+class RHIRenderPass;
+struct MaterialAsset;
 
 class Material {
 public:
@@ -51,24 +56,35 @@ public:
         uint8_t descriptor_set = 0;
     };
 
+    /// One resolved technique binding for a PassGroupId from MaterialAsset::pass_participation.
+    /// Owns the ShaderProgram used by that pass (programs are cached in ResourceManager).
+    struct PassBinding {
+        PassGroupId group = PassGroupId::Opaque;
+        ocarina_string technique_name;
+        ShaderProgram* shader_program = nullptr;
+        PipelineState pipeline_state{};
+        RHIRenderPass* render_pass = nullptr;
+        bool pipeline_dirty = true;
+    };
+
+    /// Empty material; call initialize_from_asset to attach techniques / programs.
+    explicit Material(Device* device);
+
+    /// Legacy / fullscreen: single Opaque technique with the given program.
     Material(Device* device, ShaderProgram* shader_program);
     ~Material();
+
+    /// Build PassBindings (programs + PSO state) from the asset, merge+validate
+    /// non-FRAME descriptor layouts across all technique programs, reflect parameters
+    /// from the richest material set, and enqueue PipelineCompileTasks for bound passes.
+    bool initialize_from_asset(
+        const MaterialAsset& asset,
+        LoadingProgressListener* progress_listener = nullptr);
 
     /// Destroy owned GPU uniform buffers. Must run while the Device / VkDevice is still alive.
     void release_gpu_buffers();
 
-    [[nodiscard]] ShaderProgram* get_shader_program() const noexcept { return shader_program_; }
-
-    handle_ty get_vertex_shader() const {
-        return shader_program_ != nullptr
-            ? shader_program_->shader_handle(ShaderType::VertexShader)
-            : InvalidUI64;
-    }
-    handle_ty get_pixel_shader() const {
-        return shader_program_ != nullptr
-            ? shader_program_->shader_handle(ShaderType::PixelShader)
-            : InvalidUI64;
-    }
+    [[nodiscard]] ShaderProgram* shader_program_for_pass(PassGroupId group_id) const noexcept;
 
     void set_property(uint64_t name_id, const void* data, size_t size);
     void set_property(const char* name, const void* data, size_t size) {
@@ -118,80 +134,40 @@ public:
     }
 
     /// Apply queued uniform-buffer uploads (render thread only).
-    void apply_material_parameters_upload();
+    /// Returns false when a newer CPU write arrived during the upload; the caller
+    /// must leave the material in the update queue.
+    [[nodiscard]] bool apply_material_parameters_upload();
 
-    void set_blend_state(const BlendState& blend_state) {
-        if (blend_state != pipeline_state_.blend_state) {
-            pipeline_state_.blend_state = blend_state;
-            mark_pipeline_dirty();
-        }
-    }
-
-    const BlendState& get_blend_state() const {
-        return pipeline_state_.blend_state;
-    }
+    void set_blend_state(PassGroupId group_id, const BlendState& blend_state);
+    [[nodiscard]] const BlendState& get_blend_state(PassGroupId group_id) const;
 
     /// Enable standard alpha blending (SRC_ALPHA / ONE_MINUS_SRC_ALPHA) and disable depth writes.
-    void set_alpha_blend_enabled(bool enabled) {
-        if (enabled) {
-            set_blend_state(BlendState::AlphaBlend());
-            DepthStencilState depth_state = pipeline_state_.depth_stencil_state;
-            depth_state.depth_write_enable = false;
-            set_depth_stencil_state(depth_state);
-        } else {
-            set_blend_state(BlendState::Opaque());
-            DepthStencilState depth_state = pipeline_state_.depth_stencil_state;
-            depth_state.depth_write_enable = true;
-            set_depth_stencil_state(depth_state);
-        }
-    }
+    void set_alpha_blend_enabled(PassGroupId group_id, bool enabled);
 
-    [[nodiscard]] bool is_transparent() const noexcept {
-        return pipeline_state_.blend_state.blend_enable;
-    }
+    /// True when pass_participation includes Transparent (exclusive forward bucket).
+    [[nodiscard]] bool is_transparent() const noexcept;
 
-    void set_raster_state(const RasterState& raster_state) {
-        if (raster_state != pipeline_state_.raster_state) {
-            pipeline_state_.raster_state = raster_state;
-            mark_pipeline_dirty();
-        }
-    }
+    [[nodiscard]] bool has_pass_bindings() const noexcept { return !pass_bindings_.empty(); }
 
-    const RasterState& get_raster_state() const {
-        return pipeline_state_.raster_state;
-    }
+    /// True if MaterialAsset pass_participation includes this PassGroupId.
+    [[nodiscard]] bool participates_in_pass(PassGroupId group_id) const noexcept;
 
-    void set_depth_stencil_state(const DepthStencilState& depth_stencil_state) {
-        if (depth_stencil_state != pipeline_state_.depth_stencil_state) {
-            pipeline_state_.depth_stencil_state = depth_stencil_state;
-            mark_pipeline_dirty();
-        }
-    }
+    /// Pipeline state for a declared pass. Null if the material does not participate.
+    [[nodiscard]] const PipelineState* pipeline_state_for_pass(PassGroupId group_id) const noexcept;
+    [[nodiscard]] bool is_pass_pipeline_dirty(PassGroupId group_id) const noexcept;
+    void clear_pass_pipeline_dirty(PassGroupId group_id) noexcept;
 
-    const DepthStencilState& get_depth_stencil_state() const {
-        return pipeline_state_.depth_stencil_state;
-    }
+    void set_raster_state(PassGroupId group_id, const RasterState& raster_state);
+    [[nodiscard]] const RasterState& get_raster_state(PassGroupId group_id) const;
 
-    const PipelineState& get_pipeline_state() const {
-        const_cast<Material*>(this)->ensure_gpu_shaders();
-        return pipeline_state_;
-    }
+    void set_depth_stencil_state(PassGroupId group_id, const DepthStencilState& depth_stencil_state);
+    [[nodiscard]] const DepthStencilState& get_depth_stencil_state(PassGroupId group_id) const;
 
-    PipelineState& get_pipeline_state_mutable() {
-        ensure_gpu_shaders();
-        return pipeline_state_;
-    }
-
-    void mark_pipeline_dirty() {
-        pipeline_dirty_ = true;
-    }
+    void mark_pipeline_dirty();
 
     const std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER>& descriptor_set_layouts() const {
         return descriptor_set_layouts_;
     }
-
-    [[nodiscard]] bool is_pipeline_dirty() const { return pipeline_dirty_; }
-    void clear_pipeline_dirty() { pipeline_dirty_ = false; }
 
     [[nodiscard]] bool has_material_uniform_buffer() const noexcept {
         return !uniform_buffers_.empty();
@@ -240,7 +216,13 @@ private:
         bool dirty = false;
     };
 
+    void init_from_shader_program(ShaderProgram* shader_program);
     void init_material_properties(ShaderProgram* shader_program);
+    /// Union non-FRAME set bindings from every PassBinding program. Errors if the same
+    /// binding name maps to different indices (or types) across programs in one set.
+    /// Creates/caches merged layouts and assigns them to every technique program.
+    [[nodiscard]] bool collect_and_share_merged_descriptor_layouts() noexcept;
+    [[nodiscard]] ShaderProgram* select_reflection_shader_program() const noexcept;
     void resolve_material_descriptor_layout();
     void create_material_descriptor_set();
     void ensure_gpu_shaders();
@@ -259,7 +241,6 @@ private:
         uint32_t buffer_size,
         const ocarina_vector<RHIShader::UniformBufferMember>& members);
     void ensure_uniform_buffer_gpus();
-    void upload_owned_uniform_buffer(uint64_t name_id, OwnedUniformBuffer& ubo);
     void queue_uniform_buffer_update();
     [[nodiscard]] OwnedUniformBuffer* find_owned_uniform_buffer(uint64_t name_id) noexcept;
     [[nodiscard]] bool requires_local_descriptor_set_layout() const noexcept;
@@ -268,11 +249,12 @@ private:
 
     std::array<DescriptorSetLayout*, MAX_DESCRIPTOR_SETS_PER_SHADER> descriptor_set_layouts_ = {};
     DescriptorSetLayout* material_descriptor_set_layout_ = nullptr;
-    PipelineState pipeline_state_;
-    bool pipeline_dirty_ = true;
+    [[nodiscard]] PassBinding* find_pass_binding(PassGroupId group_id) noexcept;
+    [[nodiscard]] const PassBinding* find_pass_binding(PassGroupId group_id) const noexcept;
+
+    ocarina_vector<PassBinding> pass_bindings_;
 
     Device* device_ = nullptr;
-    ShaderProgram* shader_program_ = nullptr;
 
     uint64_t material_params_buffer_name_id_ = 0;
     uint32_t material_params_byte_size_ = 0;
@@ -288,8 +270,8 @@ private:
     ocarina_unordered_map<uint64_t, Cubemap*> cubemap_handles_;
 
     bool in_update_queue_ = false;
-
-    void clear_uniform_buffer_update_queued() noexcept { in_update_queue_ = false; }
+    /// Guards cpu_data, dirty, and in_update_queue_ against the loader thread.
+    std::mutex uniform_mutex_;
 
     friend class FrameResources;
 };

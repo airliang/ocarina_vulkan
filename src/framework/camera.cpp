@@ -68,6 +68,11 @@ math3d::Vector3D Camera::get_right() const noexcept {
     return math3d::normalize(math3d::cross(up_, get_forward()));
 }
 
+math3d::Vector3D Camera::get_view_up() const noexcept {
+    // World up projected onto the view plane: the screen-vertical axis.
+    return math3d::normalize(math3d::cross(get_forward(), get_right()));
+}
+
 void Camera::sync_angles_from_forward() {
     const math3d::Vector3D forward = math3d::normalize(math3d::operator-(target_, position_));
     pitch_ = std::asin(std::clamp(forward[1], -1.0f, 1.0f));
@@ -103,10 +108,16 @@ void Camera::apply_pan_delta(float delta_x, float delta_y) noexcept {
         return;
     }
 
+    // Screen-space grab pan on the camera right / view-up plane (Anvil-style).
+    // Mouse right/down moves the camera opposite so the scene follows the cursor.
+    // Scale by eye-to-target distance so the same pixel drag tracks the focal plane.
     const math3d::Vector3D right = get_right();
+    const math3d::Vector3D view_up = get_view_up();
+    const float distance = std::max(vec_length(math3d::operator-(target_, position_)), 1e-3f);
+    const float scale = pan_sensitivity_ * distance;
     const math3d::Vector3D offset = math3d::operator+(
-        scale_vec(right, -delta_x * pan_sensitivity_),
-        scale_vec(up_, -delta_y * pan_sensitivity_));
+        scale_vec(right, -delta_x * scale),
+        scale_vec(view_up, -delta_y * scale));
     position_ = math3d::operator+(position_, offset);
     target_ = math3d::operator+(target_, offset);
     dirty_ = true;

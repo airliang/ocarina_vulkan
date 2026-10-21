@@ -76,6 +76,9 @@ public:
 
     [[nodiscard]] DescriptorSetLayout* create_frame_descriptor_set_layout(
         span<const ShaderVariableBinding> bindings);
+    [[nodiscard]] DescriptorSetLayout* create_or_get_descriptor_set_layout(
+        uint8_t set_index,
+        span<const ShaderVariableBinding> bindings);
     [[nodiscard]] DescriptorSetLayout* get_frame_descriptor_set_layout();
 
     /// Acquire the next swapchain image. Returns false when the surface is not

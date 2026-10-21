@@ -226,14 +226,18 @@ ShaderProgram* ShaderProgram::compile_graphics_from_HLSL(
     const ocarina_set<ocarina_string>& pixel_options,
     const ocarina_string& entry_point) {
 
+    const bool rebuild = RHIContext::instance().rebuild_shaders();
+    const bool shader_pdbs = RHIContext::instance().shader_pdbs();
+
     CompiledShader vertex_compiled{};
     if (!compile_hlsl_to_spirv_and_reflect(
             vertex_shader_file,
             ShaderType::VertexShader,
             entry_point,
             vertex_compiled,
-            RHIContext::instance().rebuild_shaders(),
-            vertex_options)) {
+            rebuild,
+            vertex_options,
+            shader_pdbs)) {
         return nullptr;
     }
 
@@ -243,8 +247,9 @@ ShaderProgram* ShaderProgram::compile_graphics_from_HLSL(
             ShaderType::PixelShader,
             entry_point,
             pixel_compiled,
-            RHIContext::instance().rebuild_shaders(),
-            pixel_options)) {
+            rebuild,
+            pixel_options,
+            shader_pdbs)) {
         return nullptr;
     }
 
@@ -284,7 +289,8 @@ ShaderProgram* ShaderProgram::compile_compute_from_HLSL(
             entry_point,
             compiled,
             RHIContext::instance().rebuild_shaders(),
-            options)) {
+            options,
+            RHIContext::instance().shader_pdbs())) {
         return nullptr;
     }
 
@@ -322,6 +328,13 @@ void ShaderProgram::create_descriptor_set_layouts(
     }
     descriptor_set_layouts_ = layouts;
     descriptor_set_layouts_ready_ = true;
+}
+
+void ShaderProgram::set_descriptor_set_layout(uint32_t set_index, DescriptorSetLayout* layout) noexcept {
+    if (set_index >= descriptor_set_layouts_.size()) {
+        return;
+    }
+    descriptor_set_layouts_[set_index] = layout;
 }
 
 void ShaderProgram::merge_stage_reflection(

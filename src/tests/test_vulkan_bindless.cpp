@@ -126,7 +126,16 @@ int main(int argc, char *argv[]) {
     render_pass_creation.clear_color = make_float4(0.1f, 0.1f, 0.1f, 1.0f);
     render_pass_creation.clear_depth = 1.0f;
     render_pass_creation.clear_stencil = 0;
+    render_pass_creation.present_swapchain = false;
     RHIRenderPass* render_pass = device.create_render_pass(render_pass_creation);
+
+    RenderPassCreation ui_pass_creation;
+    ui_pass_creation.render_target = &swapchain_target;
+    ui_pass_creation.clear_color_attachment = false;
+    ui_pass_creation.clear_depth_attachment = false;
+    ui_pass_creation.enable_depth_attachment = false;
+    ui_pass_creation.present_swapchain = true;
+    RHIRenderPass* ui_pass = device.create_render_pass(ui_pass_creation);
 
     async_loader.set_pso_requests({
         PSORequest::make_graphics(shader_vert_abs, shader_frag_abs, render_pass),
@@ -138,7 +147,9 @@ int main(int argc, char *argv[]) {
 
     renderer.set_scene(&scene);
     renderer.set_camera(&camera);
-    renderer.pass_group(PassGroupId::UI).add_render_pass(render_pass);
+    // Legacy materials participate in Opaque; UI is ImGui-only.
+    renderer.pass_group(PassGroupId::Opaque).add_render_pass(render_pass);
+    renderer.pass_group(PassGroupId::UI).add_render_pass(ui_pass);
 
     ImguiRenderer imgui_renderer(*window);
     imgui_renderer.init(device);

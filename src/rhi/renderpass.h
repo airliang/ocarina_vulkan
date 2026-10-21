@@ -111,6 +111,8 @@ public:
     OC_MAKE_MEMBER_GETTER(clear_stencil, )
     OC_MAKE_MEMBER_GETTER(clear_color_attachment, )
     OC_MAKE_MEMBER_GETTER(clear_depth_attachment, )
+    OC_MAKE_MEMBER_GETTER(enable_color_attachments, )
+    OC_MAKE_MEMBER_GETTER(enable_depth_attachment, )
     OC_MAKE_MEMBER_GETTER(present_swapchain, )
 
     [[nodiscard]] uint32_t color_attachment_count() const noexcept {
@@ -156,6 +158,8 @@ protected:
     uint32_t clear_stencil_ = 0;
     bool clear_color_attachment_ = true;
     bool clear_depth_attachment_ = true;
+    bool enable_color_attachments_ = true;
+    bool enable_depth_attachment_ = true;
     bool present_swapchain_ = true;
 
     ocarina_unordered_map<PipelineState, PipelineRenderQueue*, PipelineStateHash> pipeline_render_queues_;

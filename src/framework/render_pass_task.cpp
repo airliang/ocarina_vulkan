@@ -34,11 +34,11 @@ void record_default_graphics_body(
     PassGroupId group_id) noexcept {
     if (group_id == PassGroupId::Skybox) {
         if (Material* skybox = renderer.skybox_material()) {
-            renderer.draw_fullscreen(cmd, skybox, render_pass);
+            renderer.draw_fullscreen(cmd, skybox, render_pass, group_id);
         }
     } else if (group_id == PassGroupId::PostProcess) {
         if (Material* post = renderer.post_process_material()) {
-            renderer.draw_fullscreen(cmd, post, render_pass);
+            renderer.draw_fullscreen(cmd, post, render_pass, group_id);
         }
     } else if (group_id == PassGroupId::Transparent) {
         renderer.draw_transparents(cmd, render_pass);

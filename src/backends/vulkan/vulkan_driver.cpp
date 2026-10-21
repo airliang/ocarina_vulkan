@@ -853,6 +853,15 @@ DescriptorSetLayout* VulkanDriver::create_frame_descriptor_set_layout(
     return vulkan_descriptor_manager->create_frame_descriptor_set_layout(bindings);
 }
 
+DescriptorSetLayout* VulkanDriver::create_or_get_descriptor_set_layout(
+    uint8_t set_index,
+    span<const ShaderVariableBinding> bindings) {
+    if (vulkan_descriptor_manager == nullptr) {
+        return nullptr;
+    }
+    return vulkan_descriptor_manager->create_or_get_descriptor_set_layout(set_index, bindings);
+}
+
 DescriptorSetLayout* VulkanDriver::get_frame_descriptor_set_layout() {
     if (vulkan_descriptor_manager == nullptr) {
         return nullptr;

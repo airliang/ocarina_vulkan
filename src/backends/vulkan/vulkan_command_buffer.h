@@ -11,9 +11,28 @@ class VulkanTexture;
 class RHIRenderPass;
 
 struct CommandBufferState {
+    static constexpr uint32_t kMaxVertexBufferBindings = 16;
+
     VkDescriptorSet bound_sets[MAX_DESCRIPTOR_SETS_PER_SHADER] = { VK_NULL_HANDLE };
     VkPipelineLayout bound_set_layouts[MAX_DESCRIPTOR_SETS_PER_SHADER] = { VK_NULL_HANDLE };
     uint32_t dirty_mask = 0; // Each bit represents a set index (0-MAX_DESCRIPTOR_SETS_PER_SHADER)
+
+    /// Skip redundant vkCmdBindVertexBuffers / vkCmdBindIndexBuffer when unchanged.
+    VkBuffer bound_vertex_buffers[kMaxVertexBufferBindings] = {};
+    VkDeviceSize bound_vertex_offsets[kMaxVertexBufferBindings] = {};
+    VkBuffer bound_index_buffer = VK_NULL_HANDLE;
+    VkDeviceSize bound_index_offset = 0;
+    VkIndexType bound_index_type = VK_INDEX_TYPE_UINT32;
+
+    void clear_buffer_bindings() noexcept {
+        for (uint32_t i = 0; i < kMaxVertexBufferBindings; ++i) {
+            bound_vertex_buffers[i] = VK_NULL_HANDLE;
+            bound_vertex_offsets[i] = 0;
+        }
+        bound_index_buffer = VK_NULL_HANDLE;
+        bound_index_offset = 0;
+        bound_index_type = VK_INDEX_TYPE_UINT32;
+    }
 };
 
 class VulkanCommandBuffer : public CommandBuffer::Impl {

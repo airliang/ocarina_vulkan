@@ -80,8 +80,8 @@ int main(int argc, char *argv[]) {
             skybox_material = resources.create_material(device, program);
 
             // Must match the PSORequest used for async compile (see set_pso_requests below).
-            skybox_material->set_depth_stencil_state(make_skybox_depth_state());
-            skybox_material->set_raster_state(make_skybox_raster_state());
+            skybox_material->set_depth_stencil_state(PassGroupId::Opaque, make_skybox_depth_state());
+            skybox_material->set_raster_state(PassGroupId::Opaque, make_skybox_raster_state());
 
             const fs::path face_paths[6] = {
                 cubemap_dir / "posx.jpg",

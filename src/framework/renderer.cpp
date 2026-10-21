@@ -1,6 +1,7 @@
 #include "renderer.h"
 #include "async_loader.h"
 #include "pipeline_manager.h"
+#include "render_pipeline_asset.h"
 #include "render_task.h"
 #include "resource_manager.h"
 #include "gpu_resource_thread.h"
@@ -62,7 +63,24 @@ Renderer::Renderer(Device *device)
 
 Renderer::~Renderer() {
     shutdown();
+    destroy_pipeline_render_passes();
     render_pass_tasks_.clear();
+}
+
+void Renderer::destroy_pipeline_render_passes() {
+    for (RHIRenderPass* pass : pipeline_render_passes_) {
+        if (pass == nullptr || device_ == nullptr) {
+            continue;
+        }
+        for (auto& [id, task] : render_pass_tasks_) {
+            (void)id;
+            task.remove_render_pass(pass);
+        }
+        device_->destroy_render_pass(pass);
+    }
+    pipeline_render_passes_.clear();
+    pipeline_render_pass_by_name_.clear();
+    pipeline_asset_ = nullptr;
 }
 
 void Renderer::shutdown() {
@@ -76,6 +94,8 @@ void Renderer::shutdown() {
     GPUResourceThread::instance().shutdown();
     PipelineManager::instance().shutdown();
     GlobalGPUStorage::instance().cleanup();
+
+    destroy_pipeline_render_passes();
 
     // Release GPU resources while VkDevice is still alive. Singletons / atexit
     // destructors may run after Device destruction and must not free Vulkan objects.
@@ -105,6 +125,95 @@ bool Renderer::has_pass_group(PassGroupId id) const noexcept {
     return find_pass_group(id) != nullptr;
 }
 
+namespace {
+
+[[nodiscard]] RenderPassCreation make_render_pass_creation(
+    const RenderPassDesc& pass,
+    RenderTarget* render_target) noexcept {
+    RenderPassCreation creation;
+    creation.render_target = render_target;
+    creation.clear_color_attachment = false;
+    creation.clear_depth_attachment = false;
+    // Empty color[] → depth-only (e.g. DepthPrepass): do not bind swapchain color.
+    creation.enable_color_attachments = !pass.color.empty();
+    creation.enable_depth_attachment = pass.depth.enabled;
+    // Pipeline passes are intermediate; apps add a present pass (e.g. UI) separately.
+    creation.present_swapchain = false;
+
+    if (!pass.color.empty()) {
+        const PipelineColorAttachmentDesc& color = pass.color.front();
+        creation.clear_color_attachment = (color.load == PipelineLoadOp::Clear);
+        if (color.has_clear) {
+            creation.clear_color = color.clear;
+        }
+    }
+    if (pass.depth.enabled) {
+        creation.clear_depth_attachment = (pass.depth.load == PipelineLoadOp::Clear);
+        if (pass.depth.has_clear) {
+            creation.clear_depth = pass.depth.clear;
+        }
+    }
+    return creation;
+}
+
+}// namespace
+
+bool Renderer::load_pipeline(RenderPipelineAsset& asset, RenderTarget* render_target) {
+    if (render_target == nullptr || device_ == nullptr) {
+        OC_ERROR("Renderer::load_pipeline requires a non-null RenderTarget and Device");
+        return false;
+    }
+    if (!asset.valid()) {
+        OC_ERROR("Renderer::load_pipeline requires a valid RenderPipelineAsset");
+        return false;
+    }
+
+    destroy_pipeline_render_passes();
+    pipeline_asset_ = &asset;
+
+    for (const RenderPassDesc& pass : asset.passes) {
+        const RenderPassCreation creation = make_render_pass_creation(pass, render_target);
+        RHIRenderPass* rhi_pass = device_->create_render_pass(creation);
+        if (rhi_pass == nullptr) {
+            OC_ERROR_FORMAT("Renderer::load_pipeline failed to create pass '{}'", pass.name.c_str());
+            destroy_pipeline_render_passes();
+            pipeline_asset_ = nullptr;
+            return false;
+        }
+        pipeline_render_passes_.push_back(rhi_pass);
+        pipeline_render_pass_by_name_[pass.name] = rhi_pass;
+        pass_group(pass.group).add_render_pass(rhi_pass);
+    }
+    return true;
+}
+
+bool Renderer::load_default_pipeline(RenderTarget* render_target, const fs::path& pipeline_json_path) {
+    if (!owned_default_pipeline_asset_.load_pipeline_asset(pipeline_json_path)) {
+        OC_ERROR_FORMAT(
+            "Renderer::load_default_pipeline failed to load '{}'",
+            pipeline_json_path.string());
+        return false;
+    }
+    return load_pipeline(owned_default_pipeline_asset_, render_target);
+}
+
+const RenderPipelineAsset* Renderer::pipeline_asset() const noexcept {
+    return pipeline_asset_;
+}
+
+const RenderPassDesc* Renderer::find_pipeline_pass(std::string_view name) const noexcept {
+    if (pipeline_asset_ == nullptr) {
+        return nullptr;
+    }
+    return pipeline_asset_->find_pass(name);
+}
+
+RHIRenderPass* Renderer::find_pipeline_render_pass(std::string_view name) const noexcept {
+    const ocarina_string key(name.data(), name.size());
+    const auto it = pipeline_render_pass_by_name_.find(key);
+    return it != pipeline_render_pass_by_name_.end() ? it->second : nullptr;
+}
+
 RHIRenderPass* Renderer::find_swapchain_render_pass() const noexcept {
     if (const RenderPassTask* ui = find_pass_group(PassGroupId::UI)) {
         if (RHIRenderPass* pass = ui->swapchain_render_pass()) {
@@ -125,6 +234,7 @@ RHIRenderPass* Renderer::find_default_target_render_pass() const noexcept {
         PassGroupId::Opaque,
         PassGroupId::UI,
         PassGroupId::Skybox,
+        PassGroupId::DepthPrepass,
         PassGroupId::GBuffer,
         PassGroupId::Offscreen,
         PassGroupId::Lighting,
@@ -151,24 +261,6 @@ void Renderer::set_scene(Scene* scene) noexcept {
     scene_ = scene;
 }
 
-void Renderer::update_entity_render_component(uint32_t entity_index) {
-    EntityComponentSystem& ecs = EntityComponentSystem::instance();
-    RenderComponent* render = ecs.try_render_component(entity_index);
-    if (render == nullptr) {
-        return;
-    }
-    render->update(device_, entity_index);
-}
-
-void Renderer::update_visible_render_components() {
-    if (scene_ == nullptr) {
-        return;
-    }
-
-    for (uint32_t entity_index : primitive_cull_task_.visible_entity_indices()) {
-        update_entity_render_component(entity_index);
-    }
-}
 
 void Renderer::populate_render_pass_queues(RHIRenderPass* render_pass, PassGroupId group_id) {
     OC_PROFILE_FUNCTION;
@@ -191,21 +283,26 @@ void Renderer::populate_render_pass_queues(RHIRenderPass* render_pass, PassGroup
             return;
         }
 
-        const bool transparent = material->is_transparent();
-        if (group_id == PassGroupId::Opaque && transparent) {
+        // Enqueue only for passes listed in MaterialAsset pass_participation
+        // (e.g. DepthPrepass + Opaque, or Transparent alone).
+        // Legacy create_material() binds Opaque only; Offscreen RT passes reuse that binding.
+        PassGroupId binding_group = group_id;
+        if (!material->participates_in_pass(group_id)) {
+            if (group_id == PassGroupId::Offscreen
+                && material->participates_in_pass(PassGroupId::Opaque)) {
+                binding_group = PassGroupId::Opaque;
+            } else {
+                return;
+            }
+        }
+        const PipelineState* pipeline_state = material->pipeline_state_for_pass(binding_group);
+        if (pipeline_state == nullptr) {
             return;
         }
-        if (group_id == PassGroupId::Transparent && !transparent) {
-            return;
-        }
-
-        const PipelineState& pipeline_state = material->get_pipeline_state();
-        render_pass->add_draw_call(entity_index, pipeline_state);
-        // Enqueue once per dirty material, not once per visible entity (avoids
-        // pending_requests_ insert/erase allocating every draw every frame).
-        if (material->is_pipeline_dirty()) {
-            PipelineManager::instance().enqueue(pipeline_state, render_pass);
-            material->clear_pipeline_dirty();
+        render_pass->add_draw_call(entity_index, *pipeline_state);
+        if (material->is_pass_pipeline_dirty(binding_group)) {
+            PipelineManager::instance().enqueue(*pipeline_state, render_pass);
+            material->clear_pass_pipeline_dirty(binding_group);
         }
     };
 
@@ -279,15 +376,22 @@ void Renderer::draw_render_queues(CommandBuffer& cmd, RHIRenderPass* render_pass
                 bound_index_page = geometry.index_page;
             }
 
-            for (const PushConstantRange& range : item.push_constants) {
-                if (range.size == 0) {
-                    continue;
+            ShaderProgram* program = pipeline_state.shader_program;
+            if (program != nullptr) {
+                item.update_push_constants_if_dirty(program, entity_index);
+                if (const ocarina_vector<PushConstantRange>* ranges =
+                        item.push_constants_for(program)) {
+                    for (const PushConstantRange& range : *ranges) {
+                        if (range.size == 0) {
+                            continue;
+                        }
+                        cmd.push_constants(
+                            range.data.data(),
+                            range.offset,
+                            range.size,
+                            range.shader_stage);
+                    }
                 }
-                cmd.push_constants(
-                    range.data.data(),
-                    range.offset,
-                    range.size,
-                    range.shader_stage);
             }
 
             if (material != nullptr) {
@@ -316,17 +420,35 @@ void Renderer::draw_transparents(CommandBuffer& cmd, RHIRenderPass* render_pass)
     draw_render_queues(cmd, render_pass);
 }
 
-void Renderer::draw_fullscreen(CommandBuffer& cmd, Material* material, RHIRenderPass* render_pass) {
+void Renderer::draw_fullscreen(
+    CommandBuffer& cmd,
+    Material* material,
+    RHIRenderPass* render_pass,
+    PassGroupId group_id) {
     OC_PROFILE_FUNCTION;
     if (material == nullptr || render_pass == nullptr || !material->is_renderable()) {
         return;
     }
 
-    const PipelineState& pipeline_state = material->get_pipeline_state();
-    RHIPipeline* pipeline = PipelineManager::instance().get_pipeline(pipeline_state, render_pass);
+    PassGroupId binding_group = group_id;
+    if (!material->participates_in_pass(group_id)) {
+        // create_material() binds Opaque only; skybox / post-process reuse that binding.
+        if (material->participates_in_pass(PassGroupId::Opaque)) {
+            binding_group = PassGroupId::Opaque;
+        } else {
+            return;
+        }
+    }
+
+    const PipelineState* pipeline_state = material->pipeline_state_for_pass(binding_group);
+    if (pipeline_state == nullptr) {
+        return;
+    }
+
+    RHIPipeline* pipeline = PipelineManager::instance().get_pipeline(*pipeline_state, render_pass);
     if (pipeline == nullptr) {
         // Compile once on cache miss; do not enqueue every fullscreen draw.
-        PipelineManager::instance().enqueue(pipeline_state, render_pass);
+        PipelineManager::instance().enqueue(*pipeline_state, render_pass);
         return;
     }
 
@@ -464,28 +586,33 @@ void Renderer::poll_async_loader_completion() {
     async_wait_fn_ = nullptr;
 }
 
+void Renderer::start_async_loader() {
+    if (async_loader_task_ == nullptr || is_async_loading()) {
+        return;
+    }
+
+    if (auto* async_loader = dynamic_cast<AsyncLoader*>(async_loader_task_)) {
+        // Render passes must be registered before async load so PSOs can compile.
+        if (async_loader->target_render_pass() == nullptr) {
+            async_loader->set_target_render_pass(find_default_target_render_pass());
+        }
+        if (loading_progress_listener_ != nullptr) {
+            async_loader->set_progress_listener(loading_progress_listener_);
+        }
+        // Do not set AsyncLoader::complete_callback here — Renderer invokes
+        // async_complete_fn_ on the render thread via poll_async_loader_completion().
+    }
+
+    task_scheduler_.AddTaskSetToPipe(async_loader_task_);
+
+    if (async_wait_fn_) {
+        async_wait_fn_();
+    }
+}
+
 void Renderer::run()
 {
-    if (async_loader_task_) {
-        if (auto* async_loader = dynamic_cast<AsyncLoader*>(async_loader_task_)) {
-            // Render passes (swapchain and/or dynamic-rendering targets) must be
-            // registered before async load so PSOs can be compiled against them.
-            if (async_loader->target_render_pass() == nullptr) {
-                async_loader->set_target_render_pass(find_default_target_render_pass());
-            }
-            if (loading_progress_listener_ != nullptr) {
-                async_loader->set_progress_listener(loading_progress_listener_);
-            }
-            // Do not set AsyncLoader::complete_callback here — Renderer invokes
-            // async_complete_fn_ on the render thread via poll_async_loader_completion().
-        }
-
-        task_scheduler_.AddTaskSetToPipe(async_loader_task_);
-
-        if (async_wait_fn_) {
-            async_wait_fn_();
-        }
-    }
+    start_async_loader();
 
     // Start the render loop immediately so PassGroupId::UI can show loading progress
     // while the async loader runs on worker threads.

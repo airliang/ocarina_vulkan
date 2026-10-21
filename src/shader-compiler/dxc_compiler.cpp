@@ -4,6 +4,7 @@
 
 #include "dxc_compiler.h"
 #include "core/logging.h"
+#include <cstring>
 #include <fstream>
 #ifdef _WIN32
 #define NOMINMAX
@@ -80,6 +81,159 @@ public:
     ocarina_string shader_file_directory;
 };
 
+namespace {
+
+// SPIR-V opcodes used by the shaderpdb DebugLine sanitize pass.
+constexpr uint32_t kSpvOpExtInstImport = 11u;
+constexpr uint32_t kSpvOpExtInst = 12u;
+constexpr uint32_t kSpvOpTypeInt = 21u;
+constexpr uint32_t kSpvOpConstant = 43u;
+// NonSemantic.Shader.DebugInfo.100 DebugLine (see SPIR-V Headers).
+constexpr uint32_t kNonSemanticDebugLine = 103u;
+
+[[nodiscard]] bool spirv_literal_starts_with(
+    const uint32_t *words,
+    uint32_t word_count,
+    const char *prefix) noexcept {
+    if (words == nullptr || prefix == nullptr || word_count == 0) {
+        return false;
+    }
+    const size_t prefix_len = std::strlen(prefix);
+    const size_t byte_capacity = static_cast<size_t>(word_count) * sizeof(uint32_t);
+    if (prefix_len > byte_capacity) {
+        return false;
+    }
+    // SPIR-V string literals are little-endian packed chars (matches LE hosts).
+    const char *bytes = reinterpret_cast<const char *>(words);
+    for (size_t i = 0; i < prefix_len; ++i) {
+        if (bytes[i] != prefix[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool is_debug_set_id(
+    const ocarina_vector<uint32_t> &debug_set_ids,
+    uint32_t set_id) noexcept {
+    for (uint32_t id : debug_set_ids) {
+        if (id == set_id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+constexpr uint32_t kSpvOpFunction = 54u;
+
+/// DXC -fspv-debug=vulkan-with-source often emits DebugLine columns past the
+/// DebugSource line length (Column Start and/or End). spirv-val / Vulkan
+/// VUID-08737 then reject the module. spirv-val requires Column Start/End to
+/// be 32-bit *unsigned* OpConstant ids, and treats every line's valid column
+/// range as 1..length (length >= 1), so unsigned OpConstant(1) is always safe.
+/// Line numbers are kept.
+void sanitize_nonsemantic_debug_line_columns(ocarina_vector<uint32_t> &spirv) {
+    if (spirv.size() < 5) {
+        return;
+    }
+
+    ocarina_vector<uint32_t> debug_set_ids;
+    uint32_t uint32_type_id = 0;
+    uint32_t uint_one_id = 0;
+    size_t first_function_offset = 0;
+
+    for (size_t i = 5; i < spirv.size();) {
+        const uint32_t word0 = spirv[i];
+        const uint32_t word_count = word0 >> 16;
+        const uint32_t opcode = word0 & 0xffffu;
+        if (word_count == 0 || i + word_count > spirv.size()) {
+            break;
+        }
+
+        if (opcode == kSpvOpExtInstImport && word_count >= 3) {
+            if (spirv_literal_starts_with(
+                    &spirv[i + 2],
+                    word_count - 2,
+                    "NonSemantic.Shader.DebugInfo.")) {
+                debug_set_ids.push_back(spirv[i + 1]);
+            }
+        } else if (opcode == kSpvOpTypeInt && word_count >= 4) {
+            // OpTypeInt <id> <width> <signedness> — DebugLine columns need unsigned.
+            if (spirv[i + 2] == 32u && spirv[i + 3] == 0u && uint32_type_id == 0) {
+                uint32_type_id = spirv[i + 1];
+            }
+        } else if (opcode == kSpvOpConstant && word_count >= 4 && uint_one_id == 0) {
+            // OpConstant <type> <id> <value>
+            if (uint32_type_id != 0 &&
+                spirv[i + 1] == uint32_type_id &&
+                spirv[i + 3] == 1u) {
+                uint_one_id = spirv[i + 2];
+            }
+        } else if (opcode == kSpvOpFunction && first_function_offset == 0) {
+            first_function_offset = i;
+        }
+
+        i += word_count;
+    }
+
+    if (debug_set_ids.empty()) {
+        return;
+    }
+
+    // No existing %uint_1: allocate a new id and insert OpConstant before functions.
+    if (uint_one_id == 0) {
+        if (uint32_type_id == 0 || first_function_offset == 0) {
+            spdlog::warn(
+                "shaderpdb: no unsigned OpConstant(1) available; cannot sanitize DebugLine columns");
+            return;
+        }
+        uint_one_id = spirv[3];
+        spirv[3] = uint_one_id + 1u;
+        const uint32_t op_constant_words[4] = {
+            (4u << 16) | kSpvOpConstant,
+            uint32_type_id,
+            uint_one_id,
+            1u,
+        };
+        spirv.insert(
+            spirv.begin() + static_cast<std::ptrdiff_t>(first_function_offset),
+            op_constant_words,
+            op_constant_words + 4);
+        spdlog::info("shaderpdb: injected unsigned OpConstant(1) id={}", uint_one_id);
+    }
+
+    size_t fixed = 0;
+    for (size_t i = 5; i < spirv.size();) {
+        const uint32_t word0 = spirv[i];
+        const uint32_t word_count = word0 >> 16;
+        const uint32_t opcode = word0 & 0xffffu;
+        if (word_count == 0 || i + word_count > spirv.size()) {
+            break;
+        }
+        // OpExtInst: type, id, set, instruction, Source, LineStart, LineEnd, ColStart, ColEnd
+        if (opcode == kSpvOpExtInst && word_count >= 10) {
+            const uint32_t set_id = spirv[i + 3];
+            const uint32_t ext_inst = spirv[i + 4];
+            if (ext_inst == kNonSemanticDebugLine && is_debug_set_id(debug_set_ids, set_id)) {
+                if (spirv[i + 8] != uint_one_id || spirv[i + 9] != uint_one_id) {
+                    spirv[i + 8] = uint_one_id;
+                    spirv[i + 9] = uint_one_id;
+                    ++fixed;
+                }
+            }
+        }
+        i += word_count;
+    }
+
+    if (fixed > 0) {
+        spdlog::info(
+            "shaderpdb: sanitized {} NonSemantic DebugLine column range(s) to unsigned column 1",
+            fixed);
+    }
+}
+
+} // namespace
+
 bool DXCCompiler::compile_hlsl_spriv(const CompileInput &input, CompileResult &result) {
     ComPtr<IDxcUtils> dxc_utils = {};
     ComPtr<IDxcCompiler3> dxc_compiler = {};
@@ -119,6 +273,22 @@ bool DXCCompiler::compile_hlsl_spriv(const CompileInput &input, CompileResult &r
     args.push_back(owned_wstrings.back().c_str());
     args.push_back(L"-spirv");
     args.push_back(L"-fspv-target-env=vulkan1.1");
+
+    // RenderDoc Vulkan source debugging: NonSemantic.Shader.DebugInfo.100 is embedded
+    // in the SPIR-V. DXC rejects -Fd with -spirv (no separate DXC_OUT_PDB).
+    // Passing any -fspv-extension restricts the allowed set, so also permit
+    // SPV_EXT_descriptor_indexing for bindless runtime arrays (g_textures[] / g_samplers[]).
+    // -Vd: DXC's bundled spirv-val rejects some valid DebugLine column ranges from
+    // vulkan-with-source (Column End > line length); skip validation so compile succeeds.
+    // RenderDoc still consumes the embedded debug source in the .spv.
+    if (input.output_pdbs) {
+        args.push_back(DXC_ARG_DEBUG);
+        args.push_back(DXC_ARG_SKIP_OPTIMIZATIONS);
+        args.push_back(L"-Vd");
+        args.push_back(L"-fspv-extension=SPV_KHR_non_semantic_info");
+        args.push_back(L"-fspv-extension=SPV_EXT_descriptor_indexing");
+        args.push_back(L"-fspv-debug=vulkan-with-source");
+    }
 
     for (const auto& option : input.macros) {
         args.push_back(L"-D");
@@ -183,6 +353,15 @@ bool DXCCompiler::compile_hlsl_spriv(const CompileInput &input, CompileResult &r
         result.spriv_codes[i] = spvCode;
     }
 
+    if (input.output_pdbs) {
+        // Make debug SPIR-V pass vkCreateShaderModule / spirv-val (VUID-08737).
+        sanitize_nonsemantic_debug_line_columns(result.spriv_codes);
+        spdlog::info(
+            "shaderpdb: RenderDoc debug source embedded in SPIR-V (file='{}' entry='{}')",
+            input.full_file_path,
+            input.entry);
+    }
+
     return result.spriv_codes.size() > 0;
 }
 
@@ -193,6 +372,21 @@ void DXCCompiler::run_spriv_reflection(const ocarina_vector<uint32_t> &spriv, Sh
     class SpirvReflector : public spirv_cross::Compiler {
     public:
         using Compiler::Compiler;
+
+        /// True when every member has DecorationOffset (required by get_declared_struct_size).
+        /// Debug SPIR-V (-fspv-debug=vulkan-with-source) adds named structs without offsets;
+        /// calling get_declared_struct_size on those throws.
+        [[nodiscard]] bool struct_has_member_offsets(const spirv_cross::SPIRType &type) const {
+            if (type.basetype != spirv_cross::SPIRType::Struct || type.member_types.empty()) {
+                return false;
+            }
+            for (uint32_t member_index = 0; member_index < type.member_types.size(); ++member_index) {
+                if (!has_member_decoration(type.self, member_index, spv::DecorationOffset)) {
+                    return false;
+                }
+            }
+            return true;
+        }
 
         void collect_named_structs(
             ShaderReflection &shader_reflection,
@@ -206,6 +400,10 @@ void DXCCompiler::run_spriv_reflection(const ocarina_vector<uint32_t> &spriv, Sh
                         get_decoration_bitset(type_id).get(spv::DecorationBufferBlock) ||
                         get_decoration_bitset(type.self).get(spv::DecorationBlock) ||
                         get_decoration_bitset(type.self).get(spv::DecorationBufferBlock)) {
+                        return;
+                    }
+                    // Skip debug / non-layout structs that lack Offset decorations.
+                    if (!struct_has_member_offsets(type)) {
                         return;
                     }
 
@@ -299,10 +497,11 @@ void DXCCompiler::run_spriv_reflection(const ocarina_vector<uint32_t> &spriv, Sh
 
         const spirv_cross::SPIRType &type = spirvmodule.get_type(resource.base_type_id);
         // HLSL `ByteAddressBuffer` reflection may appear here as a non-struct buffer.
-        // `get_declared_struct_size()` expects a struct type, so guard it.
+        // `get_declared_struct_size()` expects a struct type with Offset decorations.
         uint32_t size = 0;
-        if (type.basetype == spirv_cross::SPIRType::Struct) {
-            size = spirvmodule.get_declared_struct_size(type);
+        if (type.basetype == spirv_cross::SPIRType::Struct
+            && spirvmodule.struct_has_member_offsets(type)) {
+            size = static_cast<uint32_t>(spirvmodule.get_declared_struct_size(type));
         }
 
         ShaderReflection::UniformBuffer ubo{};
@@ -335,23 +534,26 @@ void DXCCompiler::run_spriv_reflection(const ocarina_vector<uint32_t> &spriv, Sh
             }
         };
 
-        for (uint32_t member_index = 0; member_index < type.member_types.size(); ++member_index) {
-            const spirv_cross::SPIRType& member_type = spirvmodule.get_type(type.member_types[member_index]);
-            const uint32_t member_offset = spirvmodule.type_struct_member_offset(type, member_index);
+        if (size > 0) {
+            for (uint32_t member_index = 0; member_index < type.member_types.size(); ++member_index) {
+                const spirv_cross::SPIRType& member_type =
+                    spirvmodule.get_type(type.member_types[member_index]);
+                const uint32_t member_offset = spirvmodule.type_struct_member_offset(type, member_index);
 
-            if (member_type.basetype == spirv_cross::SPIRType::Struct) {
-                append_leaf_uniform_members(
-                    append_leaf_uniform_members, type.member_types[member_index], member_offset);
-                continue;
+                if (member_type.basetype == spirv_cross::SPIRType::Struct) {
+                    append_leaf_uniform_members(
+                        append_leaf_uniform_members, type.member_types[member_index], member_offset);
+                    continue;
+                }
+
+                ShaderReflection::ShaderVariable shader_variable{};
+                shader_variable.name = spirvmodule.get_member_name(resource.base_type_id, member_index);
+                shader_variable.size = spirvmodule.get_declared_struct_member_size(type, member_index);
+                shader_variable.offset = member_offset;
+                shader_variable.variable_type =
+                    get_shader_variable_type(member_type.vecsize, member_type.columns, member_type);
+                ubo.shader_variables.emplace_back(std::move(shader_variable));
             }
-
-            ShaderReflection::ShaderVariable shader_variable{};
-            shader_variable.name = spirvmodule.get_member_name(resource.base_type_id, member_index);
-            shader_variable.size = spirvmodule.get_declared_struct_member_size(type, member_index);
-            shader_variable.offset = member_offset;
-            shader_variable.variable_type =
-                get_shader_variable_type(member_type.vecsize, member_type.columns, member_type);
-            ubo.shader_variables.emplace_back(std::move(shader_variable));
         }
         shader_reflection.uniform_buffers.emplace_back(std::move(ubo));
     }
@@ -361,6 +563,9 @@ void DXCCompiler::run_spriv_reflection(const ocarina_vector<uint32_t> &spriv, Sh
         const spirv_cross::SPIRType &struct_type,
         const char *fallback_name = nullptr) {
         if (struct_type.basetype != spirv_cross::SPIRType::Struct || struct_type.member_types.empty()) {
+            return;
+        }
+        if (!spirvmodule.struct_has_member_offsets(struct_type)) {
             return;
         }
 
@@ -434,14 +639,13 @@ void DXCCompiler::run_spriv_reflection(const ocarina_vector<uint32_t> &spriv, Sh
                     element_type_id = member_type.member_types[0];
                     element_type = &spirvmodule.get_type(element_type_id);
                 }
-                shader_resource.size = element_type->basetype == spirv_cross::SPIRType::Struct
-                    ? spirvmodule.get_declared_struct_size(*element_type)
-                    : 0;
-                if (element_type->basetype == spirv_cross::SPIRType::Struct) {
-                    add_named_struct(
-                        element_type_id,
-                        *element_type,
-                        nullptr);
+                if (element_type->basetype == spirv_cross::SPIRType::Struct
+                    && spirvmodule.struct_has_member_offsets(*element_type)) {
+                    shader_resource.size = static_cast<uint32_t>(
+                        spirvmodule.get_declared_struct_size(*element_type));
+                    add_named_struct(element_type_id, *element_type, nullptr);
+                } else {
+                    shader_resource.size = 0;
                 }
             }
         } else {
@@ -458,7 +662,11 @@ void DXCCompiler::run_spriv_reflection(const ocarina_vector<uint32_t> &spriv, Sh
         uint32_t binding = spirvmodule.get_decoration(resource.id, spv::DecorationBinding);
 
         const spirv_cross::SPIRType &type = spirvmodule.get_type(resource.base_type_id);
-        uint32_t size = spirvmodule.get_declared_struct_size(type);
+        if (type.basetype != spirv_cross::SPIRType::Struct
+            || !spirvmodule.struct_has_member_offsets(type)) {
+            continue;
+        }
+        uint32_t size = static_cast<uint32_t>(spirvmodule.get_declared_struct_size(type));
 
         ShaderReflection::UniformBuffer push_constant{};
         push_constant.name = spirvmodule.get_name(resource.id);

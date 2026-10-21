@@ -1,4 +1,5 @@
 #include "resource_manager.h"
+#include "material_asset.h"
 #include "gpu_resource_thread.h"
 #include "bindless_texture_registry.h"
 #include "core/logging.h"
@@ -9,6 +10,8 @@
 #include "rhi/device.h"
 #include "rhi/shader_program.h"
 #include "core/image.h"
+
+#include <algorithm>
 
 namespace ocarina {
 
@@ -286,6 +289,30 @@ Material* ResourceManager::create_unique_material(Device* device, ShaderProgram*
     return material;
 }
 
+Material* ResourceManager::create_unique_material(Device* device) {
+    Material* material = ocarina::new_with_allocator<Material>(device);
+    unique_materials_.push_back(material);
+    return material;
+}
+
+Material* ResourceManager::create_material_from_asset(
+    Device* device,
+    const MaterialAsset& asset,
+    LoadingProgressListener* progress_listener) {
+    if (device == nullptr || !asset.valid()) {
+        return nullptr;
+    }
+
+    Material* material = create_unique_material(device);
+    if (material == nullptr) {
+        return nullptr;
+    }
+    if (!material->initialize_from_asset(asset, progress_listener)) {
+        return nullptr;
+    }
+    return material;
+}
+
 Material* ResourceManager::get_material(ShaderProgram* shader_program) const noexcept {
     uint64_t key = make_material_key(shader_program);
     auto it = materials_.find(key);
@@ -301,6 +328,19 @@ bool ResourceManager::release_material(ShaderProgram* shader_program) {
 
     delete it->second;
     materials_.erase(it);
+    return true;
+}
+
+bool ResourceManager::release_unique_material(Material* material) {
+    if (material == nullptr) {
+        return false;
+    }
+    auto it = std::find(unique_materials_.begin(), unique_materials_.end(), material);
+    if (it == unique_materials_.end()) {
+        return false;
+    }
+    unique_materials_.erase(it);
+    ocarina::delete_with_allocator<Material>(material);
     return true;
 }
 
