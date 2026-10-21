@@ -363,6 +363,23 @@ VkPresentModeKHR VulkanSwapchain::get_preferred_presentmode(VkPhysicalDevice phy
     return selectedMode;
 }
 
+namespace {
+
+[[nodiscard]] bool is_srgb_color_format(VkFormat format) noexcept {
+    switch (format) {
+        case VK_FORMAT_R8G8B8A8_SRGB:
+        case VK_FORMAT_B8G8R8A8_SRGB:
+        case VK_FORMAT_R8G8B8_SRGB:
+        case VK_FORMAT_B8G8R8_SRGB:
+        case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
+            return true;
+        default:
+            return false;
+    }
+}
+
+}// namespace
+
 VkFormat VulkanSwapchain::get_preferred_colorformat(ColorSpace colorSpace)
 {
     VkPhysicalDevice physicalDevice = vulkan_device_->physicalDevice();
@@ -372,16 +389,57 @@ VkFormat VulkanSwapchain::get_preferred_colorformat(ColorSpace colorSpace)
 
     ocarina_vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
     VK_CHECK_RESULT(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface_, &formatCount, surfaceFormats.data()));
-    VkColorSpaceKHR vulkanColorSpace = colorspace_vulkan(colorSpace);
-    for (uint32_t i = 0; i < formatCount; ++i)
-    {
-        if (vulkanColorSpace == surfaceFormats[i].colorSpace)
-        {
-            color_format_ = surfaceFormats[i].format;
+
+    // A single UNDEFINED format means the implementation accepts any format.
+    if (formatCount == 1 && surfaceFormats[0].format == VK_FORMAT_UNDEFINED) {
+        color_format_ = colorSpace == ColorSpace::SRGB
+            ? VK_FORMAT_B8G8R8A8_SRGB
+            : VK_FORMAT_B8G8R8A8_UNORM;
+        return color_format_;
+    }
+
+    const VkColorSpaceKHR vulkanColorSpace = colorspace_vulkan(colorSpace);
+    const bool want_srgb_encode = colorSpace == ColorSpace::SRGB;
+
+    // Shaders write linear light. An *_SRGB attachment encodes to sRGB on store, which
+    // matches VK_COLOR_SPACE_SRGB_NONLINEAR_KHR. The first listed format is usually UNORM
+    // and would leave linear values for the display to darken.
+    if (want_srgb_encode) {
+        static constexpr VkFormat kPreferredSrgbFormats[] = {
+            VK_FORMAT_B8G8R8A8_SRGB,
+            VK_FORMAT_R8G8B8A8_SRGB,
+            VK_FORMAT_A8B8G8R8_SRGB_PACK32,
+        };
+        for (VkFormat preferred : kPreferredSrgbFormats) {
+            for (const VkSurfaceFormatKHR& surface_format : surfaceFormats) {
+                if (surface_format.format == preferred
+                    && surface_format.colorSpace == vulkanColorSpace) {
+                    color_format_ = preferred;
+                    return color_format_;
+                }
+            }
+        }
+        for (const VkSurfaceFormatKHR& surface_format : surfaceFormats) {
+            if (surface_format.colorSpace == vulkanColorSpace
+                && is_srgb_color_format(surface_format.format)) {
+                color_format_ = surface_format.format;
+                return color_format_;
+            }
+        }
+    }
+
+    for (const VkSurfaceFormatKHR& surface_format : surfaceFormats) {
+        if (surface_format.colorSpace == vulkanColorSpace
+            && !is_srgb_color_format(surface_format.format)) {
+            color_format_ = surface_format.format;
             return color_format_;
         }
     }
 
+    if (!surfaceFormats.empty()) {
+        color_format_ = surfaceFormats[0].format;
+        return color_format_;
+    }
     return VK_FORMAT_UNDEFINED;
 }
 

@@ -16,6 +16,7 @@
 #include "framework/pso_request.h"
 #include "framework/frame_resources.h"
 #include "framework/scene.h"
+#include "framework/pass_group_id.h"
 #include "framework/transform.h"
 #include "framework/mesh.h"
 #include "framework/internal_textures.h"
@@ -148,7 +149,16 @@ int main(int argc, char* argv[]) {
     render_pass_creation.clear_color = make_float4(0.08f, 0.08f, 0.1f, 1.0f);
     render_pass_creation.clear_depth = 1.0f;
     render_pass_creation.clear_stencil = 0;
+    render_pass_creation.present_swapchain = false;
     RHIRenderPass* render_pass = device.create_render_pass(render_pass_creation);
+
+    RenderPassCreation ui_pass_creation;
+    ui_pass_creation.render_target = &swapchain_target;
+    ui_pass_creation.clear_color_attachment = false;
+    ui_pass_creation.clear_depth_attachment = false;
+    ui_pass_creation.enable_depth_attachment = false;
+    ui_pass_creation.present_swapchain = true;
+    RHIRenderPass* ui_pass = device.create_render_pass(ui_pass_creation);
 
     async_loader.set_pso_requests({
         PSORequest::make_graphics(shader_vert_abs, shader_frag_abs, render_pass),
@@ -194,7 +204,9 @@ int main(int argc, char* argv[]) {
         display_loading_progress(*window->widgets(), nullptr, renderer.dt());
     });
 
-    renderer.pass_group(PassGroupId::UI).add_render_pass(render_pass);
+    // create_material() participates in Opaque only. UI is ImGui and presents the swapchain.
+    renderer.pass_group(PassGroupId::Opaque).add_render_pass(render_pass);
+    renderer.pass_group(PassGroupId::UI).add_render_pass(ui_pass);
 
     renderer.set_async_loader(&async_loader, nullptr, [&]() {
         if (scene == nullptr) {
