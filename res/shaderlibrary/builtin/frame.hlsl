@@ -19,6 +19,8 @@
 	float sunPad;
 };
 
+#include "camera_relative.hlsl"
+
 [[vk::binding(BIND_TEXTURES, FRAME_SET)]] Texture2D g_textures[] : register(t0);
 [[vk::binding(BIND_SAMPLERS, FRAME_SET)]] SamplerState g_samplers[] : register(s0);
 

@@ -15,6 +15,9 @@ namespace ocarina {
 
 class OC_FRAMEWORK_API Camera : public SDLWindowEventListener {
 public:
+    // Must stay in lockstep with SHADEROPTIONS_CAMERA_RELATIVE_RENDERING.
+    static constexpr int kCameraRelativeRendering = 1;
+
     Camera() = default;
     Camera(float fov, float aspect_ratio, float znear, float zfar);
     ~Camera() noexcept override = default;

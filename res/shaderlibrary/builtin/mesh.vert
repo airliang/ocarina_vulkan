@@ -31,7 +31,8 @@ VSOutput main(VSInput input)
 {
 	VSOutput output = (VSOutput)0;
     Transform transform = LoadTransform(pushConstants.transform_index);
-	float4 worldPos = mul(transform.modelMatrix, float4(input.Pos, 1.0));
+	float4x4 modelMatrix = ApplyCameraTranslationToMatrix(transform.modelMatrix);
+	float4 worldPos = mul(modelMatrix, float4(input.Pos, 1.0));
 	float4 viewPos = mul(viewMatrix, worldPos);
 	output.Pos = mul(projectionMatrix, viewPos);
 
@@ -44,7 +45,7 @@ VSOutput main(VSInput input)
 	output.Color = input.Color.rgb;
 	output.UV = input.UV;
 	output.LightVec = -sunDirection.xyz;
-	output.ViewVec = cameraPos.xyz - worldPos.xyz;
+	output.ViewVec = GetCameraPositionWS() - worldPos.xyz;
 	output.WorldPos = worldPos.xyz;
 	return output;
 }

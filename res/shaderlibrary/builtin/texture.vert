@@ -28,7 +28,8 @@ VSOutput main(VSInput input)
 	VSOutput output = (VSOutput)0;
 	output.Color = input.Color;
 	output.UV = input.UV;
-	output.Pos = mul(projectionMatrix, mul(viewMatrix, mul(pushConstants.modelMatrix, float4(input.Pos.xyz, 1.0))));
+	float4x4 modelMatrix = ApplyCameraTranslationToMatrix(pushConstants.modelMatrix);
+	output.Pos = mul(projectionMatrix, mul(viewMatrix, mul(modelMatrix, float4(input.Pos.xyz, 1.0))));
 	
 	#ifdef _ALPHA_DISABLE
 	output.Color.a = 1;
