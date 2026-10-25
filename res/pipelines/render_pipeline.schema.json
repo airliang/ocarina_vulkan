@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ocarina.local/schemas/render_pipeline.schema.json",
+  "title": "Ocarina RenderPipeline",
+  "type": "object",
+  "required": ["version", "name", "passes"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema version. Current version is 1."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "targets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["format"],
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "type": "string",
+            "description": "Pixel / depth format name (e.g. RGBA16F, D32F)."
+          },
+          "scale": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 1.0,
+            "description": "Resolution scale relative to the primary viewport."
+          }
+        }
+      }
+    },
+    "passes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "group"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "group": {
+            "type": "string",
+            "enum": [
+              "ComputePass",
+              "Offscreen",
+              "GBuffer",
+              "Lighting",
+              "DepthPrepass",
+              "Skybox",
+              "Opaque",
+              "Transparent",
+              "PostProcess",
+              "UI"
+            ]
+          },
+          "technique_role": {
+            "type": ["string", "null"],
+            "description": "Material technique slot requested for this pass (e.g. DepthOnly, ForwardOpaque)."
+          },
+          "color": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/colorAttachment" }
+          },
+          "depth": { "$ref": "#/$defs/depthAttachment" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "loadOp": {
+      "type": "string",
+      "enum": ["Clear", "Load", "DontCare"]
+    },
+    "storeOp": {
+      "type": "string",
+      "enum": ["Store", "DontCare"]
+    },
+    "colorAttachment": {
+      "type": "object",
+      "required": ["target"],
+      "additionalProperties": false,
+      "properties": {
+        "target": { "type": "string" },
+        "load": { "$ref": "#/$defs/loadOp" },
+        "store": { "$ref": "#/$defs/storeOp" },
+        "clear": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "type": "number" }
+        }
+      }
+    },
+    "depthAttachment": {
+      "type": "object",
+      "required": ["target"],
+      "additionalProperties": false,
+      "properties": {
+        "target": { "type": "string" },
+        "load": { "$ref": "#/$defs/loadOp" },
+        "store": { "$ref": "#/$defs/storeOp" },
+        "clear": { "type": "number" }
+      }
+    }
+  }
+}

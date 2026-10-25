@@ -88,6 +88,21 @@ public:
     VkImage vk_image() const noexcept { return image_; }
     VkImageLayout vk_image_layout() const noexcept { return image_layout_; }
     VkImageAspectFlags vk_aspect_mask() const noexcept { return aspect_mask_; }
+    /// Layout transitions of a packed depth/stencil image must name both aspects
+    /// unless separateDepthStencilLayouts is enabled. The depth attachment view stays depth-only.
+    [[nodiscard]] VkImageAspectFlags vk_barrier_aspect_mask() const noexcept {
+        VkImageAspectFlags aspect = aspect_mask_;
+        switch (image_format_) {
+            case VK_FORMAT_D32_SFLOAT_S8_UINT:
+            case VK_FORMAT_D24_UNORM_S8_UINT:
+            case VK_FORMAT_D16_UNORM_S8_UINT:
+                aspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
+                break;
+            default:
+                break;
+        }
+        return aspect;
+    }
     bool is_depth_stencil() const noexcept {
         return (static_cast<uint32_t>(usage_flags_) & static_cast<uint32_t>(TextureUsageFlags::DepthStencil)) != 0;
     }

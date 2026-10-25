@@ -1,0 +1,49 @@
+#include "frame.hlsl"
+
+// Absolute-world frustum planes from the CPU Frustum (same test as CPU culling).
+// g_transforms stays in absolute world space; camera-relative adjustment is the vertex shader's job.
+struct CullConstants
+{
+    float4 planes[6];
+    uint instanceCount;
+    uint cullingEnabled;
+    float halfExtent;
+    uint baseEntity;
+};
+
+[[vk::push_constant]]
+CullConstants cullConstants;
+
+[[vk::binding(0, MATERIAL_SET)]] RWStructuredBuffer<uint> visibility : register(u0);
+
+[numthreads(128, 1, 1)]
+void main(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= cullConstants.instanceCount) {
+        return;
+    }
+
+    uint entityIndex = cullConstants.baseEntity + id.x;
+    Transform transform = g_transforms[entityIndex];
+    float3 center = transform.modelMatrix._m03_m13_m23;
+    float halfExtent = cullConstants.halfExtent;
+    float3 axisX = float3(transform.modelMatrix._m00, transform.modelMatrix._m10, transform.modelMatrix._m20);
+    float3 axisY = float3(transform.modelMatrix._m01, transform.modelMatrix._m11, transform.modelMatrix._m21);
+    float3 axisZ = float3(transform.modelMatrix._m02, transform.modelMatrix._m12, transform.modelMatrix._m22);
+    float3 extent = abs(axisX) * halfExtent + abs(axisY) * halfExtent + abs(axisZ) * halfExtent;
+
+    uint visible = 1;
+    if (cullConstants.cullingEnabled != 0) {
+        [unroll]
+        for (int planeIndex = 0; planeIndex < 6; ++planeIndex) {
+            float4 plane = cullConstants.planes[planeIndex];
+            float radius = dot(extent, abs(plane.xyz));
+            if (dot(plane.xyz, center) + plane.w + radius < 0.0) {
+                visible = 0;
+                break;
+            }
+        }
+    }
+
+    visibility[id.x] = visible;
+}

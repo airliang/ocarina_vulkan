@@ -36,8 +36,9 @@ public:
             uint32_t offset,
             uint32_t size,
             uint32_t shader_stage_flags) = 0;
-        virtual void draw_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) = 0;
-        virtual void draw_indexed_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) = 0;
+        virtual void draw_indirect(handle_ty indirect_buffer, uint64_t offset, uint32_t draw_count, uint32_t stride) = 0;
+        virtual void draw_indexed_indirect(handle_ty indirect_buffer, uint64_t offset, uint32_t draw_count, uint32_t stride) = 0;
+        virtual void buffer_barriers(const BufferMemoryBarrier* barriers, uint32_t barrier_count) = 0;
         virtual void set_vertex_buffer(VertexBuffer* vertex_buffer, uint32_t base_vertex = 0) = 0;
         virtual void set_index_buffer(IndexBuffer* index_buffer, uint32_t first_index = 0) = 0;
         virtual void copy_buffer(
@@ -154,13 +155,17 @@ public:
         impl_->dispatch(group_count_x, group_count_y, group_count_z);
     }
 
-    void draw_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride)
+    void draw_indirect(handle_ty indirect_buffer, uint64_t offset, uint32_t draw_count, uint32_t stride)
     {
-        //impl_->draw_indirect(indirect_buffer, draw_count, stride);
+        impl_->draw_indirect(indirect_buffer, offset, draw_count, stride);
     }
-    void draw_indexed_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride)
+    void draw_indexed_indirect(handle_ty indirect_buffer, uint64_t offset, uint32_t draw_count, uint32_t stride)
     {
-        //impl_->draw_indexed_indirect(indirect_buffer, draw_count, stride);
+        impl_->draw_indexed_indirect(indirect_buffer, offset, draw_count, stride);
+    }
+    void buffer_barriers(const BufferMemoryBarrier* barriers, uint32_t barrier_count)
+    {
+        impl_->buffer_barriers(barriers, barrier_count);
     }
     void set_vertex_buffer(VertexBuffer* vertex_buffer, uint32_t base_vertex = 0)
     {

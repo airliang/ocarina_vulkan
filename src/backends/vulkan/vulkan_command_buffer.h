@@ -52,8 +52,9 @@ public:
         uint32_t offset,
         uint32_t size,
         uint32_t shader_stage_flags) override;
-    void draw_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) override;
-    void draw_indexed_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) override;
+    void draw_indirect(handle_ty indirect_buffer, uint64_t offset, uint32_t draw_count, uint32_t stride) override;
+    void draw_indexed_indirect(handle_ty indirect_buffer, uint64_t offset, uint32_t draw_count, uint32_t stride) override;
+    void buffer_barriers(const BufferMemoryBarrier* barriers, uint32_t barrier_count) override;
     void set_vertex_buffer(VertexBuffer* vertex_buffer, uint32_t base_vertex = 0) override;
     void set_index_buffer(IndexBuffer* index_buffer, uint32_t first_index = 0) override;
     void copy_buffer(

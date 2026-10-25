@@ -14,6 +14,7 @@
 #include "rhi/index_buffer.h"
 #include "util.h"
 #include <algorithm>
+#include <vector>
 
 namespace ocarina {
 
@@ -440,10 +441,118 @@ void VulkanCommandBuffer::push_constants(
         data);
 }
 
-void VulkanCommandBuffer::draw_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) {
+void VulkanCommandBuffer::draw_indirect(handle_ty indirect_buffer, uint64_t offset, uint32_t draw_count, uint32_t stride) {
+    if (indirect_buffer == 0 || draw_count == 0) {
+        return;
+    }
+    auto* buffer = reinterpret_cast<VulkanBuffer*>(indirect_buffer);
+    vkCmdDrawIndirect(
+        vulkan_command_buffer_,
+        buffer->buffer_handle(),
+        static_cast<VkDeviceSize>(offset),
+        draw_count,
+        stride);
 }
 
-void VulkanCommandBuffer::draw_indexed_indirect(handle_ty indirect_buffer, uint32_t draw_count, uint32_t stride) {
+void VulkanCommandBuffer::draw_indexed_indirect(handle_ty indirect_buffer, uint64_t offset, uint32_t draw_count, uint32_t stride) {
+    if (indirect_buffer == 0 || draw_count == 0) {
+        return;
+    }
+    auto* buffer = reinterpret_cast<VulkanBuffer*>(indirect_buffer);
+    vkCmdDrawIndexedIndirect(
+        vulkan_command_buffer_,
+        buffer->buffer_handle(),
+        static_cast<VkDeviceSize>(offset),
+        draw_count,
+        stride);
+}
+
+namespace {
+
+void translate_gpu_access(GpuAccess access, VkPipelineStageFlags& stage, VkAccessFlags& mask) noexcept {
+    stage = 0;
+    mask = 0;
+    const uint32_t bits = static_cast<uint32_t>(access);
+    if ((bits & static_cast<uint32_t>(GpuAccess::ComputeWrite)) != 0) {
+        stage |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        mask |= VK_ACCESS_SHADER_WRITE_BIT;
+    }
+    if ((bits & static_cast<uint32_t>(GpuAccess::ComputeRead)) != 0) {
+        stage |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        mask |= VK_ACCESS_SHADER_READ_BIT;
+    }
+    if ((bits & static_cast<uint32_t>(GpuAccess::VertexRead)) != 0) {
+        stage |= VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+        mask |= VK_ACCESS_SHADER_READ_BIT;
+    }
+    if ((bits & static_cast<uint32_t>(GpuAccess::IndirectRead)) != 0) {
+        stage |= VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+        mask |= VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+    }
+}
+
+}// namespace
+
+void VulkanCommandBuffer::buffer_barriers(const BufferMemoryBarrier* barriers, uint32_t barrier_count) {
+    if (barriers == nullptr || barrier_count == 0) {
+        return;
+    }
+
+    std::vector<VkBufferMemoryBarrier> vulkan_barriers;
+    vulkan_barriers.reserve(barrier_count);
+    VkPipelineStageFlags src_stage = 0;
+    VkPipelineStageFlags dst_stage = 0;
+
+    for (uint32_t i = 0; i < barrier_count; ++i) {
+        const BufferMemoryBarrier& barrier = barriers[i];
+        if (barrier.buffer == 0) {
+            continue;
+        }
+        VkPipelineStageFlags barrier_src_stage = 0;
+        VkPipelineStageFlags barrier_dst_stage = 0;
+        VkAccessFlags src_access = 0;
+        VkAccessFlags dst_access = 0;
+        translate_gpu_access(barrier.src, barrier_src_stage, src_access);
+        translate_gpu_access(barrier.dst, barrier_dst_stage, dst_access);
+        if (barrier_src_stage == 0) {
+            barrier_src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        }
+        if (barrier_dst_stage == 0) {
+            barrier_dst_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+        }
+        src_stage |= barrier_src_stage;
+        dst_stage |= barrier_dst_stage;
+
+        auto* buffer = reinterpret_cast<VulkanBuffer*>(barrier.buffer);
+        VkBufferMemoryBarrier vulkan_barrier{};
+        vulkan_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        vulkan_barrier.srcAccessMask = src_access;
+        vulkan_barrier.dstAccessMask = dst_access;
+        vulkan_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        vulkan_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        vulkan_barrier.buffer = buffer->buffer_handle();
+        vulkan_barrier.offset = static_cast<VkDeviceSize>(barrier.offset);
+        vulkan_barrier.size = barrier.size == 0
+            ? VK_WHOLE_SIZE
+            : static_cast<VkDeviceSize>(barrier.size);
+        vulkan_barriers.push_back(vulkan_barrier);
+    }
+
+    if (vulkan_barriers.empty()) {
+        return;
+    }
+
+    vkCmdPipelineBarrier(
+        vulkan_command_buffer_,
+        src_stage,
+        dst_stage,
+        0,
+        0,
+        nullptr,
+        static_cast<uint32_t>(vulkan_barriers.size()),
+        vulkan_barriers.data(),
+        0,
+        nullptr);
 }
 
 void VulkanCommandBuffer::set_vertex_buffer(VertexBuffer* vertex_buffer, uint32_t base_vertex) {
@@ -769,7 +878,7 @@ void VulkanCommandBuffer::image_layout_barrier(VulkanTexture* texture, VkImageLa
 {
     image_layout_barrier(
         reinterpret_cast<VkImage>(texture->tex_handle()),
-        texture->vk_aspect_mask(),
+        texture->vk_barrier_aspect_mask(),
         texture->mip_levels(),
         old_layout,
         new_layout,

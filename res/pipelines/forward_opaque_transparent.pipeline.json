@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "name": "ForwardOpaqueTransparent",
+
+  "targets": {
+    "scene_color": { "format": "RGBA16F", "scale": 1.0 },
+    "scene_depth": { "format": "D32F", "scale": 1.0 }
+  },
+
+  "passes": [
+    {
+      "name": "Opaque",
+      "group": "Opaque",
+      "technique_role": "ForwardOpaque",
+      "color": [
+        {
+          "target": "scene_color",
+          "load": "Clear",
+          "store": "Store",
+          "clear": [0.15, 0.15, 0.18, 1.0]
+        }
+      ],
+      "depth": {
+        "target": "scene_depth",
+        "load": "Clear",
+        "store": "Store",
+        "clear": 1.0
+      }
+    },
+    {
+      "name": "Transparent",
+      "group": "Transparent",
+      "technique_role": "ForwardTransparent",
+      "color": [
+        {
+          "target": "scene_color",
+          "load": "Load",
+          "store": "Store"
+        }
+      ],
+      "depth": {
+        "target": "scene_depth",
+        "load": "Load",
+        "store": "Store"
+      }
+    }
+  ]
+}

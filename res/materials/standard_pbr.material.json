@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "standard_pbr",
+  "shading_model": "Opaque",
+  "template": "StandardPBR",
+
+  "features": [
+    "NORMAL_MAP",
+    "METALLIC_ROUGHNESS_MAP"
+  ],
+
+  "properties": {
+    "baseColorFactor": { "type": "float4", "value": [1.0, 1.0, 1.0, 1.0] },
+    "metallic": { "type": "float", "value": 0.0 },
+    "roughness": { "type": "float", "value": 0.5 },
+    "ao": { "type": "float", "value": 1.0 },
+    "alphaCutoff": { "type": "float", "value": 0.5 }
+  },
+
+  "techniques": {
+    "DepthOnly": {
+      "shaders": {
+        "vertex": "res/shaderlibrary/builtin/mesh.vert",
+        "pixel": "res/shaderlibrary/builtin/mesh_depth.frag"
+      },
+      "macros": [],
+      "overrides": {
+        "color_write": false,
+        "depth_write": true,
+        "depth_compare": "LessOrEqual",
+        "cull_mode": "Back",
+        "blend": "Opaque"
+      }
+    },
+    "ForwardOpaque": {
+      "shaders": {
+        "vertex": "res/shaderlibrary/builtin/mesh.vert",
+        "pixel": "res/shaderlibrary/builtin/mesh_pbr.frag"
+      },
+      "macros": ["ALPHA_BLEND=0"],
+      "overrides": {
+        "color_write": true,
+        "depth_write": false,
+        "depth_compare": "Equal",
+        "cull_mode": "Back",
+        "blend": "Opaque"
+      }
+    }
+  },
+
+  "pass_participation": {
+    "DepthPrepass": "DepthOnly",
+    "Opaque": "ForwardOpaque"
+  }
+}

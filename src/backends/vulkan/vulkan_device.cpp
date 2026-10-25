@@ -78,6 +78,9 @@ VkBufferUsageFlags to_vulkan_buffer_usage(GraphicBufferBindFlags bind_flags) noe
     if ((flags & static_cast<uint32_t>(GraphicBufferBindFlags::CopyDst)) != 0) {
         usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     }
+    if ((flags & static_cast<uint32_t>(GraphicBufferBindFlags::IndirectArgument)) != 0) {
+        usage |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+    }
 
     if (usage == 0) {
         usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;

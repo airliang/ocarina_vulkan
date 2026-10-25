@@ -1,0 +1,64 @@
+#include "descriptor_bindings.hlsl"
+
+// Exclusive prefix scan of one level (Blelloch). 128 threads is the Vulkan minimum workgroup size.
+#define THREADS 128
+
+struct ScanConstants
+{
+    uint elementCount;
+    uint pad0;
+    uint pad1;
+    uint pad2;
+};
+
+[[vk::push_constant]]
+ScanConstants scanConstants;
+
+[[vk::binding(0, MATERIAL_SET)]] StructuredBuffer<uint> sourceData : register(t0);
+[[vk::binding(1, MATERIAL_SET)]] RWStructuredBuffer<uint> exclusiveScan : register(u0);
+[[vk::binding(2, MATERIAL_SET)]] RWStructuredBuffer<uint> groupSums : register(u1);
+
+groupshared uint temp[THREADS];
+
+[numthreads(THREADS, 1, 1)]
+void main(uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3 Gid : SV_GroupID)
+{
+    uint lane = GTid.x;
+    uint index = Gid.x * THREADS + lane;
+    temp[lane] = index < scanConstants.elementCount ? sourceData[index] : 0;
+    GroupMemoryBarrierWithGroupSync();
+
+    uint offset = 1;
+    for (uint stride = THREADS >> 1; stride > 0; stride >>= 1) {
+        GroupMemoryBarrierWithGroupSync();
+        if (lane < stride) {
+            uint left = offset * (2 * lane + 1) - 1;
+            uint right = offset * (2 * lane + 2) - 1;
+            temp[right] += temp[left];
+        }
+        offset <<= 1;
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+    if (lane == 0) {
+        groupSums[Gid.x] = temp[THREADS - 1];
+        temp[THREADS - 1] = 0;
+    }
+
+    for (uint step = 1; step < THREADS; step <<= 1) {
+        offset >>= 1;
+        GroupMemoryBarrierWithGroupSync();
+        if (lane < step) {
+            uint left = offset * (2 * lane + 1) - 1;
+            uint right = offset * (2 * lane + 2) - 1;
+            uint saved = temp[left];
+            temp[left] = temp[right];
+            temp[right] += saved;
+        }
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+    if (index < scanConstants.elementCount) {
+        exclusiveScan[index] = temp[lane];
+    }
+}

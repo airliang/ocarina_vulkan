@@ -1,0 +1,45 @@
+#include "descriptor_bindings.hlsl"
+
+#define THREADS 128
+
+// visibleIndices stores ECS entity ids. drawArgs is VkDrawIndexedIndirectCommand as 5 uints;
+// word 1 is instanceCount.
+struct CompactConstants
+{
+    uint instanceCount;
+    uint pad0;
+    uint baseEntity;
+    uint pad1;
+};
+
+[[vk::push_constant]]
+CompactConstants compactConstants;
+
+[[vk::binding(0, MATERIAL_SET)]] StructuredBuffer<uint> visibility : register(t0);
+[[vk::binding(1, MATERIAL_SET)]] StructuredBuffer<uint> localScan : register(t1);
+[[vk::binding(2, MATERIAL_SET)]] StructuredBuffer<uint> groupScan : register(t2);
+[[vk::binding(3, MATERIAL_SET)]] StructuredBuffer<uint> blockScan : register(t3);
+[[vk::binding(4, MATERIAL_SET)]] StructuredBuffer<uint> tailSums : register(t4);
+[[vk::binding(5, MATERIAL_SET)]] RWStructuredBuffer<uint> visibleIndices : register(u0);
+[[vk::binding(6, MATERIAL_SET)]] RWStructuredBuffer<uint> drawArgs : register(u1);
+
+[numthreads(THREADS, 1, 1)]
+void main(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x == 0) {
+        drawArgs[1] = tailSums[0];
+    }
+
+    if (id.x >= compactConstants.instanceCount) {
+        return;
+    }
+
+    if (visibility[id.x] == 0) {
+        return;
+    }
+
+    uint group = id.x / THREADS;
+    uint block = group / THREADS;
+    uint dst = localScan[id.x] + groupScan[group] + blockScan[block];
+    visibleIndices[dst] = compactConstants.baseEntity + id.x;
+}

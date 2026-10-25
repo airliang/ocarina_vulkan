@@ -60,8 +60,47 @@ enum class GraphicBufferBindFlags {
     CopyDst = (1 << 7),                 ///< Can bind as a copy destination.
     ShaderReadWrite = (1 << 8),         ///< Can bind for usage as ReadWrite buffer for any shader stage (UAV on D3D12).
     PredicationExt = (1 << 9),          ///< Can use the buffer for SetPredicationEx calls (must have AdapterFeatures::Predication requested feature enabled)
-    AccelerationStructureExt = (1 << 10)///< Can bind as a ray tracing acceleration structure (require AdapterFeatures::RayTracing)
+    AccelerationStructureExt = (1 << 10),///< Can bind as a ray tracing acceleration structure (require AdapterFeatures::RayTracing)
+    IndirectArgument = (1 << 11),       ///< Can be the argument buffer for draw indirect
 };
+
+/// Memory dependency for a buffer range. Combine flags when one barrier covers both uses.
+enum class GpuAccess : uint32_t {
+    None = 0,
+    ComputeWrite = 1u << 0,
+    ComputeRead = 1u << 1,
+    VertexRead = 1u << 2,
+    IndirectRead = 1u << 3,
+};
+
+[[nodiscard]] inline GpuAccess operator|(GpuAccess lhs, GpuAccess rhs) noexcept {
+    return static_cast<GpuAccess>(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs));
+}
+
+inline GpuAccess& operator|=(GpuAccess& lhs, GpuAccess rhs) noexcept {
+    lhs = lhs | rhs;
+    return lhs;
+}
+
+struct BufferMemoryBarrier {
+    handle_ty buffer = 0;
+    uint64_t offset = 0;
+    /// Byte size. 0 means the whole buffer.
+    uint64_t size = 0;
+    GpuAccess src = GpuAccess::None;
+    GpuAccess dst = GpuAccess::None;
+};
+
+/// VkDrawIndexedIndirectCommand. instance_count is the word the compact shader writes.
+struct DrawIndexedIndirectCommand {
+    uint32_t index_count = 0;
+    uint32_t instance_count = 0;
+    uint32_t first_index = 0;
+    int32_t vertex_offset = 0;
+    uint32_t first_instance = 0;
+};
+
+static_assert(sizeof(DrawIndexedIndirectCommand) == 20);
 
 enum QueueType
 {
