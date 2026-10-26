@@ -11,15 +11,7 @@ namespace ocarina {
 
 namespace {
 
-constexpr float kPitchLimit = 89.0f * static_cast<float>(M_PI) / 180.0f;
-
-math3d::Vector3D scale_vec(const math3d::Vector3D& v, float s) noexcept {
-    return {v[0] * s, v[1] * s, v[2] * s};
-}
-
-float vec_length(const math3d::Vector3D& v) noexcept {
-    return std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
-}
+constexpr float kPitchLimit = 89.0f * ktm::pi<float> / 180.0f;
 
 bool imgui_blocks_mouse(bool look_active, bool pan_active) noexcept {
     if (look_active || pan_active) {
@@ -44,19 +36,19 @@ Camera::Camera(float fov, float aspect_ratio, float znear, float zfar)
     , znear_(znear)
     , zfar_(zfar) {}
 
-void Camera::set_position(const math3d::Vector3D& position) {
+void Camera::set_position(const ktm::fvec3& position) {
     position_ = position;
     sync_angles_from_forward();
     dirty_ = true;
 }
 
-void Camera::set_target(const math3d::Vector3D& target) {
+void Camera::set_target(const ktm::fvec3& target) {
     target_ = target;
     sync_angles_from_forward();
     dirty_ = true;
 }
 
-math3d::Vector3D Camera::get_forward() const noexcept {
+ktm::fvec3 Camera::get_forward() const noexcept {
     return {
         std::cos(pitch_) * std::sin(yaw_),
         std::sin(pitch_),
@@ -64,23 +56,23 @@ math3d::Vector3D Camera::get_forward() const noexcept {
     };
 }
 
-math3d::Vector3D Camera::get_right() const noexcept {
-    return math3d::normalize(math3d::cross(up_, get_forward()));
+ktm::fvec3 Camera::get_right() const noexcept {
+    return ktm::normalize(cross_lh(up_, get_forward()));
 }
 
-math3d::Vector3D Camera::get_view_up() const noexcept {
+ktm::fvec3 Camera::get_view_up() const noexcept {
     // World up projected onto the view plane: the screen-vertical axis.
-    return math3d::normalize(math3d::cross(get_forward(), get_right()));
+    return ktm::normalize(cross_lh(get_forward(), get_right()));
 }
 
 void Camera::sync_angles_from_forward() {
-    const math3d::Vector3D forward = math3d::normalize(math3d::operator-(target_, position_));
+    const ktm::fvec3 forward = ktm::normalize(target_ - position_);
     pitch_ = std::asin(std::clamp(forward[1], -1.0f, 1.0f));
     yaw_ = std::atan2(forward[0], forward[2]);
 }
 
 void Camera::sync_target_from_angles() {
-    target_ = math3d::operator+(position_, get_forward());
+    target_ = position_ + get_forward();
     dirty_ = true;
 }
 
@@ -94,12 +86,12 @@ void Camera::clear_movement_keys() noexcept {
 }
 
 void Camera::apply_orbit_delta(float delta_yaw, float delta_pitch) noexcept {
-    const math3d::Vector3D offset = math3d::operator-(position_, target_);
-    const float distance = std::max(vec_length(offset), 1e-4f);
+    const ktm::fvec3 offset = position_ - target_;
+    const float distance = std::max(ktm::length(offset), 1e-4f);
 
     yaw_ += delta_yaw;
     pitch_ = std::clamp(pitch_ + delta_pitch, -kPitchLimit, kPitchLimit);
-    position_ = math3d::operator-(target_, scale_vec(get_forward(), distance));
+    position_ = target_ - get_forward() * distance;
     dirty_ = true;
 }
 
@@ -111,15 +103,13 @@ void Camera::apply_pan_delta(float delta_x, float delta_y) noexcept {
     // Screen-space grab pan on the camera right / view-up plane (Anvil-style).
     // Mouse right/down moves the camera opposite so the scene follows the cursor.
     // Scale by eye-to-target distance so the same pixel drag tracks the focal plane.
-    const math3d::Vector3D right = get_right();
-    const math3d::Vector3D view_up = get_view_up();
-    const float distance = std::max(vec_length(math3d::operator-(target_, position_)), 1e-3f);
+    const ktm::fvec3 right = get_right();
+    const ktm::fvec3 view_up = get_view_up();
+    const float distance = std::max(ktm::length(target_ - position_), 1e-3f);
     const float scale = pan_sensitivity_ * distance;
-    const math3d::Vector3D offset = math3d::operator+(
-        scale_vec(right, -delta_x * scale),
-        scale_vec(view_up, -delta_y * scale));
-    position_ = math3d::operator+(position_, offset);
-    target_ = math3d::operator+(target_, offset);
+    const ktm::fvec3 offset = right * (-delta_x * scale) + view_up * (-delta_y * scale);
+    position_ = position_ + offset;
+    target_ = target_ + offset;
     dirty_ = true;
 }
 
@@ -127,8 +117,8 @@ void Camera::move_along_view(float distance) noexcept {
     if (distance == 0.0f) {
         return;
     }
-    const math3d::Vector3D forward = get_forward();
-    position_ = math3d::operator+(position_, scale_vec(forward, distance));
+    const ktm::fvec3 forward = get_forward();
+    position_ = position_ + forward * distance;
     sync_target_from_angles();
 }
 
@@ -137,33 +127,33 @@ void Camera::update(double dt) noexcept {
         return;
     }
 
-    math3d::Vector3D move_delta = {0.0f, 0.0f, 0.0f};
-    const math3d::Vector3D forward = get_forward();
-    const math3d::Vector3D right = get_right();
+    ktm::fvec3 move_delta{0.0f, 0.0f, 0.0f};
+    const ktm::fvec3 forward = get_forward();
+    const ktm::fvec3 right = get_right();
 
     if (move_forward_) {
-        move_delta = math3d::operator+(move_delta, forward);
+        move_delta = move_delta + forward;
     }
     if (move_backward_) {
-        move_delta = math3d::operator-(move_delta, forward);
+        move_delta = move_delta - forward;
     }
     if (move_right_) {
-        move_delta = math3d::operator+(move_delta, right);
+        move_delta = move_delta + right;
     }
     if (move_left_) {
-        move_delta = math3d::operator-(move_delta, right);
+        move_delta = move_delta - right;
     }
     if (move_up_) {
-        move_delta = math3d::operator+(move_delta, up_);
+        move_delta = move_delta + up_;
     }
     if (move_down_) {
-        move_delta = math3d::operator-(move_delta, up_);
+        move_delta = move_delta - up_;
     }
 
-    const float move_length = vec_length(move_delta);
+    const float move_length = ktm::length(move_delta);
     if (move_length > 0.0f) {
         const float distance = move_speed_ * static_cast<float>(dt);
-        position_ = math3d::operator+(position_, scale_vec(move_delta, distance / move_length));
+        position_ = position_ + move_delta * (distance / move_length);
         sync_target_from_angles();
     }
 }
@@ -243,12 +233,12 @@ void Camera::process_sdl_event(const SDL_Event& event) noexcept {
     }
 }
 
-math3d::Matrix4 Camera::get_view_matrix() {
+ktm::fmat4x4 Camera::get_view_matrix() {
     update_matrices();
     return view_matrix_;
 }
 
-math3d::Matrix4 Camera::get_projection_matrix() {
+ktm::fmat4x4 Camera::get_projection_matrix() {
     update_matrices();
     return projection_matrix_;
 }
@@ -262,13 +252,11 @@ void Camera::update_matrices() {
 }
 
 void Camera::calculate_view_matrix() {
-    view_matrix_ = math3d::Matrix4::look_at(position_, target_, up_);
+    view_matrix_ = look_at_lh(position_, target_, up_);
 }
 
 void Camera::calculate_projection_matrix() {
-    projection_matrix_ = math3d::Matrix4::perspective(math3d::deg_to_rad(fov_), aspect_ratio_, znear_, zfar_);
-    // Vulkan NDC is +Y down; flip projection Y to match a +Y-up world.
-    projection_matrix_(1, 1) = -projection_matrix_(1, 1);
+    projection_matrix_ = perspective_lh(ktm::radians(fov_), aspect_ratio_, znear_, zfar_);
 }
 
 }// namespace ocarina

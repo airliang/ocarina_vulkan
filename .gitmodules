@@ -28,3 +28,6 @@
 [submodule "src/ext/VulkanMemoryAllocator"]
 	path = src/ext/VulkanMemoryAllocator
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+[submodule "src/ext/ktm"]
+	path = src/ext/ktm
+	url = https://github.com/YGXXD/ktm.git

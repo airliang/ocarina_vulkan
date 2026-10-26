@@ -70,26 +70,23 @@ void apply_mesh_bindless_indices(Material* material, const TextureHandle& albedo
 }
 
 /// Orthographic view-projection that fits every cube in the 50^3 grid, with padding.
-/// Returned matrix is transposed for the column-major HLSL push constant.
-math3d::Matrix4 make_visible_debug_view_proj() {
+/// Returned matrix is column-major ktm storage, ready for the HLSL push constant.
+ktm::fmat4x4 make_visible_debug_view_proj() {
     const float grid_max = static_cast<float>(kGridCount - 1) * kGridSpacing;
-    const math3d::Vector3D bounds_min{-kCubeHalfExtent, -kCubeHalfExtent, -kCubeHalfExtent};
-    const math3d::Vector3D bounds_max{
+    const ktm::fvec3 bounds_min{-kCubeHalfExtent, -kCubeHalfExtent, -kCubeHalfExtent};
+    const ktm::fvec3 bounds_max{
         grid_max + kCubeHalfExtent,
         grid_max + kCubeHalfExtent,
         grid_max + kCubeHalfExtent};
-    const math3d::Vector3D center{
-        (bounds_min[0] + bounds_max[0]) * 0.5f,
-        (bounds_min[1] + bounds_max[1]) * 0.5f,
-        (bounds_min[2] + bounds_max[2]) * 0.5f};
+    const ktm::fvec3 center = (bounds_min + bounds_max) * 0.5f;
     // Sit above the top cubes and look slightly down toward the grid center.
     constexpr float kHeightAboveTop = 180.0f;
     constexpr float kHorizontalOffset = 120.0f;
-    const math3d::Vector3D eye{
+    const ktm::fvec3 eye{
         center[0] - kHorizontalOffset,
         bounds_max[1] + kHeightAboveTop,
         center[2] - kHorizontalOffset};
-    const math3d::Matrix4 view = math3d::Matrix4::look_at(eye, center, math3d::Vector3D{0.0f, 1.0f, 0.0f});
+    const ktm::fmat4x4 view = look_at_lh(eye, center, ktm::fvec3{0.0f, 1.0f, 0.0f});
 
     float min_x = bounds_max[0];
     float max_x = bounds_min[0];
@@ -101,15 +98,13 @@ math3d::Matrix4 make_visible_debug_view_proj() {
     for (float x : axes) {
         for (float y : axes) {
             for (float z : axes) {
-                const float view_x = view(0, 0) * x + view(0, 1) * y + view(0, 2) * z + view(0, 3);
-                const float view_y = view(1, 0) * x + view(1, 1) * y + view(1, 2) * z + view(1, 3);
-                const float view_z = view(2, 0) * x + view(2, 1) * y + view(2, 2) * z + view(2, 3);
-                min_x = std::min(min_x, view_x);
-                max_x = std::max(max_x, view_x);
-                min_y = std::min(min_y, view_y);
-                max_y = std::max(max_y, view_y);
-                min_z = std::min(min_z, view_z);
-                max_z = std::max(max_z, view_z);
+                const ktm::fvec4 view_point = view * ktm::fvec4{x, y, z, 1.0f};
+                min_x = std::min(min_x, view_point[0]);
+                max_x = std::max(max_x, view_point[0]);
+                min_y = std::min(min_y, view_point[1]);
+                max_y = std::max(max_y, view_point[1]);
+                min_z = std::min(min_z, view_point[2]);
+                max_z = std::max(max_z, view_point[2]);
             }
         }
     }
@@ -120,17 +115,14 @@ math3d::Matrix4 make_visible_debug_view_proj() {
     const float mid_x = (min_x + max_x) * 0.5f;
     const float mid_y = (min_y + max_y) * 0.5f;
     const float z_pad = (max_z - min_z) * 0.08f + 1.0f;
-    math3d::Matrix4 projection = math3d::Matrix4::ortho(
+    const ktm::fmat4x4 projection = ortho_lh(
         mid_x - half,
         mid_x + half,
         mid_y - half,
         mid_y + half,
         min_z - z_pad,
         max_z + z_pad);
-    // Same Vulkan NDC Y flip as Camera::calculate_projection_matrix().
-    // Without it, a camera above the grid appears to look up from below.
-    projection(1, 1) = -projection(1, 1);
-    return (projection * view).transpose();
+    return projection * view;
 }
 
 }// namespace
@@ -168,7 +160,7 @@ int main(int argc, char* argv[]) {
     bool indices_bound = false;
     bool gpu_culling_enabled = true;
     bool show_visible_entities = false;
-    const math3d::Matrix4 visible_view_proj = make_visible_debug_view_proj();
+    const ktm::fmat4x4 visible_view_proj = make_visible_debug_view_proj();
 
     Renderer renderer(&device);
 
@@ -301,7 +293,7 @@ int main(int argc, char* argv[]) {
         }
         cmd.set_vertex_buffer(vertex_buffer);
         cmd.set_index_buffer(index_buffer);
-        cmd.push_constants(visible_view_proj.m.data(), 0, static_cast<uint32_t>(sizeof(float) * visible_view_proj.m.size()), 0);
+        cmd.push_constants(matrix_data(visible_view_proj), 0, static_cast<uint32_t>(sizeof(visible_view_proj)), 0);
         cmd.draw_indexed_indirect(indirect.draw_args_handle(), 0, 1, indirect.draw_args_stride());
     });
 
@@ -318,7 +310,7 @@ int main(int argc, char* argv[]) {
         if (!indirect.has_draw_args()) {
             return;
         }
-        const math3d::Matrix4 view_projection =
+        const ktm::fmat4x4 view_projection =
             camera.get_projection_matrix() * camera.get_view_matrix();
         indirect.record(cmd, Frustum(view_projection), gpu_culling_enabled);
     });

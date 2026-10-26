@@ -17,28 +17,26 @@ void Frustum::normalize_plane(int index) {
     }
 }
 
-void Frustum::extract_from_matrix(const math3d::Matrix4& matrix) {
-    const float* m = matrix.m.data();
-
-    planes_[0].normal = {m[12] + m[0], m[13] + m[1], m[14] + m[2]};
-    planes_[0].distance = m[15] + m[3];
-
-    planes_[1].normal = {m[12] - m[0], m[13] - m[1], m[14] - m[2]};
-    planes_[1].distance = m[15] - m[3];
-
-    planes_[2].normal = {m[12] + m[4], m[13] + m[5], m[14] + m[6]};
-    planes_[2].distance = m[15] + m[7];
-
-    planes_[3].normal = {m[12] - m[4], m[13] - m[5], m[14] - m[6]};
-    planes_[3].distance = m[15] - m[7];
-
-    planes_[4].normal = {m[12] + m[8], m[13] + m[9], m[14] + m[10]};
-    planes_[4].distance = m[15] + m[11];
-
-    planes_[5].normal = {m[12] - m[8], m[13] - m[9], m[14] - m[10]};
-    planes_[5].distance = m[15] - m[11];
+void Frustum::extract_from_matrix(const ktm::fmat4x4& matrix) {
+    const auto row = [&matrix](int r) {
+        return ktm::fvec4{matrix[0][r], matrix[1][r], matrix[2][r], matrix[3][r]};
+    };
+    const ktm::fvec4 row0 = row(0);
+    const ktm::fvec4 row1 = row(1);
+    const ktm::fvec4 row2 = row(2);
+    const ktm::fvec4 row3 = row(3);
+    const ktm::fvec4 plane_rows[plane_count] = {
+        row3 + row0,
+        row3 - row0,
+        row3 + row1,
+        row3 - row1,
+        row3 + row2,
+        row3 - row2,
+    };
 
     for (int i = 0; i < plane_count; ++i) {
+        planes_[i].normal = make_float3(plane_rows[i][0], plane_rows[i][1], plane_rows[i][2]);
+        planes_[i].distance = plane_rows[i][3];
         normalize_plane(i);
     }
 }

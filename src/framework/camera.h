@@ -58,14 +58,14 @@ public:
     void set_pan_sensitivity(float sensitivity) noexcept { pan_sensitivity_ = sensitivity; }
     [[nodiscard]] float get_pan_sensitivity() const noexcept { return pan_sensitivity_; }
 
-    void set_position(const math3d::Vector3D& position);
-    void set_target(const math3d::Vector3D& target);
+    void set_position(const ktm::fvec3& position);
+    void set_target(const ktm::fvec3& target);
 
-    [[nodiscard]] const math3d::Vector3D& get_position() const noexcept { return position_; }
-    [[nodiscard]] const math3d::Vector3D& get_target() const noexcept { return target_; }
+    [[nodiscard]] const ktm::fvec3& get_position() const noexcept { return position_; }
+    [[nodiscard]] const ktm::fvec3& get_target() const noexcept { return target_; }
 
-    math3d::Matrix4 get_view_matrix();
-    math3d::Matrix4 get_projection_matrix();
+    ktm::fmat4x4 get_view_matrix();
+    ktm::fmat4x4 get_projection_matrix();
 
     void update(double dt) noexcept;
 
@@ -78,10 +78,10 @@ private:
     void sync_angles_from_forward();
     void sync_target_from_angles();
     void clear_movement_keys() noexcept;
-    [[nodiscard]] math3d::Vector3D get_forward() const noexcept;
-    [[nodiscard]] math3d::Vector3D get_right() const noexcept;
+    [[nodiscard]] ktm::fvec3 get_forward() const noexcept;
+    [[nodiscard]] ktm::fvec3 get_right() const noexcept;
     /// Up vector lying in the view plane (perpendicular to forward and right).
-    [[nodiscard]] math3d::Vector3D get_view_up() const noexcept;
+    [[nodiscard]] ktm::fvec3 get_view_up() const noexcept;
     void apply_orbit_delta(float delta_yaw, float delta_pitch) noexcept;
     void apply_pan_delta(float delta_x, float delta_y) noexcept;
     void move_along_view(float distance) noexcept;
@@ -95,15 +95,15 @@ private:
     float look_sensitivity_ = 0.003f;
     float pan_sensitivity_ = 0.005f;
 
-    math3d::Vector3D position_{};
-    math3d::Vector3D target_ = {0.0f, 0.0f, 1.0f};
-    math3d::Vector3D up_ = {0.0f, 1.0f, 0.0f};
+    ktm::fvec3 position_{};
+    ktm::fvec3 target_{0.0f, 0.0f, 1.0f};
+    ktm::fvec3 up_{0.0f, 1.0f, 0.0f};
 
     float yaw_ = 0.0f;
     float pitch_ = 0.0f;
 
-    math3d::Matrix4 view_matrix_;
-    math3d::Matrix4 projection_matrix_;
+    ktm::fmat4x4 view_matrix_ = mat4_identity();
+    ktm::fmat4x4 projection_matrix_ = mat4_identity();
 
     bool dirty_ = true;
     bool look_active_ = false;

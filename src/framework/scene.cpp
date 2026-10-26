@@ -21,10 +21,6 @@ namespace {
     return mesh->get_local_bounds().transformed(transform.get_world_matrix());
 }
 
-[[nodiscard]] math3d::Matrix4 multiply_matrix(const math3d::Matrix4& lhs, const math3d::Matrix4& rhs) {
-    return lhs * rhs;
-}
-
 } // namespace
 
 uint32_t Scene::emplace_entity() {
@@ -273,9 +269,7 @@ void Scene::cull_grids(const Frustum& frustum) {
 }
 
 void Scene::cull_grids(Camera& camera) {
-    const math3d::Matrix4 view_projection = multiply_matrix(
-        camera.get_projection_matrix(),
-        camera.get_view_matrix());
+    const ktm::fmat4x4 view_projection = camera.get_projection_matrix() * camera.get_view_matrix();
     cull_grids(Frustum(view_projection));
 }
 

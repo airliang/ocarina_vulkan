@@ -7,13 +7,13 @@
 namespace ocarina {
 
 /// CPU mirror of `global_ubo` in `res/shaderlibrary/builtin/common.hlsl`.
-/// Matrices are stored transposed for HLSL row-major upload (same as previous tests).
+/// ktm matrices are column-major, which is the HLSL upload layout.
 struct alignas(16) GlobalUniformBuffer {
-    math3d::Matrix4 projection_matrix{};
-    math3d::Matrix4 view_matrix{};
-    math3d::Matrix4 inv_projection_matrix{};
-    math3d::Matrix4 inv_view_matrix{};
-    math3d::Matrix4 inv_view_proj_matrix{};
+    ktm::fmat4x4 projection_matrix = mat4_identity();
+    ktm::fmat4x4 view_matrix = mat4_identity();
+    ktm::fmat4x4 inv_projection_matrix = mat4_identity();
+    ktm::fmat4x4 inv_view_matrix = mat4_identity();
+    ktm::fmat4x4 inv_view_proj_matrix = mat4_identity();
     float4 camera_pos = make_float4(0.0f, 0.0f, 0.0f, 1.0f);
     float4 light_pos = make_float4(5.0f, 10.0f, 5.0f, 1.0f);
     float4 sun_direction = make_float4(-0.4f, -1.0f, -0.3f, 0.0f);

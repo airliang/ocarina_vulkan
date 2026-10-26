@@ -461,26 +461,26 @@ void FrameResources::upload_global_uniform_buffer(Camera* camera) {
     }
 
     if (camera != nullptr) {
-        const math3d::Matrix4& projection = camera->get_projection_matrix();
-        const math3d::Matrix4& view = camera->get_view_matrix();
+        const ktm::fmat4x4 projection = camera->get_projection_matrix();
+        const ktm::fmat4x4 view = camera->get_view_matrix();
         // CPU culling keeps the absolute view. The GPU view drops translation so
         // camera-relative positions (world - camera) land in the same view space.
-        math3d::Matrix4 gpu_view = view;
+        ktm::fmat4x4 gpu_view = view;
         if constexpr (Camera::kCameraRelativeRendering != 0) {
-            gpu_view(0, 3) = 0.0f;
-            gpu_view(1, 3) = 0.0f;
-            gpu_view(2, 3) = 0.0f;
+            gpu_view[3][0] = 0.0f;
+            gpu_view[3][1] = 0.0f;
+            gpu_view[3][2] = 0.0f;
         }
         // Matches shader mul(projectionMatrix, mul(viewMatrix, ...)) => viewProj = projection * view.
-        const math3d::Matrix4 view_proj = projection * gpu_view;
+        const ktm::fmat4x4 view_proj = projection * gpu_view;
 
-        global_ubo_.projection_matrix = projection.transpose();
-        global_ubo_.view_matrix = gpu_view.transpose();
-        global_ubo_.inv_projection_matrix = projection.inverse().transpose();
-        global_ubo_.inv_view_matrix = gpu_view.inverse().transpose();
-        global_ubo_.inv_view_proj_matrix = view_proj.inverse().transpose();
+        global_ubo_.projection_matrix = projection;
+        global_ubo_.view_matrix = gpu_view;
+        global_ubo_.inv_projection_matrix = ktm::inverse(projection);
+        global_ubo_.inv_view_matrix = ktm::inverse(gpu_view);
+        global_ubo_.inv_view_proj_matrix = ktm::inverse(view_proj);
 
-        const math3d::Vector3D& cam_position = camera->get_position();
+        const ktm::fvec3& cam_position = camera->get_position();
         global_ubo_.camera_pos = make_float4(cam_position[0], cam_position[1], cam_position[2], 1.0f);
     }
 

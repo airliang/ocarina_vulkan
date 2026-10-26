@@ -94,6 +94,17 @@ foreach(_t IN LISTS _ocarina_spirv_targets)
     endif()
 endforeach()
 
+# ktm — header-only. https://github.com/YGXXD/ktm
+# Do not add_subdirectory(): upstream CMake builds a sample executable and
+# injects /arch:AVX2. The include root is src/ext/ktm so <ktm/ktm.h> resolves.
+add_library(ktm INTERFACE)
+add_library(ktm::ktm ALIAS ktm)
+target_include_directories(ktm INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/ktm)
+set_target_properties(ktm PROPERTIES FOLDER "ext")
+if(MSVC)
+    target_compile_options(ktm INTERFACE /utf-8)
+endif()
+
 # Vulkan Memory Allocator — header-only INTERFACE includes.
 # Implementation lives in ocarina-backend-vulkan (vma_impl.cpp with VMA_IMPLEMENTATION).
 set(VMA_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
@@ -102,7 +113,7 @@ set_target_properties(VulkanMemoryAllocator PROPERTIES FOLDER "ext")
 
 # Group remaining third-party targets under ext/ in Visual Studio.
 set(_ocarina_ext_targets
-    xxhash ocarina-ext EASTL mimalloc-static EABase spdlog)
+    xxhash ocarina-ext EASTL mimalloc-static EABase spdlog ktm)
 foreach(_t IN LISTS _ocarina_ext_targets)
     if(TARGET ${_t})
         set_target_properties(${_t} PROPERTIES FOLDER "ext")
@@ -117,4 +128,5 @@ target_link_libraries(ocarina-ext INTERFACE
         ${PYTHON_LIBRARIES}
         xxhash
         ocarina-ext-tinyexr
-        SDL3::SDL3)
+        SDL3::SDL3
+        ktm)

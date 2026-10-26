@@ -77,15 +77,14 @@ void display_frame_info(Widgets& widgets) {
 
         if (context->renderer != nullptr) {
             if (Camera* camera = context->renderer->camera()) {
-                const math3d::Vector3D& cam_position = camera->get_position();
+                const ktm::fvec3& cam_position = camera->get_position();
                 widgets.text(
                     "Camera position: (%.3f, %.3f, %.3f)",
                     cam_position[0],
                     cam_position[1],
                     cam_position[2]);
 
-                const math3d::Vector3D cam_forward = math3d::normalize(
-                    math3d::operator-(camera->get_target(), cam_position));
+                const ktm::fvec3 cam_forward = ktm::normalize(camera->get_target() - cam_position);
                 widgets.text(
                     "Camera forward: (%.3f, %.3f, %.3f)",
                     cam_forward[0],

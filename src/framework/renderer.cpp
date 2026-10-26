@@ -548,7 +548,7 @@ void Renderer::cull_scene() {
         return;
     }
 
-    const math3d::Matrix4 view_projection = camera_->get_projection_matrix() * camera_->get_view_matrix();
+    const ktm::fmat4x4 view_projection = camera_->get_projection_matrix() * camera_->get_view_matrix();
     const Frustum frustum(view_projection);
 
     scene_->cull_grids(frustum);

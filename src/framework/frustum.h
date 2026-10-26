@@ -21,7 +21,7 @@ public:
 
     Frustum() = default;
 
-    explicit Frustum(const math3d::Matrix4& view_projection) {
+    explicit Frustum(const ktm::fmat4x4& view_projection) {
         extract_from_matrix(view_projection);
     }
 
@@ -30,7 +30,7 @@ public:
     [[nodiscard]] bool intersects(const BoundingBox& bounds) const noexcept;
 
 private:
-    void extract_from_matrix(const math3d::Matrix4& matrix);
+    void extract_from_matrix(const ktm::fmat4x4& matrix);
     void normalize_plane(int index);
 
     FrustumPlane planes_[plane_count]{};
