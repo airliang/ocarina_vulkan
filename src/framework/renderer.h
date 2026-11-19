@@ -84,6 +84,11 @@ public:
     /// for mid-session reloads, e.g. Open glTF). No-ops if already loading or no task.
     void start_async_loader();
 
+    /// Queue work for the start of the next render-thread frame, before command-buffer
+    /// recording. Use this for GPU resource destruction (e.g. glTF reload from ImGui):
+    /// destroying buffers while a CB is recording invalidates that CB.
+    void enqueue_before_frame(ocarina::function<void()> action);
+
     void run();
     // Stops the render thread. Call before any main-thread Vulkan idle/teardown (e.g. ImGui shutdown).
     void shutdown();
@@ -192,6 +197,7 @@ private:
     /// Poll loader completion on the render thread and invoke async_complete_fn_ once.
     void poll_async_loader_completion();
     void destroy_pipeline_render_passes();
+    void drain_before_frame_actions();
 
     RenderCallback render = nullptr;
     RenderGUIImplCallback render_gui_impl_ = nullptr;
@@ -225,6 +231,8 @@ protected:
     RendererPrimitiveCullTask primitive_cull_task_;
     bool frustum_culling_enabled_ = true;
     RenderPassPrimitiveFilter render_pass_primitive_filter_;
+
+    ocarina_vector<ocarina::function<void()>> before_frame_actions_;
 
     bool shutdown_called_ = false;
 };

@@ -39,6 +39,9 @@ void RenderTask::Execute() {
 void RenderTask::render_one_frame() {
     OC_PROFILE_FUNCTION;
 
+    // Run deferred work (e.g. glTF reload destroying GPU buffers) before any CB recording.
+    renderer_.drain_before_frame_actions();
+
     // Kick pending PSO creates first so workers can compile while we cull / update components.
     PipelineManager::instance().update();
 

@@ -454,15 +454,19 @@ int main(int argc, char *argv[]) {
             return;
         }
 
-        // Drop the live scene while the loader window runs, then rebuild from the new file.
-        renderer.set_scene(nullptr);
-        loading_progress.reset();
-        gltf_loader.reset_for_reload(
-            ocarina::to_ocarina_string(fs::absolute(selected).string()));
-        gltf_loader.set_progress_listener(&loading_progress);
-
-        renderer.set_async_loader(&gltf_loader, nullptr, on_gltf_loaded);
-        renderer.start_async_loader();
+        // File dialog returns during UI pass recording. Defer GPU teardown until before
+        // the next frame — destroying buffers mid-CB invalidates the recording buffer.
+        const fs::path selected_abs = fs::absolute(selected);
+        renderer.enqueue_before_frame([&, selected_abs]() {
+            device.wait_idle();
+            renderer.set_scene(nullptr);
+            loading_progress.reset();
+            gltf_loader.reset_for_reload(
+                ocarina::to_ocarina_string(selected_abs.string()));
+            gltf_loader.set_progress_listener(&loading_progress);
+            renderer.set_async_loader(&gltf_loader, nullptr, on_gltf_loaded);
+            renderer.start_async_loader();
+        });
     };
 
     imgui_renderer.set_frame_callback([&]() {

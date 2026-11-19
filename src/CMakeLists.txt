@@ -9,6 +9,7 @@ add_subdirectory(rhi)
 add_subdirectory(shader-compiler)
 add_subdirectory(backends)
 add_subdirectory(framework)
+add_subdirectory(voxel)
 
 add_library(ocarina-native INTERFACE)
 target_link_libraries(ocarina-native INTERFACE
@@ -16,7 +17,8 @@ target_link_libraries(ocarina-native INTERFACE
         ocarina-backend
         ocarina-rhi
         ocarina-core
-        ocarina-framework)
+        ocarina-framework
+        ocarina-voxel)
 
 option(OCARINA_BUILD_TESTS "Build tests" TRUE)
 

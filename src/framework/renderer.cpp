@@ -586,6 +586,26 @@ void Renderer::poll_async_loader_completion() {
     async_wait_fn_ = nullptr;
 }
 
+void Renderer::enqueue_before_frame(ocarina::function<void()> action) {
+    if (!action) {
+        return;
+    }
+    before_frame_actions_.push_back(std::move(action));
+}
+
+void Renderer::drain_before_frame_actions() {
+    if (before_frame_actions_.empty()) {
+        return;
+    }
+    ocarina_vector<ocarina::function<void()>> actions;
+    actions.swap(before_frame_actions_);
+    for (ocarina::function<void()>& action : actions) {
+        if (action) {
+            action();
+        }
+    }
+}
+
 void Renderer::start_async_loader() {
     if (async_loader_task_ == nullptr || is_async_loading()) {
         return;

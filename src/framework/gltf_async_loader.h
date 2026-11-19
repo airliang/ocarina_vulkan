@@ -45,6 +45,10 @@ public:
     [[nodiscard]] const Scene& get_scene() const noexcept { return scene_; }
 
     /// Clear scene entities / GPU meshes / materials for @p gltf_file and allow load() again.
+    /// Drops the current scene and GPU mesh/material resources, then points at @p gltf_file.
+    /// Must not run while a command buffer that referenced those resources is still
+    /// recording — call via Renderer::enqueue_before_frame (and prefer Device::wait_idle
+    /// first so in-flight frames finish).
     void reset_for_reload(const ocarina_string& gltf_file);
 
 protected:

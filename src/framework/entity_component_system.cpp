@@ -64,9 +64,19 @@ void EntityComponentSystem::destroy_entity(uint32_t entity_index) {
         return;
     }
 
+    const bool had_transform = transform_components_.has(entity_index);
     render_components_.remove(entity_index);
     transform_components_.remove(entity_index);
     light_components_.remove(entity_index);
+
+    // Entity indices are recycled via free_list_. Clear the per-slot GPU transform
+    // version so a future occupant cannot match the previous TransformComponent's
+    // version and skip sync (e.g. glTF reload always bumps version 0→3).
+    if (had_transform && entity_index < gpu_transform_versions_.size()) {
+        gpu_transform_versions_[entity_index] = InvalidUI32;
+        gpu_transforms_[entity_index] = GPUTransform{};
+        mark_gpu_transforms_dirty();
+    }
 
     entities_[entity_index].alive = false;
     ++entities_[entity_index].generation;
@@ -127,6 +137,8 @@ TransformComponent& EntityComponentSystem::add_transform_component(uint32_t enti
     OC_ASSERT(is_alive(entity_index));
     TransformComponent& transform = transform_components_.add(entity_index);
     ensure_gpu_transform_capacity(static_cast<size_t>(entity_index) + 1);
+    // Recycled entity slots may still hold a previous sync version; force a rewrite.
+    gpu_transform_versions_[entity_index] = InvalidUI32;
     mark_gpu_transforms_dirty();
     return transform;
 }
@@ -135,6 +147,10 @@ bool EntityComponentSystem::remove_transform_component(uint32_t entity_index) {
     std::lock_guard<std::recursive_mutex> lock(components_mutex_);
     const bool removed = transform_components_.remove(entity_index);
     if (removed) {
+        if (entity_index < gpu_transform_versions_.size()) {
+            gpu_transform_versions_[entity_index] = InvalidUI32;
+            gpu_transforms_[entity_index] = GPUTransform{};
+        }
         mark_gpu_transforms_dirty();
     }
     return removed;
