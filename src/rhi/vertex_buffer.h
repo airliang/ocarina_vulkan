@@ -8,6 +8,10 @@
 
 namespace ocarina {
 
+/// Packed GPU/CPU mesh attribute vectors.
+/// Do NOT alias these to ktm::fvec*: ktm::fvec3 is alignas(16) (sizeof 16),
+/// while vertex shaders and pipeline bindings use R32G32B32_SFLOAT with stride 12.
+/// Using padded ktm vectors here scrambles every mesh (positions/normals/colors).
 struct Vector2 {
     float x = 0.0f;
     float y = 0.0f;
@@ -25,6 +29,10 @@ struct Vector4 {
     float z = 0.0f;
     float w = 0.0f;
 };
+
+static_assert(sizeof(Vector2) == 8, "Vector2 must stay tightly packed for mesh VB strides");
+static_assert(sizeof(Vector3) == 12, "Vector3 must stay tightly packed for mesh VB strides");
+static_assert(sizeof(Vector4) == 16, "Vector4 must stay tightly packed for mesh VB strides");
 
 struct VertexStream {
     VertexAttributeType::Enum type;

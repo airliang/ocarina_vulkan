@@ -8,6 +8,8 @@
 #include "framework/scene.h"
 #include "framework/transform_component.h"
 #include "rhi/resources/resource.h"
+#include "TaskScheduler.h"
+#include "core/logging.h"
 
 namespace ocarina {
 
@@ -45,6 +47,53 @@ VoxelWorld::~VoxelWorld() {
 
 void VoxelWorld::set_voxel_size_meters(float meters) noexcept {
     voxel_size_meters_ = std::max(meters, 1.0e-6f);
+}
+
+void VoxelWorld::create_from_data(const VoxelWorldData& data, const float3& color) {
+    if (data.chunk_size == 0 || data.chunk_size > kMaxVoxelChunkSize) {
+        OC_ERROR_FORMAT(
+            "VoxelWorld::create_from_data: invalid chunk_size {}",
+            data.chunk_size);
+        return;
+    }
+    if (data.chunk_size != kVoxelWorldDataChunkSize) {
+        OC_ERROR_FORMAT(
+            "VoxelWorld::create_from_data: chunk_size {} != ChunkData capacity {}",
+            data.chunk_size,
+            kVoxelWorldDataChunkSize);
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    EntityComponentSystem& ecs = EntityComponentSystem::instance();
+    for (uint32_t entity : published_scene_entities_) {
+        ecs.destroy_entity(entity);
+    }
+    published_scene_entities_.clear();
+    for (Chunk& chunk : chunks_) {
+        retire_chunk_meshes_unlocked(chunk);
+    }
+    chunks_.clear();
+    coord_to_index_.clear();
+    id_to_index_.clear();
+    entity_to_merged_.clear();
+    next_chunk_id_ = 1;
+    flush_retired_meshes_unlocked();
+
+    chunk_size_ = data.chunk_size;
+    voxel_size_meters_ = std::max(data.voxel_size_meters, 1.0e-6f);
+
+    const uint32_t volume = data.chunk_size * data.chunk_size * data.chunk_size;
+    for (const ChunkData& chunk_data : data.chunks) {
+        Chunk& chunk = get_or_create_chunk_unlocked(chunk_data.position);
+        chunk.dense_occupancy.assign(chunk_data.voxels, chunk_data.voxels + volume);
+        chunk.voxels.clear();
+        chunk.clear_cpu_mesh();
+        chunk.default_color = color;
+        chunk.mesh_dirty = true;
+        refresh_chunk_bounds_unlocked(chunk);
+    }
 }
 
 uint32_t VoxelWorld::chunk_count() const {
@@ -95,7 +144,7 @@ float3 VoxelWorld::chunk_world_origin(uint32_t chunk_id) const {
 bool VoxelWorld::set_voxel(
     int3 chunk_position,
     uint3 local,
-    VoxelMaterialId material,
+    bool solid,
     const float3& color,
     Voxel* out_voxel) {
     if (!is_valid_voxel_local(chunk_size_, local)) {
@@ -104,18 +153,17 @@ bool VoxelWorld::set_voxel(
 
     std::lock_guard<std::mutex> lock(mutex_);
     Chunk& chunk = get_or_create_chunk_unlocked(chunk_position);
-    const bool changed = chunk.set_voxel(chunk_size_, local, material, color);
+    const bool changed = chunk.set_voxel(chunk_size_, local, solid, color);
     if (out_voxel != nullptr) {
         out_voxel->chunk_id = chunk.id;
         out_voxel->position = pack_voxel_local(chunk_size_, local);
-        out_voxel->material = material;
         out_voxel->color = chunk.color_at(chunk_size_, local);
+        out_voxel->color_samples = solid ? 1u : 0u;
     }
     if (!changed) {
         return true;
     }
 
-    chunk.mesh_dirty = true;
     mark_border_neighbors_unlocked(chunk, local);
     refresh_chunk_bounds_unlocked(chunk);
     return true;
@@ -124,7 +172,7 @@ bool VoxelWorld::set_voxel(
 bool VoxelWorld::set_voxel(
     uint32_t chunk_id,
     uint32_t packed_local,
-    VoxelMaterialId material,
+    bool solid,
     const float3& color) {
     if (!is_valid_packed_voxel_local(chunk_size_, packed_local)) {
         return false;
@@ -135,10 +183,9 @@ bool VoxelWorld::set_voxel(
         return false;
     }
     const uint3 local = unpack_voxel_local(chunk_size_, packed_local);
-    if (!chunk->set_voxel(chunk_size_, local, material, color)) {
-        return material != kVoxelAir;
+    if (!chunk->set_voxel(chunk_size_, local, solid, color)) {
+        return solid;
     }
-    chunk->mesh_dirty = true;
     mark_border_neighbors_unlocked(*chunk, local);
     refresh_chunk_bounds_unlocked(*chunk);
     return true;
@@ -146,7 +193,7 @@ bool VoxelWorld::set_voxel(
 
 bool VoxelWorld::set_voxel_world(
     const float3& world_meters,
-    VoxelMaterialId material,
+    bool solid,
     const float3& color) {
     const float inv = 1.0f / voxel_size_meters_;
     const float3 grid = world_meters * inv;
@@ -165,26 +212,26 @@ bool VoxelWorld::set_voxel_world(
     return set_voxel(
         chunk_pos,
         make_uint3(static_cast<uint32_t>(local.x), static_cast<uint32_t>(local.y), static_cast<uint32_t>(local.z)),
-        material,
+        solid,
         color);
 }
 
-VoxelMaterialId VoxelWorld::voxel_material(uint32_t chunk_id, uint32_t packed_local) const {
+bool VoxelWorld::is_solid(uint32_t chunk_id, uint32_t packed_local) const {
     std::lock_guard<std::mutex> lock(mutex_);
     const Chunk* chunk = find_chunk_unlocked(chunk_id);
     if (chunk == nullptr || !is_valid_packed_voxel_local(chunk_size_, packed_local)) {
-        return kVoxelAir;
+        return false;
     }
-    return chunk->material_at(chunk_size_, unpack_voxel_local(chunk_size_, packed_local));
+    return chunk->is_solid(chunk_size_, unpack_voxel_local(chunk_size_, packed_local));
 }
 
-VoxelMaterialId VoxelWorld::voxel_material(int3 chunk_position, uint3 local) const {
+bool VoxelWorld::is_solid(int3 chunk_position, uint3 local) const {
     std::lock_guard<std::mutex> lock(mutex_);
     const Chunk* chunk = find_chunk_unlocked(chunk_position);
     if (chunk == nullptr) {
-        return kVoxelAir;
+        return false;
     }
-    return chunk->material_at(chunk_size_, local);
+    return chunk->is_solid(chunk_size_, local);
 }
 
 const Chunk* VoxelWorld::find_chunk(int3 chunk_position) const {
@@ -202,36 +249,35 @@ Chunk* VoxelWorld::find_chunk(uint32_t chunk_id) {
     return find_chunk_unlocked(chunk_id);
 }
 
-void VoxelWorld::bind_material(VoxelMaterialId material_id, Material* material) {
-    if (material_id == kVoxelAir) {
-        return;
-    }
-
-    std::lock_guard<std::mutex> lock(mutex_);
-    materials_[material_id] = material;
-    EntityComponentSystem& ecs = EntityComponentSystem::instance();
-    for (Chunk& chunk : chunks_) {
-        for (const MergedVoxelRender& merged : chunk.merged_renders) {
-            if (merged.material_id != material_id) {
-                continue;
-            }
-            if (RenderComponent* render = ecs.try_render_component(merged.entity_index)) {
-                render->set_material(material);
-            }
-        }
-    }
-}
-
 void VoxelWorld::rebuild_dirty_meshes() {
     std::lock_guard<std::mutex> lock(mutex_);
     flush_retired_meshes_unlocked();
     rebuild_dirty_meshes_unlocked();
 }
 
+void VoxelWorld::rebuild_dirty_meshes(enki::TaskScheduler& scheduler) {
+    // Do not hold mutex_ across WaitforTask — that can stall the shared enkiTS pool.
+    rebuild_dirty_meshes_parallel(scheduler);
+}
+
 void VoxelWorld::publish_to_scene(Scene& scene, Material* material) {
     rebuild_dirty_meshes();
 
     std::lock_guard<std::mutex> lock(mutex_);
+    publish_to_scene_unlocked(scene, material);
+}
+
+void VoxelWorld::publish_to_scene(
+    Scene& scene,
+    Material* material,
+    enki::TaskScheduler& scheduler) {
+    rebuild_dirty_meshes(scheduler);
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    publish_to_scene_unlocked(scene, material);
+}
+
+void VoxelWorld::publish_to_scene_unlocked(Scene& scene, Material* material) {
     EntityComponentSystem& ecs = EntityComponentSystem::instance();
 
     // Rebuild created VoxelRenderer-style entities; drop them but keep the meshes.
@@ -251,11 +297,6 @@ void VoxelWorld::publish_to_scene(Scene& scene, Material* material) {
     published_scene_entities_.clear();
     scene.clear_entities();
 
-    auto update_push = [](RenderComponent& render, uint32_t entity_index) {
-        render.set_push_constant_variable("transform_index", entity_index);
-    };
-
-    const float scale = voxel_size_meters_;
     for (Chunk& chunk : chunks_) {
         const float3 origin_m = chunk_world_origin_meters(chunk.position);
         for (uint32_t merged_index = 0; merged_index < chunk.merged_renders.size(); ++merged_index) {
@@ -267,12 +308,17 @@ void VoxelWorld::publish_to_scene(Scene& scene, Material* material) {
             const uint32_t entity_index = scene.entity_index(scene_index);
             TransformComponent& transform = scene.transform_component(scene_index);
             transform.set_position(origin_m);
-            transform.set_scale(make_float3(scale, scale, scale));
+            transform.set_scale(make_float3(1.0f, 1.0f, 1.0f));
 
             RenderComponent& render = scene.render_component(scene_index);
             render.set_mesh(merged.mesh);
             render.set_material(material);
-            render.set_update_push_constant_function(update_push);
+            render.set_update_push_constant_function(
+                [origin_m](RenderComponent& render_component, uint32_t) {
+                    render_component.set_push_constant_variable("chunk_origin_x", origin_m.x);
+                    render_component.set_push_constant_variable("chunk_origin_y", origin_m.y);
+                    render_component.set_push_constant_variable("chunk_origin_z", origin_m.z);
+                });
 
             merged.entity_index = entity_index;
             entity_to_merged_.insert_or_assign(
@@ -321,7 +367,7 @@ uint32_t VoxelWorld::solid_voxel_count() const {
     std::lock_guard<std::mutex> lock(mutex_);
     uint32_t count = 0;
     for (const Chunk& chunk : chunks_) {
-        count += static_cast<uint32_t>(chunk.voxels.size());
+        count += chunk.solid_count(chunk_size_);
     }
     return count;
 }
@@ -330,7 +376,8 @@ BoundingBox VoxelWorld::world_bounds_meters() const {
     std::lock_guard<std::mutex> lock(mutex_);
     BoundingBox bounds;
     for (const Chunk& chunk : chunks_) {
-        if (!chunk.bounds.valid || chunk.voxels.empty()) {
+        if (!chunk.bounds.valid ||
+            (chunk.voxels.empty() && chunk.dense_occupancy.empty())) {
             continue;
         }
         BoundingBox meters = chunk.bounds;
@@ -363,25 +410,6 @@ bool VoxelWorld::try_merged_render(uint32_t entity_index, MergedVoxelRender& out
     }
     out = chunk->merged_renders[it->second.merged_index];
     return true;
-}
-
-void VoxelWorld::copy_greedy_quads(uint32_t chunk_id, ocarina_vector<VoxelGreedyQuad>& out) const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    out.clear();
-    const Chunk* chunk = find_chunk_unlocked(chunk_id);
-    if (chunk == nullptr) {
-        return;
-    }
-    const int3 origin = chunk->position;
-    build_voxel_greedy_quads(
-        chunk_size_,
-        [&](int32_t x, int32_t y, int32_t z) {
-            return sample_material_unlocked(origin, x, y, z);
-        },
-        [&](int32_t x, int32_t y, int32_t z) {
-            return sample_color_unlocked(origin, x, y, z);
-        },
-        out);
 }
 
 Chunk* VoxelWorld::find_chunk_unlocked(int3 chunk_position) {
@@ -421,7 +449,7 @@ Chunk& VoxelWorld::get_or_create_chunk_unlocked(int3 chunk_position) {
     return chunks_.back();
 }
 
-VoxelMaterialId VoxelWorld::sample_material_unlocked(int3 origin, int32_t x, int32_t y, int32_t z) const {
+bool VoxelWorld::sample_solid_unlocked(int3 origin, int32_t x, int32_t y, int32_t z) const {
     const auto size = static_cast<int32_t>(chunk_size_);
     shift_axis(x, origin.x, size);
     shift_axis(y, origin.y, size);
@@ -429,9 +457,9 @@ VoxelMaterialId VoxelWorld::sample_material_unlocked(int3 origin, int32_t x, int
 
     const Chunk* chunk = find_chunk_unlocked(origin);
     if (chunk == nullptr) {
-        return kVoxelAir;
+        return false;
     }
-    return chunk->material_at(
+    return chunk->is_solid(
         chunk_size_,
         make_uint3(static_cast<uint32_t>(x), static_cast<uint32_t>(y), static_cast<uint32_t>(z)));
 }
@@ -449,6 +477,15 @@ float3 VoxelWorld::sample_color_unlocked(int3 origin, int32_t x, int32_t y, int3
     return chunk->color_at(
         chunk_size_,
         make_uint3(static_cast<uint32_t>(x), static_cast<uint32_t>(y), static_cast<uint32_t>(z)));
+}
+
+void VoxelWorld::rebuild_chunk_cpu_mesh_unlocked(Chunk& chunk) {
+    const int3 origin = chunk.position;
+    chunk.rebuild_face_mesh(
+        chunk_size_,
+        [this, origin](int32_t x, int32_t y, int32_t z) noexcept {
+            return sample_solid_unlocked(origin, x, y, z);
+        });
 }
 
 void VoxelWorld::mark_border_neighbors_unlocked(const Chunk& chunk, uint3 local) {
@@ -519,95 +556,157 @@ void VoxelWorld::flush_retired_meshes_unlocked() {
     retired_meshes_ = std::move(still_pending);
 }
 
-void VoxelWorld::rebuild_dirty_meshes_unlocked() {
+void VoxelWorld::apply_chunk_mesh_batches_unlocked(
+    Chunk& chunk,
+    ocarina_vector<VoxelMergedBatch>&& batches) {
     EntityComponentSystem& ecs = EntityComponentSystem::instance();
     const bool can_upload = GlobalGPUStorage::instance().device() != nullptr;
+    const float3 origin_position = chunk_world_origin_meters(chunk.position);
+    const float scale = voxel_size_meters_;
 
+    for (VoxelMergedBatch& batch : batches) {
+        if (batch.geometry.positions.empty() || batch.geometry.indices.empty()) {
+            continue;
+        }
+
+        // CPU face mesh is in cell space; upload meters so voxel_mesh.vert can add origin.
+        if (scale != 1.0f) {
+            for (Vector3& position : batch.geometry.positions) {
+                position.x *= scale;
+                position.y *= scale;
+                position.z *= scale;
+            }
+            if (batch.local_bounds.valid) {
+                batch.local_bounds.min = batch.local_bounds.min * scale;
+                batch.local_bounds.max = batch.local_bounds.max * scale;
+            }
+        }
+
+        unique_ptr<Mesh> mesh_owner(new_with_allocator<Mesh>());
+        Mesh* mesh = mesh_owner.get();
+        if (batch.local_bounds.valid) {
+            mesh->set_local_bounds(batch.local_bounds.min, batch.local_bounds.max);
+        }
+
+        bool upload_requested = false;
+        if (can_upload) {
+            GlobalGPUStorage::instance().upload_mesh(std::move(batch.geometry), mesh);
+            upload_requested = true;
+        }
+
+        const uint32_t entity_index = ecs.create_entity();
+        RenderComponent& render = ecs.add_render_component(entity_index);
+        render.set_mesh(mesh);
+        render.set_update_push_constant_function(
+            [origin_position](RenderComponent& render_component, uint32_t) {
+                render_component.set_push_constant_variable("chunk_origin_x", origin_position.x);
+                render_component.set_push_constant_variable("chunk_origin_y", origin_position.y);
+                render_component.set_push_constant_variable("chunk_origin_z", origin_position.z);
+            });
+
+        MergedVoxelRender merged{};
+        merged.entity_index = entity_index;
+        merged.chunk_id = chunk.id;
+        merged.voxel_count = batch.voxel_count;
+        merged.quad_count = batch.quad_count;
+        merged.mesh = mesh;
+
+        const auto merged_index = static_cast<uint32_t>(chunk.merged_renders.size());
+        chunk.merged_renders.push_back(merged);
+        entity_to_merged_.insert_or_assign(
+            entity_index,
+            MergedRef{chunk.id, merged_index});
+        live_meshes_.insert_or_assign(
+            mesh,
+            MeshOwner{std::move(mesh_owner), upload_requested});
+    }
+
+    chunk.mesh_dirty = false;
+}
+
+void VoxelWorld::rebuild_dirty_meshes_unlocked() {
     for (Chunk& chunk : chunks_) {
         if (!chunk.mesh_dirty) {
             continue;
         }
 
         retire_chunk_meshes_unlocked(chunk);
+        rebuild_chunk_cpu_mesh_unlocked(chunk);
 
-        ocarina_unordered_map<VoxelMaterialId, uint32_t> voxel_counts;
-        for (const Voxel& voxel : chunk.voxels) {
-            if (voxel.material == kVoxelAir) {
-                continue;
-            }
-            ++voxel_counts[voxel.material];
-        }
-
-        ocarina_vector<VoxelGreedyQuad> quads;
-        const int3 origin = chunk.position;
-        build_voxel_greedy_quads(
-            chunk_size_,
-            [&](int32_t x, int32_t y, int32_t z) {
-                return sample_material_unlocked(origin, x, y, z);
-            },
-            [&](int32_t x, int32_t y, int32_t z) {
-                return sample_color_unlocked(origin, x, y, z);
-            },
-            quads);
-
+        VoxelMergedBatch batch;
+        chunk.build_mesh_batch(batch);
         ocarina_vector<VoxelMergedBatch> batches;
-        build_voxel_merged_batches(quads, voxel_counts, batches);
-
-        const float3 origin_position = chunk_world_origin_meters(chunk.position);
-        const uint32_t chunk_id = chunk.id;
-
-        for (VoxelMergedBatch& batch : batches) {
-            if (batch.geometry.positions.empty() || batch.geometry.indices.empty()) {
-                continue;
-            }
-
-            unique_ptr<Mesh> mesh_owner(new_with_allocator<Mesh>());
-            Mesh* mesh = mesh_owner.get();
-            if (batch.local_bounds.valid) {
-                mesh->set_local_bounds(batch.local_bounds.min, batch.local_bounds.max);
-            }
-
-            bool upload_requested = false;
-            if (can_upload) {
-                GlobalGPUStorage::instance().upload_mesh(std::move(batch.geometry), mesh);
-                upload_requested = true;
-            }
-
-            const uint32_t entity_index = ecs.create_entity();
-            RenderComponent& render = ecs.add_render_component(entity_index);
-            render.set_mesh(mesh);
-            const auto material_it = materials_.find(batch.material);
-            if (material_it != materials_.end()) {
-                render.set_material(material_it->second);
-            }
-            render.set_update_push_constant_function(
-                [chunk_id, origin_position](RenderComponent& render_component, uint32_t) {
-                    render_component.set_push_constant_variable("chunk_id", chunk_id);
-                    render_component.set_push_constant_variable("chunk_origin_x", origin_position.x);
-                    render_component.set_push_constant_variable("chunk_origin_y", origin_position.y);
-                    render_component.set_push_constant_variable("chunk_origin_z", origin_position.z);
-                });
-
-            MergedVoxelRender merged{};
-            merged.entity_index = entity_index;
-            merged.chunk_id = chunk.id;
-            merged.material_id = batch.material;
-            merged.voxel_count = batch.voxel_count;
-            merged.quad_count = batch.quad_count;
-            merged.mesh = mesh;
-
-            const auto merged_index = static_cast<uint32_t>(chunk.merged_renders.size());
-            chunk.merged_renders.push_back(merged);
-            entity_to_merged_.insert_or_assign(
-                entity_index,
-                MergedRef{chunk.id, merged_index});
-            live_meshes_.insert_or_assign(
-                mesh,
-                MeshOwner{std::move(mesh_owner), upload_requested});
+        if (!batch.geometry.positions.empty()) {
+            batches.push_back(std::move(batch));
         }
-
-        chunk.mesh_dirty = false;
+        apply_chunk_mesh_batches_unlocked(chunk, std::move(batches));
     }
+}
+
+void VoxelWorld::rebuild_dirty_meshes_parallel(enki::TaskScheduler& scheduler) {
+    ocarina_vector<uint32_t> dirty_indices;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        flush_retired_meshes_unlocked();
+        dirty_indices.reserve(chunks_.size());
+        for (uint32_t i = 0; i < chunks_.size(); ++i) {
+            if (chunks_[i].mesh_dirty) {
+                dirty_indices.push_back(i);
+                retire_chunk_meshes_unlocked(chunks_[i]);
+            }
+        }
+    }
+    if (dirty_indices.empty()) {
+        return;
+    }
+
+    struct ChunkMeshJob {
+        VoxelMergedBatch batch;
+        bool has_batch = false;
+    };
+    ocarina_vector<ChunkMeshJob> jobs(dirty_indices.size());
+
+    struct MeshTask : enki::ITaskSet {
+        VoxelWorld* world = nullptr;
+        const ocarina_vector<uint32_t>* dirty_indices = nullptr;
+        ocarina_vector<ChunkMeshJob>* jobs = nullptr;
+
+        void ExecuteRange(enki::TaskSetPartition range, uint32_t) override {
+            for (uint32_t job_index = range.start; job_index < range.end; ++job_index) {
+                const uint32_t chunk_index = (*dirty_indices)[job_index];
+                Chunk& chunk = world->chunks_[chunk_index];
+                world->rebuild_chunk_cpu_mesh_unlocked(chunk);
+                chunk.build_mesh_batch((*jobs)[job_index].batch);
+                (*jobs)[job_index].has_batch =
+                    !(*jobs)[job_index].batch.geometry.positions.empty();
+            }
+        }
+    };
+
+    MeshTask task;
+    task.world = this;
+    task.dirty_indices = &dirty_indices;
+    task.jobs = &jobs;
+    task.m_SetSize = static_cast<uint32_t>(dirty_indices.size());
+    task.m_MinRange = 1;
+    scheduler.AddTaskSetToPipe(&task);
+    scheduler.WaitforTask(&task);
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (uint32_t job_index = 0; job_index < dirty_indices.size(); ++job_index) {
+        ocarina_vector<VoxelMergedBatch> batches;
+        if (jobs[job_index].has_batch) {
+            batches.push_back(std::move(jobs[job_index].batch));
+        }
+        apply_chunk_mesh_batches_unlocked(
+            chunks_[dirty_indices[job_index]],
+            std::move(batches));
+    }
+}
+
+void VoxelWorld::rebuild_dirty_meshes_parallel_unlocked(enki::TaskScheduler& scheduler) {
+    // Prefer rebuild_dirty_meshes_parallel; kept for call sites that already hold no lock.
+    rebuild_dirty_meshes_parallel(scheduler);
 }
 
 }// namespace ocarina

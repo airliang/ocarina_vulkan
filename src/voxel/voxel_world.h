@@ -1,10 +1,14 @@
 #pragma once
 
 #include "chunk.h"
-#include "voxel_mesher.h"
+#include "voxel_world_data.h"
 #include "framework/frustum.h"
 #include "core/stl.h"
 #include <mutex>
+
+namespace enki {
+class TaskScheduler;
+}
 
 namespace ocarina {
 
@@ -12,7 +16,8 @@ class Material;
 class Scene;
 class VoxelRenderer;
 
-/// Owns chunks, greedy meshing, and chunk frustum culling.
+/// Owns chunks, face meshing, and chunk frustum culling.
+/// All solids share one Material (voxel_mesh); appearance comes from vertex color.
 class OC_VOXEL_API VoxelWorld {
 public:
     explicit VoxelWorld(uint32_t chunk_size = kDefaultVoxelChunkSize);
@@ -30,37 +35,45 @@ public:
 
     void clear();
 
+    /// Clears and rebuilds this world from dense chunk occupancy.
+    /// Copies each ChunkData into Chunk::dense_occupancy for O(1) meshing samples.
+    void create_from_data(const VoxelWorldData& data, const float3& color = make_float3(1.0f));
+
     /// Creates the chunk when the cell is written. `local` must be in [0, chunk_size).
+    /// `solid == true` inserts/updates; `solid == false` clears air.
     bool set_voxel(
         int3 chunk_position,
         uint3 local,
-        VoxelMaterialId material,
+        bool solid = true,
         const float3& color = make_float3(1.0f),
         Voxel* out_voxel = nullptr);
     bool set_voxel(
         uint32_t chunk_id,
         uint32_t packed_local,
-        VoxelMaterialId material,
+        bool solid = true,
         const float3& color = make_float3(1.0f));
 
     /// World-space meters → chunk/local using voxel_size_meters_.
-    bool set_voxel_world(const float3& world_meters, VoxelMaterialId material, const float3& color);
+    bool set_voxel_world(
+        const float3& world_meters,
+        bool solid = true,
+        const float3& color = make_float3(1.0f));
 
-    [[nodiscard]] VoxelMaterialId voxel_material(uint32_t chunk_id, uint32_t packed_local) const;
-    [[nodiscard]] VoxelMaterialId voxel_material(int3 chunk_position, uint3 local) const;
+    [[nodiscard]] bool is_solid(uint32_t chunk_id, uint32_t packed_local) const;
+    [[nodiscard]] bool is_solid(int3 chunk_position, uint3 local) const;
 
     [[nodiscard]] const Chunk* find_chunk(int3 chunk_position) const;
     [[nodiscard]] const Chunk* find_chunk(uint32_t chunk_id) const;
     [[nodiscard]] Chunk* find_chunk(uint32_t chunk_id);
 
-    void bind_material(VoxelMaterialId material_id, Material* material);
-
     void rebuild_dirty_meshes();
+    /// Rebuilds exposed-face meshes for dirty chunks in parallel (enkiTS).
+    void rebuild_dirty_meshes(enki::TaskScheduler& scheduler);
 
-    /// Rebuild meshes, then replace @p scene with one renderable per merged chunk mesh.
-    /// Transform = chunk origin in meters, scale = voxel_size_meters (mesh verts stay in cells).
-    /// Uses mesh.vert push constant transform_index (not voxel_mesh.vert).
+    /// Rebuild meshes, then replace @p scene with one renderable per chunk mesh.
+    /// Transform = chunk origin in meters; mesh verts are scaled to meters on upload.
     void publish_to_scene(Scene& scene, Material* material);
+    void publish_to_scene(Scene& scene, Material* material, enki::TaskScheduler& scheduler);
 
     void cull_chunks(
         const Frustum& frustum,
@@ -76,7 +89,6 @@ public:
     [[nodiscard]] uint32_t solid_voxel_count() const;
     void copy_merged_renders(uint32_t chunk_id, ocarina_vector<MergedVoxelRender>& out) const;
     [[nodiscard]] bool try_merged_render(uint32_t entity_index, MergedVoxelRender& out) const;
-    void copy_greedy_quads(uint32_t chunk_id, ocarina_vector<VoxelGreedyQuad>& out) const;
 
     [[nodiscard]] BoundingBox world_bounds_meters() const;
 
@@ -99,13 +111,20 @@ private:
     [[nodiscard]] const Chunk* find_chunk_unlocked(uint32_t chunk_id) const;
     Chunk& get_or_create_chunk_unlocked(int3 chunk_position);
 
-    [[nodiscard]] VoxelMaterialId sample_material_unlocked(int3 origin, int32_t x, int32_t y, int32_t z) const;
+    [[nodiscard]] bool sample_solid_unlocked(int3 origin, int32_t x, int32_t y, int32_t z) const;
     [[nodiscard]] float3 sample_color_unlocked(int3 origin, int32_t x, int32_t y, int32_t z) const;
+    void rebuild_chunk_cpu_mesh_unlocked(Chunk& chunk);
     void mark_border_neighbors_unlocked(const Chunk& chunk, uint3 local);
     void refresh_chunk_bounds_unlocked(Chunk& chunk) noexcept;
     void retire_chunk_meshes_unlocked(Chunk& chunk);
     void flush_retired_meshes_unlocked();
     void rebuild_dirty_meshes_unlocked();
+    void rebuild_dirty_meshes_parallel(enki::TaskScheduler& scheduler);
+    void rebuild_dirty_meshes_parallel_unlocked(enki::TaskScheduler& scheduler);
+    void apply_chunk_mesh_batches_unlocked(
+        Chunk& chunk,
+        ocarina_vector<VoxelMergedBatch>&& batches);
+    void publish_to_scene_unlocked(Scene& scene, Material* material);
 
     uint32_t chunk_size_ = kDefaultVoxelChunkSize;
     float voxel_size_meters_ = 1.0f;
@@ -114,7 +133,6 @@ private:
     ocarina_vector<Chunk> chunks_;
     ocarina_unordered_map<int3, uint32_t, ChunkCoordHash, ChunkCoordEqual> coord_to_index_;
     ocarina_unordered_map<uint32_t, uint32_t> id_to_index_;
-    ocarina_unordered_map<VoxelMaterialId, Material*> materials_;
     ocarina_unordered_map<Mesh*, MeshOwner> live_meshes_;
     ocarina_vector<MeshOwner> retired_meshes_;
     ocarina_unordered_map<uint32_t, MergedRef> entity_to_merged_;

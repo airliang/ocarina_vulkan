@@ -372,7 +372,6 @@ void voxelize_primitive(
     const tinygltf::Primitive& primitive,
     const float4x4& world,
     float voxel_size,
-    VoxelMaterialId solid_material,
     VoxelWorld& out_world,
     uint32_t& triangle_count) {
     const auto pos_it = primitive.attributes.find("POSITION");
@@ -455,7 +454,7 @@ void voxelize_primitive(
                         bary.x * uv0.x + bary.y * uv1.x + bary.z * uv2.x,
                         bary.x * uv0.y + bary.y * uv1.y + bary.z * uv2.y);
                     const float3 color = albedo.sample(uv);
-                    out_world.set_voxel_world(center, solid_material, color);
+                    out_world.set_voxel_world(center, true, color);
                 }
             }
         }
@@ -467,7 +466,6 @@ void voxelize_node(
     int node_index,
     const float4x4& parent,
     float voxel_size,
-    VoxelMaterialId solid_material,
     VoxelWorld& out_world,
     uint32_t& triangle_count) {
     if (node_index < 0 || node_index >= static_cast<int>(model.nodes.size())) {
@@ -478,11 +476,11 @@ void voxelize_node(
     if (node.mesh >= 0 && node.mesh < static_cast<int>(model.meshes.size())) {
         for (const tinygltf::Primitive& primitive : model.meshes[node.mesh].primitives) {
             voxelize_primitive(
-                model, primitive, local, voxel_size, solid_material, out_world, triangle_count);
+                model, primitive, local, voxel_size, out_world, triangle_count);
         }
     }
     for (int child : node.children) {
-        voxelize_node(model, child, local, voxel_size, solid_material, out_world, triangle_count);
+        voxelize_node(model, child, local, voxel_size, out_world, triangle_count);
     }
 }
 
@@ -525,8 +523,7 @@ float MeshVoxelizer::suggest_voxel_size(const BoundingBox& bounds) noexcept {
 MeshVoxelizerResult MeshVoxelizer::voxelize_gltf(
     const fs::path& gltf_path,
     float voxel_size_meters,
-    VoxelWorld& world,
-    VoxelMaterialId solid_material) {
+    VoxelWorld& world) {
     MeshVoxelizerResult result;
     result.suggested_voxel_size = voxel_size_meters;
 
@@ -561,12 +558,12 @@ MeshVoxelizerResult MeshVoxelizer::voxelize_gltf(
         if (scene_index < static_cast<int>(model.scenes.size())) {
             for (int node : model.scenes[scene_index].nodes) {
                 voxelize_node(
-                    model, node, identity, size, solid_material, world, result.triangle_count);
+                    model, node, identity, size, world, result.triangle_count);
             }
         }
     } else if (!model.nodes.empty()) {
         voxelize_node(
-            model, 0, identity, size, solid_material, world, result.triangle_count);
+            model, 0, identity, size, world, result.triangle_count);
     }
 
     result.solid_voxel_count = world.solid_voxel_count();

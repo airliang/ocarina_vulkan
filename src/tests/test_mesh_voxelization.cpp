@@ -25,11 +25,7 @@
 #include "framework/pass_group_id.h"
 #include "framework/resource_manager.h"
 #include "framework/material.h"
-#include "framework/internal_textures.h"
-#include "framework/bindless_texture_registry.h"
 #include "framework/widgets.h"
-#include "rhi/bindless_sampler.h"
-#include "rhi/resources/texture_sampler.h"
 #include "rhi/command_buffer.h"
 #include "rhi/renderpass.h"
 #include "rhi/rendertarget.h"
@@ -42,28 +38,6 @@
 using namespace ocarina;
 
 namespace {
-
-void apply_vertex_color_material_defaults(Material* material, const TextureHandle& white) {
-    if (material == nullptr) {
-        return;
-    }
-    material->set_property("baseColorFactor", make_float4(1.f, 1.f, 1.f, 1.f));
-    material->set_property("roughness", 1.f);
-    material->set_property("metallic", 0.f);
-    material->set_property("ao", 1.f);
-    material->set_property("normalIndex", 0u);
-    material->set_property("normalSamplerIndex", 0u);
-    material->set_property("metallicRoughnessIndex", InvalidUI32);
-    material->set_property("metallicRoughnessSamplerIndex", 0u);
-    material->set_property(
-        "albedoIndex",
-        &white.bindless_index_,
-        sizeof(white.bindless_index_));
-    material->set_property(
-        "albedoSamplerIndex",
-        get_bindless_sampler_index(
-            TextureSampler{TextureSampler::Filter::LINEAR_LINEAR, TextureSampler::Address::REPEAT}));
-}
 
 void frame_camera_to_bounds(Camera& camera, const BoundingBox& bounds) {
     if (!bounds.valid) {
@@ -103,6 +77,8 @@ int main(int argc, char* argv[]) {
         repo_root / "res/pipelines/forward_opaque_transparent.pipeline.json";
     const fs::path shader_vert = repo_root / "res/shaderlibrary/builtin/mesh.vert";
     const fs::path shader_frag = repo_root / "res/shaderlibrary/builtin/mesh.frag";
+    const fs::path voxel_vert = repo_root / "res/shaderlibrary/builtin/voxel_mesh.vert";
+    const fs::path voxel_frag = repo_root / "res/shaderlibrary/builtin/voxel_mesh.frag";
 
     LoadingProgressListener loading_progress;
 
@@ -143,6 +119,10 @@ int main(int argc, char* argv[]) {
         ocarina::to_ocarina_string(fs::absolute(shader_vert).string());
     const ocarina_string shader_frag_abs =
         ocarina::to_ocarina_string(fs::absolute(shader_frag).string());
+    const ocarina_string voxel_vert_abs =
+        ocarina::to_ocarina_string(fs::absolute(voxel_vert).string());
+    const ocarina_string voxel_frag_abs =
+        ocarina::to_ocarina_string(fs::absolute(voxel_frag).string());
 
     fs::path current_gltf = default_gltf;
     float voxel_size_meters = 0.1f;
@@ -170,7 +150,7 @@ int main(int argc, char* argv[]) {
         ResourceManager& resources = ResourceManager::instance();
         ocarina_set<string> options;
         ShaderProgram* program = resources.create_shader_program(
-            &device, shader_vert_abs, shader_frag_abs, options, options);
+            &device, voxel_vert_abs, voxel_frag_abs, options, options);
         if (program == nullptr) {
             status_message = ocarina::to_ocarina_string("Failed to create voxel shader program");
             return false;
@@ -180,9 +160,6 @@ int main(int argc, char* argv[]) {
             status_message = ocarina::to_ocarina_string("Failed to create voxel material");
             return false;
         }
-        const TextureHandle white =
-            InternalTextures::instance().get_white_texture_handle(&device);
-        apply_vertex_color_material_defaults(voxel_material, white);
         return true;
     };
 
@@ -250,7 +227,7 @@ int main(int argc, char* argv[]) {
         const float size = std::max(voxel_size_meters, 1.0e-5f);
         status_message = ocarina::format("Voxelizing at {:.4f} m ...", size);
         const MeshVoxelizerResult result =
-            MeshVoxelizer::voxelize_gltf(current_gltf, size, voxel_world, 1);
+            MeshVoxelizer::voxelize_gltf(current_gltf, size, voxel_world);
         if (!result.ok) {
             status_message = result.error.empty()
                 ? ocarina::to_ocarina_string("Voxelization failed")

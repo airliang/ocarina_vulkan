@@ -1,0 +1,523 @@
+{
+  "accessors": [
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 744,
+      "max": [
+        195.3869171142578,
+        221.44363403320313,
+        599.4512939453125
+      ],
+      "min": [
+        -229.36343383789063,
+        -223.17367553710938,
+        -3.2089285468828166e-06
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 8928,
+      "componentType": 5126,
+      "count": 744,
+      "max": [
+        0.9996432662010193,
+        0.9974852800369263,
+        0.999855101108551
+      ],
+      "min": [
+        -0.9999551773071289,
+        -0.9997671842575073,
+        -0.9974223375320435
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 744,
+      "max": [
+        -0.0014600000577047467,
+        5.4081501960754395
+      ],
+      "min": [
+        -0.9995099902153015,
+        0.0
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 0,
+      "componentType": 5125,
+      "count": 2358,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 17856,
+      "componentType": 5126,
+      "count": 200,
+      "max": [
+        167.84121704101563,
+        154.70143127441406,
+        620.3056640625
+      ],
+      "min": [
+        -193.21505737304688,
+        -188.14724731445313,
+        170.4766387939453
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 20256,
+      "componentType": 5126,
+      "count": 200,
+      "max": [
+        0.969607949256897,
+        0.9650508761405945,
+        0.9948402643203735
+      ],
+      "min": [
+        -0.966323733329773,
+        -0.9855014085769653,
+        -0.8237932324409485
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "byteOffset": 5952,
+      "componentType": 5126,
+      "count": 200,
+      "max": [
+        1.000100016593933,
+        -0.0
+      ],
+      "min": [
+        9.999999747378752e-05,
+        -1.0
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 0,
+      "byteOffset": 9432,
+      "componentType": 5125,
+      "count": 480,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 22656,
+      "componentType": 5126,
+      "count": 346,
+      "max": [
+        198.71786499023438,
+        204.89923095703125,
+        598.9461059570313
+      ],
+      "min": [
+        -240.47293090820313,
+        -221.0911407470703,
+        139.30587768554688
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 26808,
+      "componentType": 5126,
+      "count": 346,
+      "max": [
+        0.9982051849365234,
+        0.9980729222297668,
+        0.9757938981056213
+      ],
+      "min": [
+        -0.9996288418769836,
+        -0.9924938082695007,
+        -0.8858454823493958
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "byteOffset": 7552,
+      "componentType": 5126,
+      "count": 346,
+      "max": [
+        1.000100016593933,
+        -0.0
+      ],
+      "min": [
+        9.999999747378752e-05,
+        -1.0
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 0,
+      "byteOffset": 11352,
+      "componentType": 5125,
+      "count": 480,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 30960,
+      "componentType": 5126,
+      "count": 384,
+      "max": [
+        193.1157989501953,
+        214.6134796142578,
+        640.8915405273438
+      ],
+      "min": [
+        -230.6728057861328,
+        -225.65382385253906,
+        186.941162109375
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 35568,
+      "componentType": 5126,
+      "count": 384,
+      "max": [
+        0.9986607432365417,
+        0.998250424861908,
+        0.9509726762771606
+      ],
+      "min": [
+        -0.9986618757247925,
+        -0.9982491135597229,
+        -0.3640264868736267
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "byteOffset": 10320,
+      "componentType": 5126,
+      "count": 384,
+      "max": [
+        1.000100016593933,
+        0.9941563010215759
+      ],
+      "min": [
+        9.999999747378752e-05,
+        -0.005843698978424072
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 0,
+      "byteOffset": 13272,
+      "componentType": 5125,
+      "count": 576,
+      "type": "SCALAR"
+    }
+  ],
+  "asset": {
+    "extras": {
+      "author": "JABAMI Production (https://sketchfab.com/JabamiProduction)",
+      "license": "SKETCHFAB Standard (https://sketchfab.com/licenses)",
+      "source": "https://sketchfab.com/3d-models/jabami-anime-tree-v3-02e0690cb6104098b47bfbbde5c6dd8a",
+      "title": "Jabami Anime Tree v3"
+    },
+    "generator": "Sketchfab-16.21.0",
+    "version": "2.0"
+  },
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 15576,
+      "name": "floatBufferViews",
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteLength": 13392,
+      "byteOffset": 15576,
+      "byteStride": 8,
+      "name": "floatBufferViews",
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 40176,
+      "byteOffset": 28968,
+      "byteStride": 12,
+      "name": "floatBufferViews",
+      "target": 34962
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 69144,
+      "uri": "scene.bin"
+    }
+  ],
+  "images": [
+    {
+      "uri": "textures/tron_tree_01_mat_baseColor.png"
+    },
+    {
+      "uri": "textures/leave_tree_00_mat_baseColor.png"
+    },
+    {
+      "uri": "textures/leave_tree_01_mat_baseColor.png"
+    },
+    {
+      "uri": "textures/leave_tree_02_mat_baseColor.png"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "tron_tree_01_mat",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        },
+        "metallicFactor": 0.0
+      }
+    },
+    {
+      "alphaMode": "MASK",
+      "alphaCutoff": 0.5,
+      "doubleSided": true,
+      "name": "leave_tree_00_mat",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1
+        },
+        "metallicFactor": 0.0
+      }
+    },
+    {
+      "alphaMode": "MASK",
+      "alphaCutoff": 0.5,
+      "doubleSided": true,
+      "name": "leave_tree_01_mat",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 2
+        },
+        "metallicFactor": 0.0
+      }
+    },
+    {
+      "alphaMode": "MASK",
+      "alphaCutoff": 0.5,
+      "doubleSided": true,
+      "name": "leave_tree_02_mat",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 3
+        },
+        "metallicFactor": 0.0
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "..\\..\\users\\hp-touch\\documents\\treeitsave\\texture\\tron_tree_01__tron_tree_01_mat_0",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 1,
+            "POSITION": 0,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    },
+    {
+      "name": "..\\..\\users\\hp-touch\\documents\\treeitsave\\texture\\tron_tree_01__leave_tree_00_mat_0",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 5,
+            "POSITION": 4,
+            "TEXCOORD_0": 6
+          },
+          "indices": 7,
+          "material": 1,
+          "mode": 4
+        }
+      ]
+    },
+    {
+      "name": "..\\..\\users\\hp-touch\\documents\\treeitsave\\texture\\tron_tree_01__leave_tree_01_mat_0",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 9,
+            "POSITION": 8,
+            "TEXCOORD_0": 10
+          },
+          "indices": 11,
+          "material": 2,
+          "mode": 4
+        }
+      ]
+    },
+    {
+      "name": "..\\..\\users\\hp-touch\\documents\\treeitsave\\texture\\tron_tree_01__leave_tree_02_mat_0",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 13,
+            "POSITION": 12,
+            "TEXCOORD_0": 14
+          },
+          "indices": 15,
+          "material": 3,
+          "mode": 4
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "children": [
+        1
+      ],
+      "matrix": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        2.220446049250313e-16,
+        -1.0,
+        0.0,
+        0.0,
+        1.0,
+        2.220446049250313e-16,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "Sketchfab_model"
+    },
+    {
+      "children": [
+        2
+      ],
+      "matrix": [
+        0.009999999776482582,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.009999999776482582,
+        0.0,
+        0.0,
+        -0.009999999776482582,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "medium02.fbx"
+    },
+    {
+      "children": [
+        3
+      ],
+      "name": "RootNode"
+    },
+    {
+      "children": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "matrix": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.6292067939183141e-07,
+        -0.9999999999999868,
+        0.0,
+        0.0,
+        0.9999999999999868,
+        -1.6292067939183141e-07,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "..\\..\\users\\hp-touch\\documents\\treeitsave\\texture\\tron_tree_01_"
+    },
+    {
+      "mesh": 0,
+      "name": "..\\..\\users\\hp-touch\\documents\\treeitsave\\texture\\tron_tree_01__tron_tree_01_mat_0"
+    },
+    {
+      "mesh": 1,
+      "name": "..\\..\\users\\hp-touch\\documents\\treeitsave\\texture\\tron_tree_01__leave_tree_00_mat_0"
+    },
+    {
+      "mesh": 2,
+      "name": "..\\..\\users\\hp-touch\\documents\\treeitsave\\texture\\tron_tree_01__leave_tree_01_mat_0"
+    },
+    {
+      "mesh": 3,
+      "name": "..\\..\\users\\hp-touch\\documents\\treeitsave\\texture\\tron_tree_01__leave_tree_02_mat_0"
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987,
+      "wrapS": 10497,
+      "wrapT": 10497
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Sketchfab_Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    },
+    {
+      "sampler": 0,
+      "source": 1
+    },
+    {
+      "sampler": 0,
+      "source": 2
+    },
+    {
+      "sampler": 0,
+      "source": 3
+    }
+  ]
+}

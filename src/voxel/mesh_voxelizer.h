@@ -34,8 +34,7 @@ public:
     static MeshVoxelizerResult voxelize_gltf(
         const fs::path& gltf_path,
         float voxel_size_meters,
-        VoxelWorld& world,
-        VoxelMaterialId solid_material = 1);
+        VoxelWorld& world);
 };
 
 }// namespace ocarina

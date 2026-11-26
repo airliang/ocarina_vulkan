@@ -96,22 +96,22 @@ Mesh* Mesh::create_sphere() {
 Quad::Quad() {
     OwnedMeshGeometry geometry;
     geometry.positions = {
-        {-1.0f, 1.0f, 0.0f},
-        {1.0f, 1.0f, 0.0f},
-        {1.0f, -1.0f, 0.0f},
-        {-1.0f, -1.0f, 0.0f},
+        Vector3{-1.0f, 1.0f, 0.0f},
+        Vector3{1.0f, 1.0f, 0.0f},
+        Vector3{1.0f, -1.0f, 0.0f},
+        Vector3{-1.0f, -1.0f, 0.0f},
     };
     geometry.uvs = {
-        {1.0f, 1.0f},
-        {0.0f, 1.0f},
-        {0.0f, 0.0f},
-        {1.0f, 0.0f},
+        Vector2{1.0f, 1.0f},
+        Vector2{0.0f, 1.0f},
+        Vector2{0.0f, 0.0f},
+        Vector2{1.0f, 0.0f},
     };
     geometry.colors = {
-        {1.0f, 1.0f, 1.0f, 1.0f},
-        {1.0f, 1.0f, 1.0f, 1.0f},
-        {1.0f, 1.0f, 1.0f, 1.0f},
-        {1.0f, 1.0f, 1.0f, 1.0f},
+        Vector4{1.0f, 1.0f, 1.0f, 1.0f},
+        Vector4{1.0f, 1.0f, 1.0f, 1.0f},
+        Vector4{1.0f, 1.0f, 1.0f, 1.0f},
+        Vector4{1.0f, 1.0f, 1.0f, 1.0f},
     };
     geometry.indices = {0, 1, 2, 2, 3, 0};
     GlobalGPUStorage::instance().upload_mesh(std::move(geometry), this);

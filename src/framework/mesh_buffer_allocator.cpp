@@ -11,10 +11,10 @@ namespace ocarina {
 
 namespace {
 
-constexpr Vector3 kDefaultNormal = {0.0f, 0.0f, 1.0f};
-constexpr Vector4 kDefaultTangent = {1.0f, 0.0f, 0.0f, 1.0f};
-constexpr Vector2 kDefaultUv = {0.0f, 0.0f};
-constexpr Vector4 kDefaultColor = {1.0f, 1.0f, 1.0f, 1.0f};
+constexpr Vector3 kDefaultNormal{0.0f, 0.0f, 1.0f};
+constexpr Vector4 kDefaultTangent{1.0f, 0.0f, 0.0f, 1.0f};
+constexpr Vector2 kDefaultUv{0.0f, 0.0f};
+constexpr Vector4 kDefaultColor{1.0f, 1.0f, 1.0f, 1.0f};
 
 [[nodiscard]] uint32_t vertex_capacity_for_bytes(uint64_t total_bytes) noexcept {
     return static_cast<uint32_t>(total_bytes / kMeshBytesPerVertex);

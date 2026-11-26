@@ -28,6 +28,7 @@
 #include "rhi/resources/texture_sampler.h"
 #include "rhi/bindless_sampler.h"
 #include <chrono>
+#include <cstring>
 
 namespace ocarina {
 
@@ -113,10 +114,10 @@ bool copy_float_accessor(
     constexpr size_t element_bytes = sizeof(T);
     out.resize(static_cast<size_t>(accessor.count));
     if (static_cast<size_t>(byte_stride) == element_bytes) {
-        memcpy(out.data(), data, static_cast<size_t>(accessor.count) * element_bytes);
+        std::memcpy(out.data(), data, static_cast<size_t>(accessor.count) * element_bytes);
     } else {
         for (int i = 0; i < accessor.count; ++i) {
-            memcpy(
+            std::memcpy(
                 &out[static_cast<size_t>(i)],
                 data + static_cast<size_t>(i) * static_cast<size_t>(byte_stride),
                 element_bytes);
